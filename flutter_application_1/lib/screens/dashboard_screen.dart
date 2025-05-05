@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/login_screen.dart';
+import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../models/appointment.dart';
 import '../services/api_service.dart';
 import 'user_management_screen.dart';
 import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
-import 'laboratory/laboratory_hub_screen.dart'; 
+import 'laboratory/laboratory_hub_screen.dart';
 import 'patient/patient_queue_hub_screen.dart';
 import 'analytics/patient_analytics_screen.dart';
 import 'reports/report_hub_screen.dart'; // Import the ReportHubScreen
@@ -17,7 +19,7 @@ import 'help/help_screen.dart';
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
 
-  DashboardScreen({required this.accessLevel});
+  const DashboardScreen({super.key, required this.accessLevel});
 
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
@@ -58,7 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           patientName: 'John Doe',
           patientId: 'PT-1001',
           date: DateTime.now(),
-          time: TimeOfDay(hour: 9, minute: 0),
+          time: const TimeOfDay(hour: 9, minute: 0),
           doctor: 'Dr. Smith',
           status: 'Confirmed',
           notes: 'Regular checkup',
@@ -68,7 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           patientName: 'Jane Smith',
           patientId: 'PT-1002',
           date: DateTime.now(),
-          time: TimeOfDay(hour: 11, minute: 30),
+          time: const TimeOfDay(hour: 11, minute: 30),
           doctor: 'Dr. Johnson',
           status: 'Pending',
           notes: 'New patient consultation',
@@ -77,8 +79,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           id: '3',
           patientName: 'Robert Brown',
           patientId: 'PT-1003',
-          date: DateTime.now().add(Duration(days: 1)),
-          time: TimeOfDay(hour: 14, minute: 0),
+          date: DateTime.now().add(const Duration(days: 1)),
+          time: const TimeOfDay(hour: 14, minute: 0),
           doctor: 'Dr. Smith',
           status: 'Confirmed',
           notes: 'Follow-up appointment',
@@ -98,7 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Failed to load appointments. Please try again later.'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
@@ -121,8 +123,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         } else {
           // Check if patient ID already exists
           try {
-            newId = _appointments.firstWhere(
-              (a) => a.patientId == _patientIdController.text).id;
+            newId = _appointments
+                .firstWhere((a) => a.patientId == _patientIdController.text)
+                .id;
           } catch (e) {
             // If not found, generate new ID
             newId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -144,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         try {
           await ApiService.saveAppointment(newAppointment);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('Appointment saved successfully'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
@@ -156,19 +159,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _appointments.add(newAppointment);
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('Saved locally. Sync when connection is restored.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
           );
         }
-        
+
         await _loadAppointments();
         setState(() => _isAddingAppointment = false);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Failed to save appointment. Please try again.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 3),
@@ -190,7 +193,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         try {
           await ApiService.updateAppointmentStatus(id, newStatus);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('Status updated successfully'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
@@ -199,11 +202,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         } catch (e) {
           // Fallback to local update
           setState(() {
-            _appointments[index] = _appointments[index].copyWith(status: newStatus);
+            _appointments[index] =
+                _appointments[index].copyWith(status: newStatus);
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Status updated locally. Sync when connection is restored.'),
+            const SnackBar(
+              content: Text(
+                  'Status updated locally. Sync when connection is restored.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
@@ -213,7 +218,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _loadAppointments();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Failed to update status. Please try again.'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
@@ -231,7 +236,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         await ApiService.deleteAppointment(id);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Appointment deleted successfully'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
@@ -243,7 +248,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _appointments.removeWhere((appt) => appt.id == id);
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Deleted locally. Sync when connection is restored.'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 3),
@@ -253,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _loadAppointments();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Failed to delete appointment. Please try again.'),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
@@ -279,7 +284,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
@@ -293,20 +298,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Patient Record Management', 
-          style: TextStyle(color: Colors.white)),
+        title: const Text('Patient Record Management',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.teal[700],
         elevation: 4,
         actions: [
           IconButton(
-            icon: Icon(Icons.notifications, color: Colors.white),
+            icon: const Icon(Icons.notifications, color: Colors.white),
             onPressed: () {},
             tooltip: 'Notifications',
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.person, color: Colors.white),
-            onSelected: (value) {
+            icon: const Icon(Icons.person, color: Colors.white),
+            onSelected: (value) async {
               // Handle profile actions
+              if (value == 'Logout') {
+                try {
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+
+                  // Clear auth data - ensure this completes
+                  await AuthService.logout();
+
+                  // Pop the loading dialog
+                  if (context.mounted) Navigator.of(context).pop();
+
+                  // Navigate to login screen and clear the navigation stack
+                  if (context.mounted) {
+                    // This completely replaces the navigation stack with just the login screen
+                    await Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                          builder: (context) => const LoginScreen()),
+                      (route) => false, // This removes all existing routes
+                    );
+                  }
+                } catch (e) {
+                  // Handle any errors during logout
+                  if (context.mounted) {
+                    Navigator.of(context).pop(); // Close loading dialog
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Logout failed: ${e.toString()}')),
+                    );
+                  }
+                }
+              }
             },
             itemBuilder: (BuildContext context) {
               return {'Profile', 'Settings', 'Logout'}.map((String choice) {
@@ -331,7 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   end: Alignment.bottomRight,
                 ),
               ),
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
@@ -340,9 +381,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Icon(Icons.person, size: 40, color: Colors.teal),
                   ),
                   SizedBox(height: 10),
-                  Text('Admin User', 
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text('Administrator', 
+                  Text('Admin User',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                  Text('Administrator',
                       style: TextStyle(color: Colors.white70)),
                 ],
               ),
@@ -376,8 +420,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _selectedTime = TimeOfDay.now();
                 });
               },
-              child: Icon(Icons.add),
               backgroundColor: Colors.teal[700],
+              child: const Icon(Icons.add),
             )
           : null,
     );
@@ -385,11 +429,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildDrawerItem(IconData icon, String title, int index) {
     return ListTile(
-      leading: Icon(icon, color: _selectedIndex == index ? Colors.teal : Colors.grey[700]),
-      title: Text(title, style: TextStyle(
-        color: _selectedIndex == index ? Colors.teal : Colors.black,
-        fontWeight: _selectedIndex == index ? FontWeight.bold : FontWeight.normal,
-      )),
+      leading: Icon(icon,
+          color: _selectedIndex == index ? Colors.teal : Colors.grey[700]),
+      title: Text(title,
+          style: TextStyle(
+            color: _selectedIndex == index ? Colors.teal : Colors.black,
+            fontWeight:
+                _selectedIndex == index ? FontWeight.bold : FontWeight.normal,
+          )),
       selected: _selectedIndex == index,
       selectedTileColor: Colors.teal[50],
       onTap: () {
@@ -411,14 +458,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return _buildAppointmentModule();
       case 3:
         return LaboratoryHubScreen();
-       case 4: // Patient Queue module
+      case 4: // Patient Queue module
         return PatientQueueHubScreen(); // Connect the Patient Queue Hub
       case 5: // Patient Analytics module
         return PatientAnalyticsScreen(); // Connect the Patient Analytics Screen
       case 6: // Report module
         return ReportHubScreen(); // Connect the Report Hub Screen
       case 7: // Billing module
-      return BillingHubScreen(); // Connect the Billing Hub Screen
+        return BillingHubScreen(); // Connect the Billing Hub Screen
       case 8: // Payment module
         return PaymentHubScreen(); // Connect the Payment Hub Screen
       case 9: // Maintenance module
@@ -428,7 +475,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       default:
         return Center(
           child: Text('Module under development',
-            style: TextStyle(color: Colors.teal[700], fontSize: 18)),
+              style: TextStyle(color: Colors.teal[700], fontSize: 18)),
         );
     }
   }
@@ -444,20 +491,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 'Appointment Schedule',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               ElevatedButton.icon(
                 onPressed: () => _showDatePicker(),
-                icon: Icon(Icons.calendar_today),
+                icon: const Icon(Icons.calendar_today),
                 label: Text(DateFormat('MMM d, yyyy').format(_selectedDate)),
                 style: ElevatedButton.styleFrom(
-                  foregroundColor: Colors.white, backgroundColor: Colors.teal[700],
+                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.teal[700],
                 ),
               ),
             ],
@@ -466,48 +514,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (_isAddingAppointment) _buildAddAppointmentForm(),
         Expanded(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator())
               : filteredAppointments.isEmpty
-                  ? Center(child: Text('No appointments for selected date'))
+                  ? const Center(
+                      child: Text('No appointments for selected date'))
                   : ListView.builder(
                       itemCount: filteredAppointments.length,
                       itemBuilder: (context, index) {
                         final appointment = filteredAppointments[index];
                         return Card(
-                          margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
                           elevation: 2,
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: Colors.teal[100],
-                              child: Icon(Icons.person, color: Colors.teal),
+                              child:
+                                  const Icon(Icons.person, color: Colors.teal),
                             ),
                             title: Text(
                               appointment.patientName,
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Text('ID: ${appointment.patientId}'),
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Text(
                                   'Time: ${appointment.time.format(context)} with ${appointment.doctor}',
-                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w500),
                                 ),
-                                SizedBox(height: 4),
+                                const SizedBox(height: 4),
                                 Row(
                                   children: [
                                     Container(
-                                      padding: EdgeInsets.symmetric(
+                                      padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: _getStatusColor(appointment.status),
+                                        color:
+                                            _getStatusColor(appointment.status),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
                                         appointment.status,
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 12,
                                         ),
@@ -518,20 +572,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 if (appointment.notes != null &&
                                     appointment.notes!.isNotEmpty)
                                   Padding(
-                                    padding: EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.only(top: 4),
                                     child: Text(
                                       'Notes: ${appointment.notes}',
-                                      style: TextStyle(fontSize: 12),
+                                      style: const TextStyle(fontSize: 12),
                                     ),
                                   ),
                               ],
                             ),
                             trailing: PopupMenuButton<String>(
-                              icon: Icon(Icons.more_vert),
-                              onSelected: (value) => _handleAppointmentAction(
-                                  value, appointment),
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (value) =>
+                                  _handleAppointmentAction(value, appointment),
                               itemBuilder: (context) => [
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'edit',
                                   child: Row(
                                     children: [
@@ -541,17 +595,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ],
                                   ),
                                 ),
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'confirm',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.check_circle, color: Colors.green),
+                                      Icon(Icons.check_circle,
+                                          color: Colors.green),
                                       SizedBox(width: 8),
                                       Text('Confirm'),
                                     ],
                                   ),
                                 ),
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'cancel',
                                   child: Row(
                                     children: [
@@ -561,7 +616,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ],
                                   ),
                                 ),
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'complete',
                                   child: Row(
                                     children: [
@@ -571,7 +626,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ],
                                   ),
                                 ),
-                                PopupMenuItem(
+                                const PopupMenuItem(
                                   value: 'delete',
                                   child: Row(
                                     children: [
@@ -638,10 +693,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildAddAppointmentForm() {
     return Card(
-      margin: EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
       elevation: 4,
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _appointmentFormKey,
           child: Column(
@@ -657,10 +712,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: Colors.teal[700],
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _patientNameController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Patient Name',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person),
@@ -672,10 +727,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _patientIdController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Patient ID',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.credit_card),
@@ -684,16 +739,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter patient ID';
                   }
-                  if (_appointments.any((a) => a.patientId == value && a.id != _appointments.firstWhere((a) => a.patientId == value).id)) {
+                  if (_appointments.any((a) =>
+                      a.patientId == value &&
+                      a.id !=
+                          _appointments
+                              .firstWhere((a) => a.patientId == value)
+                              .id)) {
                     return 'Patient ID already exists';
                   }
                   return null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _doctorController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Doctor',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.medical_services),
@@ -705,14 +765,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: InkWell(
                       onTap: () => _selectTime(context),
                       child: InputDecorator(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Time',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.access_time),
@@ -721,33 +781,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
-                  SizedBox(width: 16),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: InkWell(
                       onTap: () => _showDatePicker(),
                       child: InputDecorator(
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Date',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.calendar_today),
                         ),
-                        child: Text(DateFormat('MMM d, yyyy').format(_selectedDate)),
+                        child: Text(
+                            DateFormat('MMM d, yyyy').format(_selectedDate)),
                       ),
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _notesController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Notes (Optional)',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.note),
                 ),
                 maxLines: 3,
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -755,19 +816,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     onPressed: () {
                       setState(() => _isAddingAppointment = false);
                     },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                    ),
                     child: Text(
                       'Cancel',
                       style: TextStyle(color: Colors.teal[700]),
                     ),
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(horizontal: 24),
-                    ),
                   ),
-                  SizedBox(width: 16),
+                  const SizedBox(width: 16),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _saveAppointment,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                    ),
                     child: _isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
@@ -775,11 +840,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               strokeWidth: 2,
                             ),
                           )
-                        : Text('Save'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[700],
-                      padding: EdgeInsets.symmetric(horizontal: 24),
-                    ),
+                        : const Text('Save'),
                   ),
                 ],
               ),

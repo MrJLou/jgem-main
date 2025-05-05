@@ -1,26 +1,150 @@
+import 'dart:convert';
+import 'package:bcrypt/bcrypt.dart';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  static const bool isDevMode = true; // Set to false for production
+  static const bool isDevMode = false; // Set to false for production
   static const _authTokenKey = 'auth_token';
+  static const _tokenExpiryKey = 'token_expiry';
   static const _usernameKey = 'username';
   static const _accessLevelKey = 'access_level';
+  static const _deviceIdKey = 'device_id';
+  static const _isLoggedInKey = 'is_logged_in'; // Key for logged in state
 
-  // For development only - bypass authentication
+  // Token expiration duration (in minutes)
+  static const int _tokenValidityMinutes = 60; // 1 hour
+
+  // Use secure storage for sensitive information
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
+
+  // Hash passwords using BCrypt with cost factor of 12
+  static String hashPassword(String password) {
+    // Generate a salt and hash the password
+    return BCrypt.hashpw(password, BCrypt.gensalt(logRounds: 12));
+  }
+
+  // Hash security answer - similar to password for added protection
+  static String hashSecurityAnswer(String answer) {
+    // Lower security requirements for security answers (cost factor 8)
+    return BCrypt.hashpw(
+        answer.trim().toLowerCase(), BCrypt.gensalt(logRounds: 8));
+  }
+
+  // Verify security answer
+  static bool verifySecurityAnswer(String providedAnswer, String hashedAnswer) {
+    try {
+      return BCrypt.checkpw(providedAnswer.trim().toLowerCase(), hashedAnswer);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error verifying security answer: $e');
+      }
+      return false;
+    }
+  }
+
+  // Verify password against hashed password
+  static bool verifyPassword(String password, String hashedPassword) {
+    try {
+      return BCrypt.checkpw(password, hashedPassword);
+    } catch (e) {
+      // Handle invalid hash format or other bcrypt errors
+      if (kDebugMode) {
+        print('Error verifying password: $e');
+      }
+      return false;
+    }
+  }
+
+  // Generate a unique device ID if not exists
+  static Future<String> getDeviceId() async {
+    String? deviceId = await _secureStorage.read(key: _deviceIdKey);
+
+    if (deviceId == null) {
+      // Generate a new device ID based on timestamp and random values
+      final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final random = DateTime.now().microsecond.toString();
+      final bytes = utf8.encode(timestamp + random);
+      final digest = sha256.convert(bytes);
+      deviceId = digest.toString().substring(0, 16);
+
+      // Store the device ID
+      await _secureStorage.write(key: _deviceIdKey, value: deviceId);
+    }
+
+    return deviceId;
+  }
+
+  // Completely clear all credentials on logout
+  static Future<void> logout() async {
+    try {
+      // Clear secure storage data
+      await _secureStorage.delete(key: _authTokenKey);
+      await _secureStorage.delete(key: _tokenExpiryKey);
+      await _secureStorage.delete(key: _usernameKey);
+      await _secureStorage.delete(key: _accessLevelKey);
+
+      // Also clear shared preferences data
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_authTokenKey);
+      await prefs.remove(_usernameKey);
+      await prefs.remove(_accessLevelKey);
+
+      // Make sure to explicitly set the logged in state to false
+      await prefs.setBool(_isLoggedInKey, false);
+
+      if (kDebugMode) {
+        print('Logout completed successfully - all credentials cleared');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error during logout: $e');
+      }
+      rethrow; // Propagate the error for handling in UI
+    }
+  }
+
+  // Get saved credentials from secure storage
   static Future<Map<String, String>?> getSavedCredentials() async {
     if (isDevMode) {
       return {
         'token': 'dev_token',
         'username': 'developer',
-        'accessLevel': 'admin', // Change to 'doctor' or 'medtech' as needed
+        'accessLevel': 'admin',
       };
     }
 
-    // Production implementation
+    // First check if the user is logged in
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_authTokenKey);
-    final username = prefs.getString(_usernameKey);
-    final accessLevel = prefs.getString(_accessLevelKey);
+    final loggedIn = prefs.getBool(_isLoggedInKey) ?? false;
+
+    if (!loggedIn) {
+      return null; // Return null if not logged in, regardless of token presence
+    }
+
+    // Production implementation using secure storage
+    final token = await _secureStorage.read(key: _authTokenKey);
+    final expiryTimeStr = await _secureStorage.read(key: _tokenExpiryKey);
+    final username = await _secureStorage.read(key: _usernameKey);
+    final accessLevel = await _secureStorage.read(key: _accessLevelKey);
+
+    // Check if token has expired
+    if (token != null && expiryTimeStr != null) {
+      final expiryTime = int.parse(expiryTimeStr);
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+
+      if (currentTime > expiryTime) {
+        // Token has expired, clear it
+        await clearCredentials();
+        return null;
+      }
+    }
 
     if (token != null && username != null && accessLevel != null) {
       return {
@@ -32,80 +156,126 @@ class AuthService {
     return null;
   }
 
+  // Save login credentials securely
   static Future<void> saveLoginCredentials({
     required String token,
     required String username,
     required String accessLevel,
   }) async {
     if (isDevMode) return; // Skip saving in dev mode
-    
+
+    // Calculate token expiry time
+    final expiryTime = DateTime.now()
+        .add(const Duration(minutes: _tokenValidityMinutes))
+        .millisecondsSinceEpoch
+        .toString();
+
+    await _secureStorage.write(key: _authTokenKey, value: token);
+    await _secureStorage.write(key: _tokenExpiryKey, value: expiryTime);
+    await _secureStorage.write(key: _usernameKey, value: username);
+    await _secureStorage.write(key: _accessLevelKey, value: accessLevel);
+
+    // Also store non-sensitive login status in regular preferences for quick checks
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_authTokenKey, token);
-    await prefs.setString(_usernameKey, username);
-    await prefs.setString(_accessLevelKey, accessLevel);
+    await prefs.setBool(_isLoggedInKey, true);
   }
 
+  // Clear saved credentials
   static Future<void> clearCredentials() async {
     if (isDevMode) return; // Skip clearing in dev mode
-    
+
+    await _secureStorage.delete(key: _authTokenKey);
+    await _secureStorage.delete(key: _tokenExpiryKey);
+    await _secureStorage.delete(key: _usernameKey);
+    await _secureStorage.delete(key: _accessLevelKey);
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_authTokenKey);
-    await prefs.remove(_usernameKey);
-    await prefs.remove(_accessLevelKey);
+    await prefs.setBool(_isLoggedInKey, false);
   }
 
+  // Check if user is logged in and token is valid
   static Future<bool> isLoggedIn() async {
     if (isDevMode) return true; // Always return true in dev mode
-    
+
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_authTokenKey) != null;
+    final isLoggedIn = prefs.getBool(_isLoggedInKey) ?? false;
+
+    if (!isLoggedIn) {
+      return false; // Short circuit if explicitly logged out
+    }
+
+    if (isLoggedIn) {
+      // Double-check with secure storage and validate token expiry
+      final token = await _secureStorage.read(key: _authTokenKey);
+      final expiryTimeStr = await _secureStorage.read(key: _tokenExpiryKey);
+
+      if (token != null && expiryTimeStr != null) {
+        final expiryTime = int.parse(expiryTimeStr);
+        final currentTime = DateTime.now().millisecondsSinceEpoch;
+
+        if (currentTime < expiryTime) {
+          return true; // Token is valid
+        } else {
+          // Token has expired, clean up
+          await clearCredentials();
+        }
+      } else {
+        // Missing token or expiry, ensure logged out state is consistent
+        await clearCredentials();
+      }
+    }
+    return false;
+  }
+
+  // Refresh token to extend session
+  static Future<bool> refreshToken() async {
+    if (isDevMode) return true;
+
+    final credentials = await getSavedCredentials();
+    if (credentials == null) return false;
+
+    // Calculate new expiry time
+    final newExpiryTime = DateTime.now()
+        .add(const Duration(minutes: _tokenValidityMinutes))
+        .millisecondsSinceEpoch
+        .toString();
+
+    await _secureStorage.write(key: _tokenExpiryKey, value: newExpiryTime);
+    return true;
+  }
+
+  // Verify if current user has specific role
+  static Future<bool> hasRole(String requiredRole) async {
+    final credentials = await getSavedCredentials();
+    if (credentials == null) return false;
+
+    final userRole = credentials['accessLevel'];
+
+    // Admin can do everything
+    if (userRole == 'admin') return true;
+
+    // Role-specific permissions hierarchy
+    switch (requiredRole) {
+      case 'doctor':
+        return userRole == 'doctor';
+      case 'medtech':
+        return userRole == 'medtech';
+      default:
+        return userRole == requiredRole;
+    }
+  }
+
+  // Get remaining token validity time in seconds
+  static Future<int> getTokenRemainingTime() async {
+    if (isDevMode) return _tokenValidityMinutes * 60;
+
+    final expiryTimeStr = await _secureStorage.read(key: _tokenExpiryKey);
+    if (expiryTimeStr == null) return 0;
+
+    final expiryTime = int.parse(expiryTimeStr);
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+    final remainingMillis = expiryTime - currentTime;
+
+    return remainingMillis > 0 ? (remainingMillis ~/ 1000) : 0;
   }
 }
-
-// If production mode
-/* import 'package:shared_preferences/shared_preferences.dart';
-
-class AuthService {
-  static const _authTokenKey = 'auth_token';
-  static const _usernameKey = 'username';
-  static const _accessLevelKey = 'access_level';
-
-  static Future<void> saveLoginCredentials({
-    required String token,
-    required String username,
-    required String accessLevel,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_authTokenKey, token);
-    await prefs.setString(_usernameKey, username);
-    await prefs.setString(_accessLevelKey, accessLevel);
-  }
-
-  static Future<Map<String, String>?> getSavedCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_authTokenKey);
-    final username = prefs.getString(_usernameKey);
-    final accessLevel = prefs.getString(_accessLevelKey);
-
-    if (token != null && username != null && accessLevel != null) {
-      return {
-        'token': token,
-        'username': username,
-        'accessLevel': accessLevel,
-      };
-    }
-    return null;
-  }
-
-  static Future<void> clearCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_authTokenKey);
-    await prefs.remove(_usernameKey);
-    await prefs.remove(_accessLevelKey);
-  }
-
-  static Future<bool> isLoggedIn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_authTokenKey) != null;
-  }
-} */

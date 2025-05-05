@@ -6,68 +6,76 @@ class DashboardOverviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dashboard Overview', style: TextStyle(color: Colors.white)),
+        title: const Text('Dashboard Overview',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.teal[700],
       ),
       body: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Patient Statistics',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 16),
-            Card(
+            const SizedBox(height: 16),
+            const Card(
               elevation: 4,
               child: ListTile(
                 leading: Icon(Icons.people, color: Colors.teal),
                 title: Text('Total Patients'),
-                trailing: Text('120', style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing:
+                    Text('120', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            SizedBox(height: 8),
-            Card(
+            const SizedBox(height: 8),
+            const Card(
               elevation: 4,
               child: ListTile(
                 leading: Icon(Icons.check_circle, color: Colors.green),
                 title: Text('Confirmed Appointments'),
-                trailing: Text('45', style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing:
+                    Text('45', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            SizedBox(height: 8),
-            Card(
+            const SizedBox(height: 8),
+            const Card(
               elevation: 4,
               child: ListTile(
                 leading: Icon(Icons.cancel, color: Colors.red),
                 title: Text('Cancelled Appointments'),
-                trailing: Text('10', style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing:
+                    Text('10', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            SizedBox(height: 8),
-            Card(
+            const SizedBox(height: 8),
+            const Card(
               elevation: 4,
               child: ListTile(
                 leading: Icon(Icons.done_all, color: Colors.blue),
                 title: Text('Completed Appointments'),
-                trailing: Text('65', style: TextStyle(fontWeight: FontWeight.bold)),
+                trailing:
+                    Text('65', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Center(
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => DashboardScreen(accessLevel: 'admin')),
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            const DashboardScreen(accessLevel: 'admin')),
                   );
                 },
-                child: Text('Go to Appointment Module'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color.fromARGB(255, 254, 254, 254),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
+                child: const Text('Go to Appointment Module'),
               ),
             ),
           ],

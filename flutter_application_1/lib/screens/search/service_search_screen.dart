@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ServiceSearchScreen extends StatefulWidget {
+  const ServiceSearchScreen({super.key});
+
   @override
   _ServiceSearchScreenState createState() => _ServiceSearchScreenState();
 }
@@ -26,17 +28,17 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text('Service Search',
+        title: const Text('Service Search',
             style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
                 fontSize: 20)),
         backgroundColor: Colors.teal[700],
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -48,12 +50,12 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                 color: Colors.teal[800],
               ),
             ),
-            SizedBox(height: 5),
+            const SizedBox(height: 5),
             Text(
               'Search our catalog of available medical services',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -61,7 +63,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
               ),
               shadowColor: Colors.teal.withOpacity(0.2),
               child: Padding(
-                padding: EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
                     _buildInputField(
@@ -70,7 +72,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                       icon: Icons.search,
                       hintText: 'e.g. Blood Test, Consultation',
                     ),
-                    SizedBox(height: 20),
+                    const SizedBox(height: 20),
                     _buildDropdownField(
                       value: _selectedCategory,
                       items: _categories,
@@ -82,7 +84,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                         });
                       },
                     ),
-                    SizedBox(height: 25),
+                    const SizedBox(height: 25),
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -96,7 +98,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                           elevation: 3,
                         ),
                         child: _isLoading
-                            ? SizedBox(
+                            ? const SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
@@ -104,7 +106,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : Text(
+                            : const Text(
                                 'SEARCH SERVICES',
                                 style: TextStyle(
                                   fontSize: 16,
@@ -118,9 +120,8 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                 ),
               ),
             ),
-            
             if (_hasSearched) ...[
-              SizedBox(height: 30),
+              const SizedBox(height: 30),
               if (_services.isNotEmpty)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,9 +134,10 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                         color: Colors.teal[800],
                       ),
                     ),
-                    SizedBox(height: 15),
-                    ..._services.map((service) =>
-                        _buildServiceCard(service)).toList(),
+                    const SizedBox(height: 15),
+                    ..._services
+                        .map((service) => _buildServiceCard(service))
+                        .toList(),
                   ],
                 )
               else
@@ -145,11 +147,11 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Padding(
-                    padding: EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(20),
                     child: Row(
                       children: [
                         Icon(Icons.search_off, color: Colors.orange[700]),
-                        SizedBox(width: 15),
+                        const SizedBox(width: 15),
                         Expanded(
                           child: Text(
                             'No services found matching your criteria',
@@ -194,7 +196,8 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: Colors.teal[700]!, width: 2),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
         labelStyle: TextStyle(color: Colors.grey[600]),
       ),
     );
@@ -224,7 +227,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: Colors.teal[700]!, width: 2),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         labelStyle: TextStyle(color: Colors.grey[600]),
       ),
       items: items.map((item) {
@@ -242,7 +245,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
 
   Widget _buildServiceCard(Map<String, dynamic> service) {
     return Card(
-      margin: EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 20),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
@@ -251,7 +254,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
         borderRadius: BorderRadius.circular(15),
         onTap: () {},
         child: Padding(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -273,7 +276,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
               Row(
                 children: [
                   _buildServiceDetailChip(
@@ -281,7 +284,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                     text: service['duration'],
                     color: Colors.blue[100]!,
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   _buildServiceDetailChip(
                     icon: Icons.attach_money,
                     text: '£${service['price']}',
@@ -289,7 +292,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
               Text(
                 'Description',
                 style: TextStyle(
@@ -297,12 +300,12 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                   color: Colors.teal[700],
                 ),
               ),
-              SizedBox(height: 5),
+              const SizedBox(height: 5),
               Text(
                 service['description'],
                 style: TextStyle(color: Colors.grey[700]),
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -340,7 +343,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: Colors.grey[700]),
-          SizedBox(width: 5),
+          const SizedBox(width: 5),
           Text(text),
         ],
       ),
@@ -353,7 +356,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
       _hasSearched = true;
     });
 
-    Future.delayed(Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 1), () {
       setState(() {
         _isLoading = false;
         _services = [
@@ -362,26 +365,33 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
             'category': 'Consultation',
             'duration': '30 mins',
             'price': '50.00',
-            'description': 'A general health consultation with a doctor to discuss any health concerns.'
+            'description':
+                'A general health consultation with a doctor to discuss any health concerns.'
           },
           {
             'name': 'Blood Test Panel',
             'category': 'Diagnostic',
             'duration': '15 mins',
             'price': '75.00',
-            'description': 'Comprehensive blood test including CBC, glucose, and lipid profile.'
+            'description':
+                'Comprehensive blood test including CBC, glucose, and lipid profile.'
           },
           {
             'name': 'Physiotherapy Session',
             'category': 'Therapy',
             'duration': '45 mins',
             'price': '65.00',
-            'description': 'One-on-one physiotherapy session for rehabilitation or injury treatment.'
+            'description':
+                'One-on-one physiotherapy session for rehabilitation or injury treatment.'
           }
-        ].where((service) => 
-          service['name']!.toLowerCase().contains(_serviceNameController.text.toLowerCase()) &&
-          (_selectedCategory == 'All' || service['category'] == _selectedCategory)
-        ).toList();
+        ]
+            .where((service) =>
+                service['name']!
+                    .toLowerCase()
+                    .contains(_serviceNameController.text.toLowerCase()) &&
+                (_selectedCategory == 'All' ||
+                    service['category'] == _selectedCategory))
+            .toList();
       });
     });
   }
