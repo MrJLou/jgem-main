@@ -13,48 +13,40 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'Patient Queue',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal[50]!, Colors.white],
         ),
-        backgroundColor: Colors.teal[700],
-        elevation: 4,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
+      child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Queue Management',
+              'Patient Queue Management',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Colors.teal[800],
               ),
             ),
-            const SizedBox(height: 5),
+            SizedBox(height: 5),
             Text(
-              'Select an option to manage the patient queue',
+              'Manage patient queue and appointments',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            const SizedBox(height: 30),
+            SizedBox(height: 30),
             Expanded(
               child: ListView(
                 children: [
                   _QueueCard(
-                    icon: Icons.add_circle_outline,
+                    icon: Icons.person_add,
                     title: 'Add to Queue',
-                    subtitle: 'Add patients to the queue',
+                    subtitle: 'Add new patients to the queue',
                     color: Colors.teal[700]!,
                     onTap: () => Navigator.push(
                       context,
@@ -63,25 +55,24 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  SizedBox(height: 20),
                   _QueueCard(
-                    icon: Icons.remove_circle_outline,
+                    icon: Icons.person_remove,
                     title: 'Remove from Queue',
                     subtitle: 'Remove patients from the queue',
                     color: Colors.teal[600]!,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            RemoveFromQueueScreen(queue: _queue),
+                        builder: (context) => RemoveFromQueueScreen(queue: _queue),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  SizedBox(height: 20),
                   _QueueCard(
-                    icon: Icons.view_list,
+                    icon: Icons.list,
                     title: 'View Queue',
-                    subtitle: 'View the current patient queue',
+                    subtitle: 'View current patient queue',
                     color: Colors.teal[500]!,
                     onTap: () => Navigator.push(
                       context,
@@ -131,14 +122,14 @@ class _QueueCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(15),
+                padding: EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 28, color: color),
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,7 +142,7 @@ class _QueueCard extends StatelessWidget {
                         color: Colors.teal[900],
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    SizedBox(height: 5),
                     Text(
                       subtitle,
                       style: TextStyle(

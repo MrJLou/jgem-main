@@ -6,20 +6,15 @@ import 'service_search_screen.dart';
 class SearchHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text('Search Portal',
-            style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 22)),
-        backgroundColor: Colors.teal[700],
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal[50]!, Colors.white],
+        ),
       ),
-      body: Padding(
+      child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -48,7 +43,8 @@ class SearchHubScreen extends StatelessWidget {
                     color: Colors.teal[700]!,
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => PatientSearchScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => PatientSearchScreen()),
                     ),
                   ),
                   SizedBox(height: 20),
@@ -59,7 +55,8 @@ class SearchHubScreen extends StatelessWidget {
                     color: Colors.teal[600]!,
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => PaymentSearchScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => PaymentSearchScreen()),
                     ),
                   ),
                   SizedBox(height: 20),
@@ -70,7 +67,8 @@ class SearchHubScreen extends StatelessWidget {
                     color: Colors.teal[500]!,
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => ServiceSearchScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => ServiceSearchScreen()),
                     ),
                   ),
                 ],

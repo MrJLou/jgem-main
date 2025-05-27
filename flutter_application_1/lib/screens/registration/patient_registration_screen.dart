@@ -3,8 +3,7 @@ import 'package:intl/intl.dart';
 
 class PatientRegistrationScreen extends StatefulWidget {
   @override
-  _PatientRegistrationScreenState createState() =>
-      _PatientRegistrationScreenState();
+  _PatientRegistrationScreenState createState() => _PatientRegistrationScreenState();
 }
 
 class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
@@ -13,18 +12,27 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _emergencyContactController = TextEditingController();
+  final TextEditingController _emergencyContactNameController = TextEditingController();
   final TextEditingController _medicalInfoController = TextEditingController();
+  final TextEditingController _allergiesController = TextEditingController();
+  final TextEditingController _currentMedicationsController = TextEditingController();
 
   String _gender = 'Male';
+  String _bloodType = 'A+';
   String? _generatedPatientId;
   bool _showMedicalInfo = false;
+
+  final List<String> _bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
+        backgroundColor: Colors.teal[700],
+        elevation: 0,
         title: Text(
           'Patient Registration',
           style: TextStyle(
@@ -32,132 +40,333 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Colors.teal[700],
-        elevation: 4,
         iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              SizedBox(height: 20),
-              _buildInputField(
-                controller: _firstNameController,
-                label: 'First Name',
-                icon: Icons.person,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter first name';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              _buildInputField(
-                controller: _lastNameController,
-                label: 'Last Name',
-                icon: Icons.person_outline,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter last name';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              _buildDatePickerField(
-                controller: _dobController,
-                label: 'Date of Birth',
-                icon: Icons.calendar_today,
-              ),
-              SizedBox(height: 16),
-              _buildDropdownField(
-                value: _gender,
-                items: ['Male', 'Female', 'Other'],
-                label: 'Gender',
-                icon: Icons.wc,
-                onChanged: (value) {
-                  setState(() {
-                    _gender = value!;
-                  });
-                },
-              ),
-              SizedBox(height: 16),
-              _buildInputField(
-                controller: _contactController,
-                label: 'Contact Number',
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter contact number';
-                  }
-                  if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) {
-                    return 'Please enter a valid phone number';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              _buildInputField(
-                controller: _addressController,
-                label: 'Address',
-                icon: Icons.home,
-                maxLines: 3,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter address';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              _buildMedicalInfoToggle(),
-              if (_showMedicalInfo) ...[
-                SizedBox(height: 16),
-                _buildInputField(
-                  controller: _medicalInfoController,
-                  label: 'Medical Information',
-                  icon: Icons.medical_services,
-                  maxLines: 5,
-                  validator: (value) => null,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal[50]!, Colors.white],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                // Header Section
+                Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        'Register New Patient',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
+                      ),
+                      SizedBox(height: 5),
+                      Text(
+                        'Enter patient details to create a new medical record',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-              if (_generatedPatientId != null) ...[
+                SizedBox(height: 30),
+
+                // Personal Information Card
+                _buildSectionCard(
+                  'Personal Information',
+                  Icons.person_outline,
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildInputField(
+                              controller: _firstNameController,
+                              label: 'First Name',
+                              icon: Icons.person,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Required';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: _buildInputField(
+                              controller: _lastNameController,
+                              label: 'Last Name',
+                              icon: Icons.person_outline,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Required';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDatePickerField(
+                              controller: _dobController,
+                              label: 'Date of Birth',
+                              icon: Icons.calendar_today,
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: _buildDropdownField(
+                              value: _gender,
+                              items: ['Male', 'Female', 'Other'],
+                              label: 'Gender',
+                              icon: Icons.wc,
+                              onChanged: (value) {
+                                setState(() {
+                                  _gender = value!;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 SizedBox(height: 20),
-                _buildSuccessMessage(),
+
+                // Contact Information Card
+                _buildSectionCard(
+                  'Contact Information',
+                  Icons.contact_phone,
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildInputField(
+                              controller: _contactController,
+                              label: 'Contact Number',
+                              icon: Icons.phone,
+                              keyboardType: TextInputType.phone,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Required';
+                                }
+                                if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) {
+                                  return 'Invalid number';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: _buildInputField(
+                              controller: _emailController,
+                              label: 'Email (Optional)',
+                              icon: Icons.email,
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (value) {
+                                if (value != null && value.isNotEmpty) {
+                                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                    return 'Invalid email';
+                                  }
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _addressController,
+                        label: 'Address',
+                        icon: Icons.home,
+                        maxLines: 3,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Required';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                // Emergency Contact Card
+                _buildSectionCard(
+                  'Emergency Contact',
+                  Icons.emergency,
+                  Column(
+                    children: [
+                      _buildInputField(
+                        controller: _emergencyContactNameController,
+                        label: 'Emergency Contact Name',
+                        icon: Icons.person_pin,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Required';
+                          }
+                          return null;
+                        },
+                      ),
+                      SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _emergencyContactController,
+                        label: 'Emergency Contact Number',
+                        icon: Icons.phone_in_talk,
+                        keyboardType: TextInputType.phone,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Required';
+                          }
+                          if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) {
+                            return 'Invalid number';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                // Medical Information Card
+                _buildSectionCard(
+                  'Medical Information',
+                  Icons.medical_services,
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDropdownField(
+                              value: _bloodType,
+                              items: _bloodTypes,
+                              label: 'Blood Type',
+                              icon: Icons.bloodtype,
+                              onChanged: (value) {
+                                setState(() {
+                                  _bloodType = value!;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _allergiesController,
+                        label: 'Allergies (if any)',
+                        icon: Icons.warning_amber,
+                        maxLines: 2,
+                        validator: null,
+                      ),
+                      SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _currentMedicationsController,
+                        label: 'Current Medications (if any)',
+                        icon: Icons.medication,
+                        maxLines: 2,
+                        validator: null,
+                      ),
+                      SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _medicalInfoController,
+                        label: 'Additional Medical Information',
+                        icon: Icons.notes_rounded,
+                        maxLines: 3,
+                        validator: null,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 30),
+
+                // Submit Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _submitForm,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'Register Patient',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                if (_generatedPatientId != null) ...[
+                  SizedBox(height: 20),
+                  _buildSuccessMessage(),
+                ],
               ],
-              SizedBox(height: 20),
-              _buildRegisterButton(),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Register a New Patient',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.teal[800],
-          ),
+  Widget _buildSectionCard(String title, IconData icon, Widget content) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Colors.teal[700], size: 24),
+                SizedBox(width: 10),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[900],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            content,
+          ],
         ),
-        SizedBox(height: 5),
-        Text(
-          'Fill in the details below to register a new patient.',
-          style: TextStyle(color: Colors.grey[600]),
-        ),
-      ],
+      ),
     );
   }
 
@@ -165,30 +374,38 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
+    TextInputType? keyboardType,
     int maxLines = 1,
-    required FormFieldValidator<String> validator,
+    String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
-      style: TextStyle(color: Colors.teal[800]),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.teal[600]),
-        prefixIcon: Icon(icon, color: Colors.teal[600]),
-        filled: true,
-        fillColor: Colors.teal[50],
+        prefixIcon: Icon(icon, color: Colors.teal[700]),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[200]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal, width: 2),
+          borderSide: BorderSide(color: Colors.teal[700]!),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.red[300]!),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.red[300]!),
+        ),
+        filled: true,
+        fillColor: Colors.white,
       ),
       validator: validator,
     );
@@ -199,57 +416,45 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     required String label,
     required IconData icon,
   }) {
-    return InkWell(
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: Colors.teal[700]),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.teal[700]!),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+      ),
       onTap: () async {
-        final date = await showDatePicker(
+        final DateTime? picked = await showDatePicker(
           context: context,
           initialDate: DateTime.now(),
           firstDate: DateTime(1900),
           lastDate: DateTime.now(),
-          builder: (BuildContext context, Widget? child) {
-            return Theme(
-              data: ThemeData.light().copyWith(
-                colorScheme: ColorScheme.light(
-                  primary: Colors.teal,
-                  onPrimary: Colors.white,
-                  surface: Colors.white,
-                  onSurface: Colors.black,
-                ),
-                dialogBackgroundColor: Colors.white,
-              ),
-              child: child!,
-            );
-          },
         );
-        if (date != null) {
-          controller.text = DateFormat('yyyy-MM-dd').format(date);
+        if (picked != null) {
+          setState(() {
+            controller.text = DateFormat('MMM d, yyyy').format(picked);
+          });
         }
       },
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: TextStyle(color: Colors.teal[600]),
-          prefixIcon: Icon(icon, color: Colors.teal[600]),
-          filled: true,
-          fillColor: Colors.teal[50],
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.teal[200]!),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.teal, width: 2),
-          ),
-          contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        ),
-        child: Text(
-          controller.text.isEmpty ? 'Select $label' : controller.text,
-          style: TextStyle(
-            color:
-                controller.text.isEmpty ? Colors.grey[500] : Colors.teal[800],
-          ),
-        ),
-      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Required';
+        }
+        return null;
+      },
     );
   }
 
@@ -258,130 +463,70 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     required List<String> items,
     required String label,
     required IconData icon,
-    required ValueChanged<String?> onChanged,
+    required void Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
       value: value,
-      dropdownColor: Colors.teal[50],
-      style: TextStyle(color: Colors.teal[800]),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: Colors.teal[600]),
-        prefixIcon: Icon(icon, color: Colors.teal[600]),
-        filled: true,
-        fillColor: Colors.teal[50],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[200]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal, width: 2),
-        ),
-        contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      ),
-      items: items.map((item) {
-        return DropdownMenuItem(
-          value: item,
-          child: Text(item),
+      items: items.map((String value) {
+        return DropdownMenuItem<String>(
+          value: value,
+          child: Text(value),
         );
       }).toList(),
       onChanged: onChanged,
-    );
-  }
-
-  Widget _buildMedicalInfoToggle() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.teal[50],
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.teal[100]!),
-      ),
-      child: SwitchListTile(
-        title: Text(
-          'Fill up medical information (Optional)',
-          style: TextStyle(color: Colors.teal[800]),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: Colors.teal[700]),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
         ),
-        value: _showMedicalInfo,
-        onChanged: (value) {
-          setState(() {
-            _showMedicalInfo = value;
-          });
-        },
-        activeColor: Colors.teal,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.teal[700]!),
+        ),
+        filled: true,
+        fillColor: Colors.white,
       ),
     );
   }
 
   Widget _buildSuccessMessage() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.teal[50],
+    return Card(
+      color: Colors.green[50],
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.teal),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.teal.withOpacity(0.1),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
+        side: BorderSide(color: Colors.green[300]!, width: 1),
       ),
-      child: Column(
-        children: [
-          Icon(Icons.check_circle, size: 50, color: Colors.teal),
-          SizedBox(height: 10),
-          Text(
-            'Patient Registered Successfully!',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.teal[800],
-              fontSize: 16,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Patient Successfully Registered',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[800],
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Patient ID: $_generatedPatientId',
+                    style: TextStyle(color: Colors.green[800]),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'Patient ID:',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.teal[800],
-            ),
-          ),
-          SizedBox(height: 5),
-          Text(
-            _generatedPatientId!,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.teal[800],
-              letterSpacing: 1.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRegisterButton() {
-    return ElevatedButton(
-      onPressed: _submitForm,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.teal[700],
-        padding: EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        minimumSize: Size(double.infinity, 50),
-        elevation: 3,
-        shadowColor: Colors.teal.withOpacity(0.3),
-      ),
-      child: Text(
-        'Register Patient',
-        style: TextStyle(
-          fontSize: 16,
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
+          ],
         ),
       ),
     );
@@ -389,36 +534,42 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
-      final now = DateTime.now();
-      final random =
-          (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
-      final patientId =
-          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-$random';
-
+      // Generate a unique patient ID
       setState(() {
-        _generatedPatientId = patientId;
+        _generatedPatientId = 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
       });
 
-      final patientData = {
-        'firstName': _firstNameController.text,
-        'lastName': _lastNameController.text,
-        'dob': _dobController.text,
-        'gender': _gender,
-        'contact': _contactController.text,
-        'address': _addressController.text,
-        'medicalInfo': _medicalInfoController.text,
-        'patientId': patientId,
-        'registrationDate': DateTime.now().toIso8601String(),
-      };
-
-      print(patientData);
-
+      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Patient registration complete!'),
-          backgroundColor: Colors.teal,
-          duration: Duration(seconds: 2),
+          content: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.white),
+              SizedBox(width: 10),
+              Text('Patient registered successfully'),
+            ],
+          ),
+          backgroundColor: Colors.green[600],
           behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white),
+              SizedBox(width: 10),
+              Text('Please fill in all required fields'),
+            ],
+          ),
+          backgroundColor: Colors.red[400],
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

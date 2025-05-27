@@ -18,7 +18,6 @@ import 'help/help_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
-
   const DashboardScreen({super.key, required this.accessLevel});
 
   @override
@@ -31,6 +30,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Appointment> _appointments = [];
   bool _isAddingAppointment = false;
   bool _isLoading = false;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   final _appointmentFormKey = GlobalKey<FormState>();
 
   // Form controllers
@@ -45,15 +46,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
   }
 
+  Widget _currentScreen = const Center(child: CircularProgressIndicator());
+  String _currentTitle = 'Appointment Schedule';
+
   @override
   void initState() {
     super.initState();
     _loadInitialData();
   }
 
-  void _loadInitialData() {
-    // Load mock data initially
-    setState(() {
+  Future<void> _loadAppointments() async {
+    setState(() => _isLoading = true);
+    try {
+      // Try to get appointments from API
+      try {
+        final apiAppointments = await ApiService.getAppointments(_selectedDate);
+        if (apiAppointments.isNotEmpty) {
+          setState(() => _appointments = apiAppointments);
+        }
+      } catch (e) {
+        // Silently fail and keep existing appointments
+        print('Failed to load appointments from API: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _loadInitialData() async {
+    setState(() => _isLoading = true);
+    try {
+      // Mock data - will be replaced by actual API call later
       _appointments = [
         Appointment(
           id: '1',
@@ -85,29 +110,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
           status: 'Confirmed',
           notes: 'Follow-up appointment',
         ),
-      ];
-    });
-    // Then try to load from API
-    _loadAppointments();
-  }
-
-  Future<void> _loadAppointments() async {
-    setState(() => _isLoading = true);
-    try {
-      final apiAppointments = await ApiService.getAppointments(_selectedDate);
-      if (apiAppointments.isNotEmpty) {
-        setState(() => _appointments = apiAppointments);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to load appointments. Please try again later.'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
+        Appointment(
+          id: '4',
+          patientName: 'Mary Johnson',
+          patientId: 'PT-1004',
+          date: DateTime.now(),
+          time: const TimeOfDay(hour: 15, minute: 30),
+          doctor: 'Dr. Wilson',
+          status: 'Cancelled',
+          notes: 'Annual physical examination',
         ),
-      );
+        Appointment(
+          id: '5',
+          patientName: 'David Lee',
+          patientId: 'PT-1005',
+          date: DateTime.now().add(const Duration(days: 2)),
+          time: const TimeOfDay(hour: 10, minute: 0),
+          doctor: 'Dr. Johnson',
+          status: 'Pending',
+          notes: 'Follow-up on lab results',
+        ),
+      ];
+
+      // Try to get appointments from API (can fail silently for now)
+      try {
+        final apiAppointments = await ApiService.getAppointments(_selectedDate);
+        if (apiAppointments.isNotEmpty) {
+          _appointments = apiAppointments;
+        }
+      } catch (e) {
+        // Silently fail and use mock data
+        print('Using mock data: $e');
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _currentScreen = _buildAppointmentModule();
+        });
+      }
     }
   }
 
@@ -116,18 +157,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() => _isLoading = true);
       try {
         String newId;
-        // Generate new ID if patient ID is empty
+
         if (_patientIdController.text.isEmpty) {
           _patientIdController.text = _generatePatientId();
           newId = DateTime.now().millisecondsSinceEpoch.toString();
         } else {
-          // Check if patient ID already exists
           try {
             newId = _appointments
                 .firstWhere((a) => a.patientId == _patientIdController.text)
                 .id;
           } catch (e) {
-            // If not found, generate new ID
             newId = DateTime.now().millisecondsSinceEpoch.toString();
           }
         }
@@ -143,7 +182,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           notes: _notesController.text,
         );
 
-        // Try API save first
         try {
           await ApiService.saveAppointment(newAppointment);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +192,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         } catch (e) {
-          // Fallback to local storage if API fails
           setState(() {
             _appointments.add(newAppointment);
           });
@@ -186,10 +223,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _updateAppointmentStatus(String id, String newStatus) async {
     setState(() => _isLoading = true);
     try {
-      // Find the appointment
       final index = _appointments.indexWhere((appt) => appt.id == id);
       if (index != -1) {
-        // Try API update first
         try {
           await ApiService.updateAppointmentStatus(id, newStatus);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -200,15 +235,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         } catch (e) {
-          // Fallback to local update
           setState(() {
             _appointments[index] =
                 _appointments[index].copyWith(status: newStatus);
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'Status updated locally. Sync when connection is restored.'),
+              content:
+                  Text('Updated locally. Sync when connection is restored.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
@@ -232,7 +266,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _deleteAppointment(String id) async {
     setState(() => _isLoading = true);
     try {
-      // Try API delete first
       try {
         await ApiService.deleteAppointment(id);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -243,7 +276,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       } catch (e) {
-        // Fallback to local delete
         setState(() {
           _appointments.removeWhere((appt) => appt.id == id);
         });
@@ -294,14 +326,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _navigateToScreen(Widget screen, String title) {
+    Navigator.pop(context); // Close drawer
+    setState(() {
+      _currentScreen = screen;
+      _currentTitle = title;
+      // Reset appointment state when navigating away
+      if (title != 'Appointment Schedule') {
+        _isAddingAppointment = false;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Patient Record Management',
-            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.teal[700],
         elevation: 4,
+        title: Text(
+          _currentTitle,
+          style: const TextStyle(color: Colors.white),
+        ),
+        leading: _currentTitle != 'Appointment Schedule'
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () {
+                setState(() {
+                  _currentScreen = _buildAppointmentModule();
+                  _currentTitle = 'Appointment Schedule';
+                });
+              },
+            )
+          : Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications, color: Colors.white),
@@ -311,10 +373,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.person, color: Colors.white),
             onSelected: (value) async {
-              // Handle profile actions
               if (value == 'Logout') {
                 try {
-                  // Show loading indicator
                   showDialog(
                     context: context,
                     barrierDismissible: false,
@@ -322,28 +382,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: CircularProgressIndicator(),
                     ),
                   );
-
-                  // Clear auth data - ensure this completes
                   await AuthService.logout();
-
-                  // Pop the loading dialog
-                  if (context.mounted) Navigator.of(context).pop();
-
-                  // Navigate to login screen and clear the navigation stack
                   if (context.mounted) {
-                    // This completely replaces the navigation stack with just the login screen
-                    await Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                          builder: (context) => const LoginScreen()),
-                      (route) => false, // This removes all existing routes
+                    Navigator.of(context).pop(); // Close dialog
+                    await Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      (route) => false,
                     );
                   }
                 } catch (e) {
-                  // Handle any errors during logout
                   if (context.mounted) {
-                    Navigator.of(context).pop(); // Close loading dialog
+                    Navigator.of(context).pop(); // Close dialog
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Logout failed: ${e.toString()}')),
+                      SnackBar(content: Text('Logout failed: $e')),
                     );
                   }
                 }
@@ -381,33 +433,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Icon(Icons.person, size: 40, color: Colors.teal),
                   ),
                   SizedBox(height: 10),
-                  Text('Admin User',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                  Text('Administrator',
-                      style: TextStyle(color: Colors.white70)),
+                  Text(
+                    'Admin User',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    'Administrator',
+                    style: TextStyle(color: Colors.white70),
+                  ),
                 ],
               ),
             ),
-            _buildDrawerItem(Icons.people, 'Registration', 0),
-            _buildDrawerItem(Icons.search, 'Search', 1),
-            _buildDrawerItem(Icons.calendar_today, 'Appointments', 2),
-            _buildDrawerItem(Icons.medical_services, 'Lab Histories', 3),
-            _buildDrawerItem(Icons.people_alt, 'Patient Queue', 4),
-            _buildDrawerItem(Icons.analytics, 'Patient Analytics', 5),
-            _buildDrawerItem(Icons.report, 'Reports', 6),
-            _buildDrawerItem(Icons.receipt, 'Billing', 7),
-            _buildDrawerItem(Icons.payment, 'Payment', 8),
-            _buildDrawerItem(Icons.settings, 'Maintenance', 9),
-            _buildDrawerItem(Icons.help, 'Help', 10),
-            _buildDrawerItem(Icons.info, 'About', 11),
+            ListTile(
+              leading: Icon(Icons.people),
+              title: Text('Registration'),
+              onTap: () => _navigateToScreen(RegistrationHubScreen(), 'Registration Portal'),
+            ),
+            ListTile(
+              leading: Icon(Icons.search),
+              title: Text('Search'),
+              onTap: () => _navigateToScreen(SearchHubScreen(), 'Search Portal'),
+            ),
+            ListTile(
+              leading: Icon(Icons.calendar_today),
+              title: Text('Appointments'),
+              onTap: () => _navigateToScreen(_buildAppointmentModule(), 'Appointment Schedule'),
+            ),
+            ListTile(
+              leading: Icon(Icons.medical_services),
+              title: Text('Lab Histories'),
+              onTap: () => _navigateToScreen(LaboratoryHubScreen(), 'Laboratory Hub'),
+            ),
+            ListTile(
+              leading: Icon(Icons.people_alt),
+              title: Text('Patient Queue'),
+              onTap: () => _navigateToScreen(PatientQueueHubScreen(), 'Patient Queue'),
+            ),
+            ListTile(
+              leading: Icon(Icons.analytics),
+              title: Text('Patient Analytics'),
+              onTap: () => _navigateToScreen(PatientAnalyticsScreen(), 'Patient Analytics'),
+            ),
+            ListTile(
+              leading: Icon(Icons.report),
+              title: Text('Reports'),
+              onTap: () => _navigateToScreen(ReportHubScreen(), 'Reports'),
+            ),
+            ListTile(
+              leading: Icon(Icons.receipt),
+              title: Text('Billing'),
+              onTap: () => _navigateToScreen(BillingHubScreen(), 'Billing'),
+            ),
+            ListTile(
+              leading: Icon(Icons.payment),
+              title: Text('Payment'),
+              onTap: () => _navigateToScreen(PaymentHubScreen(), 'Payment'),
+            ),
+            ListTile(
+              leading: Icon(Icons.settings),
+              title: Text('Maintenance'),
+              onTap: () => _navigateToScreen(MaintenanceHubScreen(), 'Maintenance'),
+            ),
+            ListTile(
+              leading: Icon(Icons.help),
+              title: Text('Help'),
+              onTap: () => _navigateToScreen(HelpScreen(), 'Help'),
+            ),
           ],
         ),
       ),
-      body: _buildSelectedModule(),
-      floatingActionButton: _selectedIndex == 2
+      body: WillPopScope(
+        onWillPop: () async {
+          if (_currentTitle != 'Appointment Schedule') {
+            setState(() {
+              _currentScreen = _buildAppointmentModule();
+              _currentTitle = 'Appointment Schedule';
+            });
+            return false;
+          }
+          return true;
+        },
+        child: _currentScreen,
+      ),
+      floatingActionButton: _currentTitle == 'Appointment Schedule'
           ? FloatingActionButton(
               onPressed: () {
                 setState(() {
@@ -427,80 +538,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, int index) {
-    return ListTile(
-      leading: Icon(icon,
-          color: _selectedIndex == index ? Colors.teal : Colors.grey[700]),
-      title: Text(title,
-          style: TextStyle(
-            color: _selectedIndex == index ? Colors.teal : Colors.black,
-            fontWeight:
-                _selectedIndex == index ? FontWeight.bold : FontWeight.normal,
-          )),
-      selected: _selectedIndex == index,
-      selectedTileColor: Colors.teal[50],
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-          Navigator.pop(context);
-        });
-      },
-    );
-  }
-
-  Widget _buildSelectedModule() {
-    switch (_selectedIndex) {
-      case 0:
-        return RegistrationHubScreen();
-      case 1:
-        return SearchHubScreen();
-      case 2:
-        return _buildAppointmentModule();
-      case 3:
-        return LaboratoryHubScreen();
-      case 4: // Patient Queue module
-        return PatientQueueHubScreen(); // Connect the Patient Queue Hub
-      case 5: // Patient Analytics module
-        return PatientAnalyticsScreen(); // Connect the Patient Analytics Screen
-      case 6: // Report module
-        return ReportHubScreen(); // Connect the Report Hub Screen
-      case 7: // Billing module
-        return BillingHubScreen(); // Connect the Billing Hub Screen
-      case 8: // Payment module
-        return PaymentHubScreen(); // Connect the Payment Hub Screen
-      case 9: // Maintenance module
-        return MaintenanceHubScreen(); // Connect the Maintenance Hub Screen
-      case 10: // Help module
-        return HelpScreen(); // Connect the Help Screen
-      default:
-        return Center(
-          child: Text('Module under development',
-              style: TextStyle(color: Colors.teal[700], fontSize: 18)),
-        );
-    }
-  }
-
   Widget _buildAppointmentModule() {
-    final filteredAppointments = _appointments
-        .where((appt) =>
-            appt.date.year == _selectedDate.year &&
-            appt.date.month == _selectedDate.month &&
-            appt.date.day == _selectedDate.day)
-        .toList();
-
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Text(
-                'Appointment Schedule',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
               ElevatedButton.icon(
-                onPressed: () => _showDatePicker(),
+                onPressed: _showDatePicker,
                 icon: const Icon(Icons.calendar_today),
                 label: Text(DateFormat('MMM d, yyyy').format(_selectedDate)),
                 style: ElevatedButton.styleFrom(
@@ -515,136 +562,131 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : filteredAppointments.isEmpty
-                  ? const Center(
-                      child: Text('No appointments for selected date'))
-                  : ListView.builder(
-                      itemCount: filteredAppointments.length,
-                      itemBuilder: (context, index) {
-                        final appointment = filteredAppointments[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          elevation: 2,
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.teal[100],
-                              child:
-                                  const Icon(Icons.person, color: Colors.teal),
-                            ),
-                            title: Text(
-                              appointment.patientName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text('ID: ${appointment.patientId}'),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Time: ${appointment.time.format(context)} with ${appointment.doctor}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            _getStatusColor(appointment.status),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        appointment.status,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (appointment.notes != null &&
-                                    appointment.notes!.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                      'Notes: ${appointment.notes}',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              icon: const Icon(Icons.more_vert),
-                              onSelected: (value) =>
-                                  _handleAppointmentAction(value, appointment),
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit, size: 20),
-                                      SizedBox(width: 8),
-                                      Text('Edit'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'confirm',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.check_circle,
-                                          color: Colors.green),
-                                      SizedBox(width: 8),
-                                      Text('Confirm'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'cancel',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.cancel, color: Colors.orange),
-                                      SizedBox(width: 8),
-                                      Text('Cancel'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'complete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.done_all, color: Colors.blue),
-                                      SizedBox(width: 8),
-                                      Text('Complete'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('Delete'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+              : _buildAppointmentList(),
         ),
       ],
     );
+  }
+
+  Widget _buildAppointmentList() {
+    final filteredAppointments = _appointments
+        .where((appt) =>
+            appt.date.year == _selectedDate.year &&
+            appt.date.month == _selectedDate.month &&
+            appt.date.day == _selectedDate.day)
+        .toList();
+
+    return filteredAppointments.isEmpty
+        ? const Center(child: Text('No appointments for selected date'))
+        : ListView.builder(
+            itemCount: filteredAppointments.length,
+            itemBuilder: (context, index) {
+              final appointment = filteredAppointments[index];
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                elevation: 2,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.teal[100],
+                    child: const Icon(Icons.person, color: Colors.teal),
+                  ),
+                  title: Text(appointment.patientName),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ID: ${appointment.patientId}'),
+                      Text(
+                        'Time: ${appointment.time.format(context)} with ${appointment.doctor}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(appointment.status),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              appointment.status,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (appointment.notes?.isNotEmpty ?? false)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Notes: ${appointment.notes}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                  trailing: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) => _handleAppointmentAction(value, appointment),
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'confirm',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green),
+                            SizedBox(width: 8),
+                            Text('Confirm'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'cancel',
+                        child: Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.orange),
+                            SizedBox(width: 8),
+                            Text('Cancel'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'complete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.done_all, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Text('Complete'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
   }
 
   Color _getStatusColor(String status) {
@@ -738,14 +780,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter patient ID';
-                  }
-                  if (_appointments.any((a) =>
-                      a.patientId == value &&
-                      a.id !=
-                          _appointments
-                              .firstWhere((a) => a.patientId == value)
-                              .id)) {
-                    return 'Patient ID already exists';
                   }
                   return null;
                 },

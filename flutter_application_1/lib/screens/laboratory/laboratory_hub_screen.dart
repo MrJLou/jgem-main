@@ -6,29 +6,21 @@ import 'previous_laboratory_results_screen.dart';
 class LaboratoryHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          'Laboratory Hub',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal[50]!, Colors.white],
         ),
-        backgroundColor: Colors.teal[700],
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: Padding(
+      child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Laboratory Categories',
+              'Laboratory Records',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -37,17 +29,17 @@ class LaboratoryHubScreen extends StatelessWidget {
             ),
             SizedBox(height: 5),
             Text(
-              'Select a category to view detailed records',
+              'Access patient laboratory records and history',
               style: TextStyle(color: Colors.grey[600]),
             ),
             SizedBox(height: 30),
             Expanded(
               child: ListView(
                 children: [
-                  _CategoryCard(
+                  _LaboratoryCard(
                     icon: Icons.history,
-                    title: 'Previous Consultation',
-                    subtitle: 'View past consultation records',
+                    title: 'Previous Consultations',
+                    subtitle: 'View patient consultation history',
                     color: Colors.teal[700]!,
                     onTap: () => Navigator.push(
                       context,
@@ -57,10 +49,10 @@ class LaboratoryHubScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: 20),
-                  _CategoryCard(
-                    icon: Icons.local_hospital,
-                    title: 'Previous Diagnoses and Treatments',
-                    subtitle: 'View past diagnoses and treatments',
+                  _LaboratoryCard(
+                    icon: Icons.medical_services,
+                    title: 'Previous Diagnoses & Treatments',
+                    subtitle: 'View patient diagnoses and treatments',
                     color: Colors.teal[600]!,
                     onTap: () => Navigator.push(
                       context,
@@ -70,10 +62,10 @@ class LaboratoryHubScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: 20),
-                  _CategoryCard(
+                  _LaboratoryCard(
                     icon: Icons.science,
                     title: 'Previous Laboratory Results',
-                    subtitle: 'View past laboratory test results',
+                    subtitle: 'View patient laboratory test results',
                     color: Colors.teal[500]!,
                     onTap: () => Navigator.push(
                       context,
@@ -92,14 +84,14 @@ class LaboratoryHubScreen extends StatelessWidget {
   }
 }
 
-class _CategoryCard extends StatelessWidget {
+class _LaboratoryCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
-  const _CategoryCard({
+  const _LaboratoryCard({
     required this.icon,
     required this.title,
     required this.subtitle,

@@ -53,13 +53,14 @@ class _LoginScreenState extends State<LoginScreen>
         if (credentials != null) {
           // Only navigate to dashboard if actually logged in
           if (mounted) {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(
                 builder: (context) => DashboardScreen(
                   accessLevel: credentials['accessLevel'] ?? 'user',
                 ),
               ),
+              (route) => false,  // This removes all previous routes from the stack
             );
           }
         }
@@ -112,15 +113,19 @@ class _LoginScreenState extends State<LoginScreen>
           username: username,
           accessLevel: response['user']['role'],
         );
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              accessLevel: response['user']['role'],
+        
+        // Navigate to dashboard and remove all previous routes
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                accessLevel: response['user']['role'],
+              ),
             ),
-          ),
-        );
+            (route) => false,
+          );
+        }
       } catch (e) {
         // Record failed attempt for rate limiting if username was provided
         if (_emailController.text.isNotEmpty) {

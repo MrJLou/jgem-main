@@ -2,99 +2,84 @@ import 'package:flutter/material.dart';
 import 'user_registration_screen.dart';
 import 'patient_registration_screen.dart';
 import 'service_registration_screen.dart';
+import '../../screens/login_screen.dart';
+import '../../services/auth_service.dart';
 
 class RegistrationHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: Text(
-          'Registration Portal',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal[50]!, Colors.white],
         ),
-        backgroundColor: Colors.teal[700],
-        elevation: 4,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal[50]!, Colors.white],
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Registration Options',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal[800],
-                ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Registration Options',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal[800],
               ),
-              SizedBox(height: 5),
-              Text(
-                'Select the type of registration below',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              SizedBox(height: 30),
-              Expanded(
-                child: ListView(
-                  children: [
-                    _RegistrationCard(
-                      icon: Icons.person_add,
-                      title: 'User Registration',
-                      subtitle: 'Register new staff and administrators',
-                      color: Colors.teal[700]!,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => UserRegistrationScreen(),
-                        ),
+            ),
+            SizedBox(height: 5),
+            Text(
+              'Select the type of registration below',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            SizedBox(height: 30),
+            Expanded(
+              child: ListView(
+                children: [
+                  _RegistrationCard(
+                    icon: Icons.person_add,
+                    title: 'User Registration',
+                    subtitle: 'Register new staff and administrators',
+                    color: Colors.teal[700]!,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => UserRegistrationScreen(),
                       ),
                     ),
-                    SizedBox(height: 20),
-                    _RegistrationCard(
-                      icon: Icons.accessible,
-                      title: 'Patient Registration',
-                      subtitle: 'Register new patients',
-                      color: Colors.teal[600]!,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PatientRegistrationScreen(),
-                        ),
+                  ),
+                  SizedBox(height: 20),
+                  _RegistrationCard(
+                    icon: Icons.accessible,
+                    title: 'Patient Registration',
+                    subtitle: 'Register new patients',
+                    color: Colors.teal[600]!,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PatientRegistrationScreen(),
                       ),
                     ),
-                    SizedBox(height: 20),
-                    _RegistrationCard(
-                      icon: Icons.medical_services,
-                      title: 'Service Registration',
-                      subtitle: 'Register medical services',
-                      color: Colors.teal[500]!,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ServiceRegistrationScreen(),
-                        ),
+                  ),
+                  SizedBox(height: 20),
+                  _RegistrationCard(
+                    icon: Icons.medical_services,
+                    title: 'Service Registration',
+                    subtitle: 'Register medical services',
+                    color: Colors.teal[500]!,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ServiceRegistrationScreen(),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
