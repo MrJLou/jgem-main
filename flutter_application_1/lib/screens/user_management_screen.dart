@@ -227,10 +227,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.admin_panel_settings),
                 ),
-                items: ['admin', 'doctor', 'nurse', 'medtech', 'receptionist']
+                items: ['admin', 'doctor', 'medtech']
                     .map((role) => DropdownMenuItem(
                           value: role,
-                          child: Text(role.toUpperCase()),
+                          child:
+                              Text(role[0].toUpperCase() + role.substring(1)),
                         ))
                     .toList(),
                 onChanged: (value) => setState(() => _selectedRole = value!),

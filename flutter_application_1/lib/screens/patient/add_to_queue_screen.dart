@@ -17,7 +17,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Add to Queue',
           style: TextStyle(
             color: Colors.white,
@@ -28,7 +28,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         elevation: 4,
       ),
       body: Padding(
-        padding: EdgeInsets.only(top: 80),
+        padding: const EdgeInsets.only(top: 80),
         child: Center(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -41,23 +41,23 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                   color: Colors.teal[800],
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               Container(
                 width: 600,
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: const Color.fromARGB(197, 252, 248, 248),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: TextField(
                   controller: _patientNameController,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Patient Name',
                     border: OutlineInputBorder(),
                   ),
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
                   final patientName = _patientNameController.text.trim();
@@ -81,20 +81,21 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                     _patientNameController.clear();
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                      const SnackBar(
                         content: Text('Please enter a patient name'),
                         backgroundColor: Colors.red,
                       ),
                     );
                   }
                 },
-                child: Text(
-                  'Add to Queue',
-                  style: TextStyle(color: Colors.white),
-                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal[700],
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text(
+                  'Add to Queue',
+                  style: TextStyle(color: Colors.white),
                 ),
               ),
             ],

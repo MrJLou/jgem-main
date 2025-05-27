@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
+import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../models/appointment.dart';
@@ -25,12 +26,12 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 2; // Default to Appointment module
+  int _selectedIndex = 0; // Default to Registration (first item)
   DateTime _selectedDate = DateTime.now();
   List<Appointment> _appointments = [];
   bool _isAddingAppointment = false;
   bool _isLoading = false;
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  // final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>(); // May not be needed
 
   final _appointmentFormKey = GlobalKey<FormState>();
 
@@ -46,13 +47,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
   }
 
-  Widget _currentScreen = const Center(child: CircularProgressIndicator());
-  String _currentTitle = 'Appointment Schedule';
+  // Widget _currentScreen = const Center(child: CircularProgressIndicator()); // Replaced by _screens logic
+  late String _currentTitle; // Updated to be initialized in initState
+
+  final List<String> _menuTitles = [
+    'Registration',
+    'Maintenance',
+    'Search',
+    'Patient Laboratory Histories',
+    'Patient Queue',
+    'Appointment Schedule',
+    'Patient Analytics',
+    'Report',
+    'Payment',
+    'Billing',
+    'Help',
+    'About',
+  ];
+
+  late List<Widget> _screens; // Updated to be initialized in initState
 
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    _currentTitle = _menuTitles[_selectedIndex];
+    _screens = [
+      RegistrationHubScreen(),
+      MaintenanceHubScreen(),
+      SearchHubScreen(),
+      LaboratoryHubScreen(), // Assuming this is Patient Lab Histories
+      PatientQueueHubScreen(),
+      _buildAppointmentModule(), // Existing appointment module
+      PatientAnalyticsScreen(),
+      ReportHubScreen(),
+      PaymentHubScreen(),
+      BillingHubScreen(),
+      HelpScreen(),
+      const Center(child: Text('About Screen - Placeholder')), // Placeholder
+    ];
+    _loadInitialData(); // Keep this for now, relevant to appointment module
   }
 
   Future<void> _loadAppointments() async {
@@ -146,7 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _currentScreen = _buildAppointmentModule();
+          // _currentScreen = _buildAppointmentModule(); // This will be managed by NavigationRail
         });
       }
     }
@@ -248,8 +281,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         }
+        // Reload appointments to reflect changes from API if successful
+        await _loadAppointments();
       }
-      await _loadAppointments();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -263,625 +297,721 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _deleteAppointment(String id) async {
-    setState(() => _isLoading = true);
-    try {
-      try {
-        await ApiService.deleteAppointment(id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Appointment deleted successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      } catch (e) {
-        setState(() {
-          _appointments.removeWhere((appt) => appt.id == id);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Deleted locally. Sync when connection is restored.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      await _loadAppointments();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to delete appointment. Please try again.'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
+  Widget _buildAppointmentModule() {
+    return _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate =
+                              _selectedDate.subtract(const Duration(days: 1));
+                          _loadAppointments();
+                        });
+                      },
+                    ),
+                    Text(
+                      DateFormat('yyyy-MM-dd').format(_selectedDate),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate =
+                              _selectedDate.add(const Duration(days: 1));
+                          _loadAppointments();
+                        });
+                      },
+                    ),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add Appointment'),
+                      onPressed: () {
+                        _patientIdController.clear();
+                        _patientNameController.clear();
+                        _doctorController.clear();
+                        _notesController.clear();
+                        _selectedTime = TimeOfDay.now();
+                        setState(() => _isAddingAppointment = true);
+                      },
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[600],
+                          foregroundColor: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _isAddingAppointment
+                    ? AppointmentForm(
+                        formKey: _appointmentFormKey,
+                        patientNameController: _patientNameController,
+                        patientIdController: _patientIdController,
+                        doctorController: _doctorController,
+                        notesController: _notesController,
+                        selectedDate: _selectedDate,
+                        selectedTime: _selectedTime,
+                        onTimeChanged: (time) =>
+                            setState(() => _selectedTime = time),
+                        onSave: _saveAppointment,
+                        onCancel: () =>
+                            setState(() => _isAddingAppointment = false),
+                        generatePatientId: _generatePatientId,
+                      )
+                    : _buildAppointmentList(
+                        _appointments
+                            .where((appt) =>
+                                appt.date.year == _selectedDate.year &&
+                                appt.date.month == _selectedDate.month &&
+                                appt.date.day == _selectedDate.day)
+                            .toList(),
+                        _updateAppointmentStatus),
+              ),
+            ],
+          );
   }
 
-  Future<void> _selectTime(BuildContext context) async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: _selectedTime,
+  // Method to handle logout
+  void _logout() async {
+    await AuthService.logout(); // Assuming AuthService has a logout method
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (Route<dynamic> route) => false,
     );
-    if (picked != null && picked != _selectedTime) {
-      setState(() => _selectedTime = picked);
-    }
-  }
-
-  Future<void> _showDatePicker() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-      await _loadAppointments();
-    }
-  }
-
-  void _navigateToScreen(Widget screen, String title) {
-    Navigator.pop(context); // Close drawer
-    setState(() {
-      _currentScreen = screen;
-      _currentTitle = title;
-      // Reset appointment state when navigating away
-      if (title != 'Appointment Schedule') {
-        _isAddingAppointment = false;
-      }
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    List<Widget> menuItems = [];
+
+    if (widget.accessLevel == 'admin') {
+      // Admin sees all options based on Figure 8 MedTech Main
+      menuItems = [
+        // Example:
+        ListTile(
+            title: const Text('Registration (User Accounts)'),
+            onTap: () {/* Navigate to UserManagementScreen */}),
+        ListTile(title: const Text('Maintenance'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Patient Laboratory Histories'),
+            onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Payment'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
+        ListTile(title: const Text('About'), onTap: () {/* ... */}),
+        // ... add all admin menu items
+      ];
+    } else if (widget.accessLevel == 'doctor') {
+      // Doctor sees options based on Figure 7 MedTech Main (Doctor view)
+      menuItems = [
+        // Example:
+        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Patient Laboratory Histories'),
+            onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Payment'),
+            onTap: () {
+              /* ... */
+            }), // Assuming A1 leads to Payment/Billing/Help/About
+        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
+        ListTile(title: const Text('About'), onTap: () {/* ... */}),
+        // ... add all doctor menu items
+      ];
+    } else if (widget.accessLevel == 'medtech') {
+      // Medtech sees options based on Figure 8 MedTech Main, but with specific restrictions.
+      // The "Registration" for MedTech should lead to Patient Registration.
+      menuItems = [
+        // Example:
+        ListTile(
+            title: const Text('Registration (Patients)'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => PatientRegistrationScreen()),
+              );
+            }),
+        // Maintenance is typically an Admin function.
+        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
+        ListTile(
+            title: const Text('Patient Laboratory Histories'),
+            onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
+        // G Connector items for MedTech (from Figure 8, left flow after Patient Queue)
+        ListTile(
+            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Payment'), onTap: () {/* ... */}),
+        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
+        // H Connector items for MedTech (from Figure 8, right flow after Billing)
+        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
+        ListTile(title: const Text('About'), onTap: () {/* ... */}),
+        // ... add all medtech menu items
+      ];
+    }
+
     return Scaffold(
       appBar: AppBar(
+        title: Text('Dashboard - ${widget.accessLevel}'),
         backgroundColor: Colors.teal[700],
-        elevation: 4,
-        title: Text(
-          _currentTitle,
-          style: const TextStyle(color: Colors.white),
-        ),
-        leading: _currentTitle != 'Appointment Schedule'
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () {
-                setState(() {
-                  _currentScreen = _buildAppointmentModule();
-                  _currentTitle = 'Appointment Schedule';
-                });
-              },
-            )
-          : Builder(
-              builder: (context) => IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              ),
-            ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.white),
-            onPressed: () {},
-            tooltip: 'Notifications',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.person, color: Colors.white),
-            onSelected: (value) async {
-              if (value == 'Logout') {
-                try {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                  await AuthService.logout();
-                  if (context.mounted) {
-                    Navigator.of(context).pop(); // Close dialog
-                    await Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    Navigator.of(context).pop(); // Close dialog
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Logout failed: $e')),
-                    );
-                  }
-                }
-              }
-            },
-            itemBuilder: (BuildContext context) {
-              return {'Profile', 'Settings', 'Logout'}.map((String choice) {
-                return PopupMenuItem<String>(
-                  value: choice,
-                  child: Text(choice),
-                );
-              }).toList();
-            },
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
+            tooltip: 'Logout',
           ),
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.teal[700]!, Colors.teal[500]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: Row(
+        children: <Widget>[
+          NavigationRail(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (int index) {
+              setState(() {
+                _selectedIndex = index;
+                _currentTitle = _menuTitles[index];
+                // If the selected screen is not the appointment module,
+                // reset appointment specific state if necessary
+                if (_menuTitles[index] != 'Appointment Schedule') {
+                  _isAddingAppointment = false;
+                }
+              });
+            },
+            labelType: NavigationRailLabelType.all,
+            selectedLabelTextStyle: TextStyle(color: Colors.teal[700]),
+            unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20.0),
+              child: Column(
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.person, size: 40, color: Colors.teal),
+                    backgroundColor: Colors.teal[100],
+                    child: Icon(Icons.admin_panel_settings,
+                        size: 30, color: Colors.teal[800]),
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
-                    'Admin User',
+                    'Admin', // Or dynamically set username
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Administrator',
-                    style: TextStyle(color: Colors.white70),
+                        fontWeight: FontWeight.bold, color: Colors.teal[800]),
                   ),
                 ],
               ),
             ),
-            ListTile(
-              leading: Icon(Icons.people),
-              title: Text('Registration'),
-              onTap: () => _navigateToScreen(RegistrationHubScreen(), 'Registration Portal'),
+            destinations: const <NavigationRailDestination>[
+              NavigationRailDestination(
+                icon: Icon(Icons.app_registration),
+                selectedIcon: Icon(Icons.app_registration, color: Colors.teal),
+                label: Text('Registration'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.build_circle_outlined),
+                selectedIcon: Icon(Icons.build_circle, color: Colors.teal),
+                label: Text('Maintenance'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.search_outlined),
+                selectedIcon: Icon(Icons.search, color: Colors.teal),
+                label: Text('Search'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.science_outlined),
+                selectedIcon: Icon(Icons.science, color: Colors.teal),
+                label: Text('Lab Histories'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.people_alt_outlined),
+                selectedIcon: Icon(Icons.people_alt, color: Colors.teal),
+                label: Text('Patient Queue'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.calendar_today_outlined),
+                selectedIcon: Icon(Icons.calendar_today, color: Colors.teal),
+                label: Text('Appointments'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.analytics_outlined),
+                selectedIcon: Icon(Icons.analytics, color: Colors.teal),
+                label: Text('Analytics'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.description_outlined),
+                selectedIcon: Icon(Icons.description, color: Colors.teal),
+                label: Text('Report'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.payment_outlined),
+                selectedIcon: Icon(Icons.payment, color: Colors.teal),
+                label: Text('Payment'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                selectedIcon: Icon(Icons.receipt_long, color: Colors.teal),
+                label: Text('Billing'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.help_outline),
+                selectedIcon: Icon(Icons.help, color: Colors.teal),
+                label: Text('Help'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.info_outline),
+                selectedIcon: Icon(Icons.info, color: Colors.teal),
+                label: Text('About'),
+              ),
+            ],
+            backgroundColor: Colors.grey[100],
+            elevation: 4,
+          ),
+          const VerticalDivider(thickness: 1, width: 1),
+          // This is the main content.
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              // child: _currentScreen, // Old way
+              child: _screens[
+                  _selectedIndex], // New way: display screen from the list
             ),
-            ListTile(
-              leading: Icon(Icons.search),
-              title: Text('Search'),
-              onTap: () => _navigateToScreen(SearchHubScreen(), 'Search Portal'),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class AppointmentForm extends StatefulWidget {
+  final GlobalKey<FormState> formKey;
+  final TextEditingController patientNameController;
+  final TextEditingController patientIdController;
+  final TextEditingController doctorController;
+  final TextEditingController notesController;
+  final DateTime selectedDate;
+  final TimeOfDay selectedTime;
+  final ValueChanged<TimeOfDay> onTimeChanged;
+  final VoidCallback onSave;
+  final VoidCallback onCancel;
+  final String Function() generatePatientId;
+
+  const AppointmentForm({
+    super.key,
+    required this.formKey,
+    required this.patientNameController,
+    required this.patientIdController,
+    required this.doctorController,
+    required this.notesController,
+    required this.selectedDate,
+    required this.selectedTime,
+    required this.onTimeChanged,
+    required this.onSave,
+    required this.onCancel,
+    required this.generatePatientId,
+  });
+
+  @override
+  _AppointmentFormState createState() => _AppointmentFormState();
+}
+
+class _AppointmentFormState extends State<AppointmentForm> {
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: widget.selectedTime,
+    );
+    if (picked != null && picked != widget.selectedTime) {
+      widget.onTimeChanged(picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Form(
+        key: widget.formKey,
+        child: ListView(
+          children: <Widget>[
+            Text(
+              'Add New Appointment on ${DateFormat('yyyy-MM-dd').format(widget.selectedDate)}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
             ),
-            ListTile(
-              leading: Icon(Icons.calendar_today),
-              title: Text('Appointments'),
-              onTap: () => _navigateToScreen(_buildAppointmentModule(), 'Appointment Schedule'),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: widget.patientIdController,
+              decoration: InputDecoration(
+                labelText: 'Patient ID (auto-generated if empty)',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.fiber_new),
+                  tooltip: 'Generate New ID',
+                  onPressed: () {
+                    widget.patientIdController.text =
+                        widget.generatePatientId();
+                  },
+                ),
+              ),
+              // validator: (value) { // Optional: Add validation if ID is manually entered
+              //   if (value != null && value.isNotEmpty && !value.startsWith('PT-')) {
+              //     return 'Patient ID should start with PT-';
+              //   }
+              //   return null;
+              // },
             ),
-            ListTile(
-              leading: Icon(Icons.medical_services),
-              title: Text('Lab Histories'),
-              onTap: () => _navigateToScreen(LaboratoryHubScreen(), 'Laboratory Hub'),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: widget.patientNameController,
+              decoration: const InputDecoration(
+                labelText: 'Patient Name',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter patient name';
+                }
+                return null;
+              },
             ),
-            ListTile(
-              leading: Icon(Icons.people_alt),
-              title: Text('Patient Queue'),
-              onTap: () => _navigateToScreen(PatientQueueHubScreen(), 'Patient Queue'),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: widget.doctorController,
+              decoration: const InputDecoration(
+                labelText: 'Doctor',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter doctor name';
+                }
+                return null;
+              },
             ),
+            const SizedBox(height: 12),
             ListTile(
-              leading: Icon(Icons.analytics),
-              title: Text('Patient Analytics'),
-              onTap: () => _navigateToScreen(PatientAnalyticsScreen(), 'Patient Analytics'),
+              title:
+                  Text('Selected Time: ${widget.selectedTime.format(context)}'),
+              trailing: const Icon(Icons.access_time),
+              onTap: () => _selectTime(context),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4.0),
+                side: BorderSide(color: Colors.grey.shade400),
+              ),
             ),
-            ListTile(
-              leading: Icon(Icons.report),
-              title: Text('Reports'),
-              onTap: () => _navigateToScreen(ReportHubScreen(), 'Reports'),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: widget.notesController,
+              decoration: const InputDecoration(
+                labelText: 'Notes (Optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
             ),
-            ListTile(
-              leading: Icon(Icons.receipt),
-              title: Text('Billing'),
-              onTap: () => _navigateToScreen(BillingHubScreen(), 'Billing'),
-            ),
-            ListTile(
-              leading: Icon(Icons.payment),
-              title: Text('Payment'),
-              onTap: () => _navigateToScreen(PaymentHubScreen(), 'Payment'),
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Maintenance'),
-              onTap: () => _navigateToScreen(MaintenanceHubScreen(), 'Maintenance'),
-            ),
-            ListTile(
-              leading: Icon(Icons.help),
-              title: Text('Help'),
-              onTap: () => _navigateToScreen(HelpScreen(), 'Help'),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: widget.onCancel,
+                  child: const Text('CANCEL'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: widget.onSave,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white),
+                  child: const Text('SAVE APPOINTMENT'),
+                ),
+              ],
             ),
           ],
         ),
       ),
-      body: WillPopScope(
-        onWillPop: () async {
-          if (_currentTitle != 'Appointment Schedule') {
-            setState(() {
-              _currentScreen = _buildAppointmentModule();
-              _currentTitle = 'Appointment Schedule';
-            });
-            return false;
-          }
-          return true;
-        },
-        child: _currentScreen,
+    );
+  }
+}
+
+Widget _buildAppointmentList(
+    List<Appointment> appointments, Function(String, String) onUpdateStatus) {
+  if (appointments.isEmpty) {
+    return const Center(child: Text('No appointments for this date.'));
+  }
+  return ListView.builder(
+    itemCount: appointments.length,
+    itemBuilder: (context, index) {
+      return _buildAppointmentCard(
+          appointments[index], onUpdateStatus, context);
+    },
+  );
+}
+
+Widget _buildAppointmentCard(Appointment appointment,
+    Function(String, String) onUpdateStatus, BuildContext context) {
+  Color statusColor = Colors.grey;
+  IconData statusIcon = Icons.schedule;
+
+  switch (appointment.status) {
+    case 'Confirmed':
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle_outline;
+      break;
+    case 'Pending':
+      statusColor = Colors.orange;
+      statusIcon = Icons.hourglass_empty;
+      break;
+    case 'Cancelled':
+      statusColor = Colors.red;
+      statusIcon = Icons.cancel_outlined;
+      break;
+    case 'Completed': // Added completed status
+      statusColor = Colors.blue;
+      statusIcon = Icons.done_all_outlined;
+      break;
+  }
+
+  return Card(
+    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    elevation: 2,
+    child: ListTile(
+      leading: Icon(statusIcon, color: statusColor, size: 30),
+      title: Text(
+        '${appointment.patientName} (${appointment.patientId})',
+        style: const TextStyle(fontWeight: FontWeight.bold),
       ),
-      floatingActionButton: _currentTitle == 'Appointment Schedule'
-          ? FloatingActionButton(
-              onPressed: () {
-                setState(() {
-                  _isAddingAppointment = true;
-                  _patientNameController.clear();
-                  _patientIdController.clear();
-                  _patientIdController.text = _generatePatientId();
-                  _doctorController.clear();
-                  _notesController.clear();
-                  _selectedTime = TimeOfDay.now();
-                });
-              },
-              backgroundColor: Colors.teal[700],
-              child: const Icon(Icons.add),
-            )
-          : null,
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Doctor: ${appointment.doctor}'),
+          Text('Time: ${appointment.time.format(context)}'),
+          if (appointment.notes != null && appointment.notes!.isNotEmpty)
+            Text('Notes: ${appointment.notes}'),
+        ],
+      ),
+      trailing: _buildStatusDropdown(appointment.status, (newStatus) {
+        if (newStatus != null) {
+          onUpdateStatus(appointment.id, newStatus);
+        }
+      }),
+      isThreeLine: true, // Adjust if notes make it longer
+      onTap: () {
+        // Optional: Show details or edit options on tap
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AppointmentDetailDialog(appointment: appointment);
+          },
+        );
+      },
+    ),
+  );
+}
+
+Widget _buildStatusDropdown(String currentStatus, Function(String?) onChanged) {
+  List<String> statuses = ['Pending', 'Confirmed', 'Cancelled', 'Completed'];
+  // Ensure currentStatus is always in the list to avoid DropdownButton error
+  if (!statuses.contains(currentStatus)) {
+    statuses.add(currentStatus);
+  }
+  return DropdownButton<String>(
+    value: currentStatus,
+    items: statuses.map((String value) {
+      return DropdownMenuItem<String>(
+        value: value,
+        child: Text(value),
+      );
+    }).toList(),
+    onChanged: onChanged,
+    underline: Container(), // Remove underline for a cleaner look
+    style: TextStyle(color: Colors.teal[700], fontWeight: FontWeight.normal),
+    iconEnabledColor: Colors.teal[700],
+  );
+}
+
+class AppointmentList extends StatelessWidget {
+  final List<Appointment> appointments;
+  final Function(String, String) onUpdateStatus;
+  final Function(Appointment) onEditAppointment; // Add this callback
+
+  const AppointmentList({
+    super.key,
+    required this.appointments,
+    required this.onUpdateStatus,
+    required this.onEditAppointment, // Add this
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (appointments.isEmpty) {
+      return const Center(
+        child: Text(
+          'No appointments scheduled for this day.',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      );
+    }
+    return ListView.builder(
+      itemCount: appointments.length,
+      itemBuilder: (context, index) {
+        return AppointmentCard(
+          appointment: appointments[index],
+          onUpdateStatus: onUpdateStatus,
+          onEdit: () =>
+              onEditAppointment(appointments[index]), // Pass the callback
+        );
+      },
     );
   }
+}
 
-  Widget _buildAppointmentModule() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _showDatePicker,
-                icon: const Icon(Icons.calendar_today),
-                label: Text(DateFormat('MMM d, yyyy').format(_selectedDate)),
-                style: ElevatedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: Colors.teal[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_isAddingAppointment) _buildAddAppointmentForm(),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _buildAppointmentList(),
-        ),
-      ],
-    );
-  }
+class AppointmentCard extends StatelessWidget {
+  final Appointment appointment;
+  final Function(String, String) onUpdateStatus;
+  final VoidCallback onEdit; // Add this
 
-  Widget _buildAppointmentList() {
-    final filteredAppointments = _appointments
-        .where((appt) =>
-            appt.date.year == _selectedDate.year &&
-            appt.date.month == _selectedDate.month &&
-            appt.date.day == _selectedDate.day)
-        .toList();
+  const AppointmentCard({
+    super.key,
+    required this.appointment,
+    required this.onUpdateStatus,
+    required this.onEdit, // Add this
+  });
 
-    return filteredAppointments.isEmpty
-        ? const Center(child: Text('No appointments for selected date'))
-        : ListView.builder(
-            itemCount: filteredAppointments.length,
-            itemBuilder: (context, index) {
-              final appointment = filteredAppointments[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                elevation: 2,
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.teal[100],
-                    child: const Icon(Icons.person, color: Colors.teal),
-                  ),
-                  title: Text(appointment.patientName),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('ID: ${appointment.patientId}'),
-                      Text(
-                        'Time: ${appointment.time.format(context)} with ${appointment.doctor}',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _getStatusColor(appointment.status),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              appointment.status,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (appointment.notes?.isNotEmpty ?? false)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            'Notes: ${appointment.notes}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                    ],
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) => _handleAppointmentAction(value, appointment),
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit, size: 20),
-                            SizedBox(width: 8),
-                            Text('Edit'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'confirm',
-                        child: Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text('Confirm'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'cancel',
-                        child: Row(
-                          children: [
-                            Icon(Icons.cancel, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text('Cancel'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'complete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.done_all, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text('Complete'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Delete'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-  }
+  @override
+  Widget build(BuildContext context) {
+    Color statusColor = Colors.grey;
+    IconData statusIcon = Icons.schedule;
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'confirmed':
-        return Colors.green;
-      case 'pending':
-        return Colors.orange;
-      case 'completed':
-        return Colors.blue;
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  void _handleAppointmentAction(String action, Appointment appointment) {
-    switch (action) {
-      case 'edit':
-        setState(() {
-          _isAddingAppointment = true;
-          _patientNameController.text = appointment.patientName;
-          _patientIdController.text = appointment.patientId;
-          _doctorController.text = appointment.doctor;
-          _selectedTime = appointment.time;
-          _selectedDate = appointment.date;
-          _notesController.text = appointment.notes ?? '';
-          _appointments.remove(appointment);
-        });
+    switch (appointment.status) {
+      case 'Confirmed':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
         break;
-      case 'confirm':
-        _updateAppointmentStatus(appointment.id, 'Confirmed');
+      case 'Pending':
+        statusColor = Colors.orange;
+        statusIcon = Icons.hourglass_empty;
         break;
-      case 'cancel':
-        _updateAppointmentStatus(appointment.id, 'Cancelled');
+      case 'Cancelled':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
         break;
-      case 'complete':
-        _updateAppointmentStatus(appointment.id, 'Completed');
-        break;
-      case 'delete':
-        _deleteAppointment(appointment.id);
+      case 'Completed':
+        statusColor = Colors.blue;
+        statusIcon = Icons.done_all;
         break;
     }
-  }
 
-  Widget _buildAddAppointmentForm() {
     return Card(
-      margin: const EdgeInsets.all(16),
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _appointmentFormKey,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onEdit, // Call onEdit when card is tapped
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                _patientNameController.text.isEmpty
-                    ? 'Add New Appointment'
-                    : 'Edit Appointment',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal[700],
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _patientNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Patient Name',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter patient name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _patientIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Patient ID',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.credit_card),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter patient ID';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _doctorController,
-                decoration: const InputDecoration(
-                  labelText: 'Doctor',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.medical_services),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter doctor name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _selectTime(context),
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Time',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.access_time),
-                        ),
-                        child: Text(_selectedTime.format(context)),
-                      ),
-                    ),
+                  Text(
+                    appointment.patientName,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => _showDatePicker(),
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Date',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.calendar_today),
-                        ),
-                        child: Text(
-                            DateFormat('MMM d, yyyy').format(_selectedDate)),
-                      ),
-                    ),
+                  Chip(
+                    avatar: Icon(statusIcon, color: Colors.white, size: 16),
+                    label: Text(appointment.status,
+                        style: const TextStyle(color: Colors.white)),
+                    backgroundColor: statusColor,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _notesController,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (Optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.note),
+              const SizedBox(height: 8),
+              Text('ID: ${appointment.patientId}'),
+              Text('Doctor: ${appointment.doctor}'),
+              Text('Time: ${appointment.time.format(context)}'),
+              if (appointment.notes != null && appointment.notes!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text('Notes: ${appointment.notes}',
+                      style: const TextStyle(fontStyle: FontStyle.italic)),
                 ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _isAddingAppointment = false);
-                    },
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: TextStyle(color: Colors.teal[700]),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _saveAppointment,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[700],
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text('Save'),
-                  ),
+                  const Text('Change Status: '),
+                  _buildStatusDropdown(appointment.status, (newStatus) {
+                    if (newStatus != null) {
+                      onUpdateStatus(appointment.id, newStatus);
+                    }
+                  }),
                 ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class AppointmentDetailDialog extends StatelessWidget {
+  final Appointment appointment;
+
+  const AppointmentDetailDialog({super.key, required this.appointment});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Appointment Details - ${appointment.patientName}'),
+      content: SingleChildScrollView(
+        child: ListBody(
+          children: <Widget>[
+            Text('Patient ID: ${appointment.patientId}'),
+            Text('Date: ${DateFormat('yyyy-MM-dd').format(appointment.date)}'),
+            Text('Time: ${appointment.time.format(context)}'),
+            Text('Doctor: ${appointment.doctor}'),
+            Text('Status: ${appointment.status}'),
+            if (appointment.notes != null && appointment.notes!.isNotEmpty)
+              Text('Notes: ${appointment.notes}'),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          child: const Text('Close'),
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+        ),
+      ],
     );
   }
 }

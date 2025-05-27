@@ -477,4 +477,24 @@ class LanSyncService {
     _dirWatcher = null;
     _server = null;
   }
+
+  // Add this to your LanSyncService class
+  static Future<void> enableContinuousLocalCopy() async {
+    Timer.periodic(const Duration(seconds: 30), (_) async {
+      try {
+        final localPath = join((await getApplicationDocumentsDirectory()).path,
+            'patient_management_live.db');
+        final dbPath = await _dbHelper!.exportDatabase();
+
+        // Copy to a "live" version
+        final sourceFile = File(dbPath);
+        final targetFile = File(localPath);
+        await sourceFile.copy(targetFile.path);
+
+        debugPrint('Live copy updated: $localPath');
+      } catch (e) {
+        debugPrint('Error updating live copy: $e');
+      }
+    });
+  }
 }

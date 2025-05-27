@@ -1,3 +1,4 @@
 {
-    "dart.flutterSdkPath": "~/AppData/Roaming/flutter/flutter"
+    "dart.flutterSdkPath": "~/AppData/Roaming/flutter/flutter",
+    "cmake.ignoreCMakeListsMissing": true
 }

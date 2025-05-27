@@ -16,7 +16,7 @@ class _SignUpScreenState extends State<SignUpScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _fullNameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
@@ -60,7 +60,7 @@ class _SignUpScreenState extends State<SignUpScreen>
   @override
   void dispose() {
     _fullNameController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _birthDateController.dispose();
@@ -72,7 +72,9 @@ class _SignUpScreenState extends State<SignUpScreen>
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
+      initialDate: _selectedDate ??
+          DateTime.now()
+              .subtract(const Duration(days: 6570)), // Default to 18 years ago
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -118,12 +120,12 @@ class _SignUpScreenState extends State<SignUpScreen>
         // Call your API service for registration
         await ApiService.register(
           fullName: _fullNameController.text,
-          username: _emailController.text,
+          username: _usernameController.text,
           password: _passwordController.text,
           birthDate: _birthDateController.text,
           role: _selectedRole,
           securityQuestion: _selectedSecurityQuestion,
-          securityAnswer: hashedSecurityAnswer, // Store hashed answer
+          securityAnswer: hashedSecurityAnswer,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -368,15 +370,18 @@ class _SignUpScreenState extends State<SignUpScreen>
                                   if (value == null || value.isEmpty) {
                                     return 'Please enter your full name';
                                   }
+                                  if (value.trim().split(' ').length < 2) {
+                                    return 'Please enter both first and last name';
+                                  }
                                   return null;
                                 },
                                 enabled: !_isLoading,
                               ),
                               const SizedBox(height: 16),
 
-                              // Email field
+                              // Username field
                               const Text(
-                                "E-Mail",
+                                "Username",
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -384,27 +389,56 @@ class _SignUpScreenState extends State<SignUpScreen>
                               ),
                               const SizedBox(height: 8),
                               TextFormField(
-                                controller: _emailController,
+                                controller: _usernameController,
                                 decoration: InputDecoration(
-                                  hintText: 'youremail@email.com',
+                                  hintText: 'Choose a unique username',
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  suffixIcon: const Icon(Icons.email_outlined),
+                                  suffixIcon: const Icon(Icons.alternate_email),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your email';
+                                    return 'Please enter a username';
                                   }
-                                  // Basic email validation
-                                  if (!RegExp(
-                                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                                      .hasMatch(value)) {
-                                    return 'Please enter a valid email address';
+                                  if (value.length < 3) {
+                                    return 'Username must be at least 3 characters';
+                                  }
+                                  if (value.contains(' ')) {
+                                    return 'Username cannot contain spaces';
                                   }
                                   return null;
                                 },
                                 enabled: !_isLoading,
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Birth Date field
+                              const Text(
+                                "Birth Date",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                controller: _birthDateController,
+                                readOnly: true,
+                                decoration: InputDecoration(
+                                  hintText: 'Select your birth date',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  suffixIcon: const Icon(Icons.calendar_today),
+                                ),
+                                onTap: () => _selectDate(context),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please select your birth date';
+                                  }
+                                  return null;
+                                },
                               ),
                               const SizedBox(height: 16),
 
@@ -428,8 +462,8 @@ class _SignUpScreenState extends State<SignUpScreen>
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
                                     ),
                                     onPressed: () {
                                       setState(() {
@@ -438,24 +472,22 @@ class _SignUpScreenState extends State<SignUpScreen>
                                     },
                                   ),
                                 ),
-                                onChanged: (_) {
-                                  // Force UI update when password changes to update strength indicator
-                                  setState(() {});
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter a password';
+                                  }
+                                  if (value.length < 8) {
+                                    return 'Password must be at least 8 characters';
+                                  }
+                                  if (!RegExp(
+                                          r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)')
+                                      .hasMatch(value)) {
+                                    return 'Password must contain uppercase, lowercase, and number';
+                                  }
+                                  return null;
                                 },
-                                validator: (value) =>
-                                    PasswordValidator.validatePassword(value),
                                 enabled: !_isLoading,
                               ),
-
-                              // Add password strength indicator
-                              if (_passwordController.text.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: PasswordValidator
-                                      .buildPasswordStrengthIndicator(
-                                    _passwordController.text,
-                                  ),
-                                ),
                               const SizedBox(height: 16),
 
                               // Confirm Password field
@@ -471,15 +503,15 @@ class _SignUpScreenState extends State<SignUpScreen>
                                 controller: _confirmPasswordController,
                                 obscureText: _obscureConfirmPassword,
                                 decoration: InputDecoration(
-                                  hintText: 'Confirm your password',
+                                  hintText: 'Re-enter your password',
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscureConfirmPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
                                     ),
                                     onPressed: () {
                                       setState(() {
@@ -502,37 +534,7 @@ class _SignUpScreenState extends State<SignUpScreen>
                               ),
                               const SizedBox(height: 16),
 
-                              // Birth Date field
-                              const Text(
-                                "Birth Date",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _birthDateController,
-                                readOnly: true,
-                                decoration: InputDecoration(
-                                  hintText: 'YYYY-MM-DD',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.calendar_today),
-                                ),
-                                onTap: () => _selectDate(context),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please select your birth date';
-                                  }
-                                  return null;
-                                },
-                                enabled: !_isLoading,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Security Question field
+                              // Security Question dropdown
                               const Text(
                                 "Security Question",
                                 style: TextStyle(
@@ -547,7 +549,6 @@ class _SignUpScreenState extends State<SignUpScreen>
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  suffixIcon: const Icon(Icons.help_outline),
                                 ),
                                 items: _securityQuestions
                                     .map((question) => DropdownMenuItem(
@@ -591,20 +592,24 @@ class _SignUpScreenState extends State<SignUpScreen>
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your security answer';
+                                    return 'Please enter the security answer';
+                                  }
+                                  if (value.length < 2) {
+                                    return 'Answer must be at least 2 characters';
                                   }
                                   return null;
                                 },
                                 enabled: !_isLoading,
                               ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 24),
 
-                              // Sign Up button
+                              // Register button
                               SizedBox(
                                 width: double.infinity,
                                 height: 50,
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
+                                    foregroundColor: Colors.white,
                                     backgroundColor: Colors.teal[700],
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -616,7 +621,7 @@ class _SignUpScreenState extends State<SignUpScreen>
                                           height: 20,
                                           width: 20,
                                           child: CircularProgressIndicator(
-                                            color: Colors.teal,
+                                            color: Colors.white,
                                             strokeWidth: 2,
                                           ),
                                         )
@@ -644,6 +649,8 @@ class _SignUpScreenState extends State<SignUpScreen>
                                   textAlign: TextAlign.center,
                                 ),
                               ),
+
+                              const SizedBox(height: 20),
                             ],
                           ),
                         ),

@@ -16,7 +16,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _accessLevel = 'admin';
   bool _isLoading = false;
@@ -60,7 +60,8 @@ class _LoginScreenState extends State<LoginScreen>
                   accessLevel: credentials['accessLevel'] ?? 'user',
                 ),
               ),
-              (route) => false,  // This removes all previous routes from the stack
+              (route) =>
+                  false, // This removes all previous routes from the stack
             );
           }
         }
@@ -81,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _nameController.dispose();
     _passwordController.dispose();
     _animationController.dispose();
     super.dispose();
@@ -96,13 +97,23 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = true);
 
       try {
-        final username = _emailController.text;
+        final username = _nameController.text;
 
         // Check rate limiting before attempting login
         await LoginRateLimiter.canAttemptLogin(username);
 
         final response = await ApiService.login(
             username, _passwordController.text, _accessLevel);
+
+        // Validate that the user's actual role matches the selected access level
+        final userRole = response['user']['role'];
+        if (userRole != _accessLevel) {
+          setState(() {
+            _errorMessage =
+                'Access denied. Your account role ($userRole) does not match the selected access level ($_accessLevel).';
+          });
+          return;
+        }
 
         // Record successful login for rate limiting
         await LoginRateLimiter.recordSuccessfulLogin(username);
@@ -113,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen>
           username: username,
           accessLevel: response['user']['role'],
         );
-        
+
         // Navigate to dashboard and remove all previous routes
         if (mounted) {
           Navigator.pushAndRemoveUntil(
@@ -128,8 +139,8 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } catch (e) {
         // Record failed attempt for rate limiting if username was provided
-        if (_emailController.text.isNotEmpty) {
-          await LoginRateLimiter.recordFailedAttempt(_emailController.text);
+        if (_nameController.text.isNotEmpty) {
+          await LoginRateLimiter.recordFailedAttempt(_nameController.text);
         }
 
         setState(() {
@@ -355,9 +366,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         ),
                                       ),
 
-                                    // Email field
+                                    // Name field (Changed from Email)
                                     const Text(
-                                      "E-Mail",
+                                      "Full Name",
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w500,
@@ -365,19 +376,19 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                     const SizedBox(height: 8),
                                     TextFormField(
-                                      controller: _emailController,
+                                      controller: _nameController,
                                       decoration: InputDecoration(
-                                        hintText: 'youremail@email.com',
+                                        hintText: 'Enter your full name',
                                         border: OutlineInputBorder(
                                           borderRadius:
                                               BorderRadius.circular(8),
                                         ),
                                         suffixIcon:
-                                            const Icon(Icons.email_outlined),
+                                            const Icon(Icons.person_outline),
                                       ),
                                       validator: (value) {
                                         if (value == null || value.isEmpty) {
-                                          return 'Please enter your email';
+                                          return 'Please enter your full name';
                                         }
                                         return null;
                                       },
@@ -465,6 +476,12 @@ class _LoginScreenState extends State<LoginScreen>
                                                 _accessLevel = value!;
                                               });
                                             },
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please select an access level';
+                                        }
+                                        return null;
+                                      },
                                     ),
                                     const SizedBox(height: 40),
 
