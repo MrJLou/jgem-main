@@ -17,13 +17,12 @@ class AppointmentCard extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: const CircleAvatar(child: Icon(Icons.person)),
-        title: Text(appointment.patientName),
+        title: Text('Patient ID: ${appointment.patientId}'),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ID: ${appointment.patientId}'),
             Text(
-                'Time: ${appointment.time.format(context)} with ${appointment.doctor}'),
+                'Time: ${appointment.time.format(context)} with Dr. ID: ${appointment.doctorId}'),
             Text('Status: ${appointment.status}'),
           ],
         ),

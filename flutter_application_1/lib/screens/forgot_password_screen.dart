@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/user.dart'; // Import User model
 import '../services/api_service.dart';
-import '../services/auth_service.dart';
+// import '../services/auth_service.dart'; // AuthService.hashSecurityAnswer is no longer called here
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -20,22 +21,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
-  String _selectedSecurityQuestion = 'What was your first pet\'s name?';
+  User? _userSecurityDetails;
+  String? _selectedQuestionKey; // e.g., "securityQuestion1"
+  Map<String, String> _userQuestionMap =
+      {}; // Populated from _userSecurityDetails
+
   bool _isLoading = false;
+  bool _isLoadingQuestions = false;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   String? _errorMessage;
-  final int _selectedIndex = 0; // 0 for Sign In, 1 will be Sign Up
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-
-  final List<String> _securityQuestions = [
-    'What was your first pet\'s name?',
-    'What city were you born in?',
-    'What is your mother\'s maiden name?',
-    'What was the name of your first school?'
-  ];
 
   @override
   void initState() {
@@ -63,6 +61,66 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     super.dispose();
   }
 
+  Future<void> _fetchUserSecurityQuestions() async {
+    if (_usernameController.text.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter a username first.';
+        _userSecurityDetails = null;
+        _userQuestionMap = {};
+        _selectedQuestionKey = null;
+      });
+      return;
+    }
+    setState(() {
+      _isLoadingQuestions = true;
+      _errorMessage = null;
+      _userSecurityDetails = null;
+      _userQuestionMap = {};
+      _selectedQuestionKey = null;
+    });
+    try {
+      final userDetails =
+          await ApiService.getUserSecurityDetails(_usernameController.text);
+      if (userDetails != null) {
+        setState(() {
+          _userSecurityDetails = userDetails;
+          _userQuestionMap = {};
+          if (userDetails.securityQuestion1 != null &&
+              userDetails.securityQuestion1!.isNotEmpty) {
+            _userQuestionMap['securityQuestion1'] =
+                userDetails.securityQuestion1!;
+          }
+          if (userDetails.securityQuestion2 != null &&
+              userDetails.securityQuestion2!.isNotEmpty) {
+            _userQuestionMap['securityQuestion2'] =
+                userDetails.securityQuestion2!;
+          }
+          if (userDetails.securityQuestion3 != null &&
+              userDetails.securityQuestion3!.isNotEmpty) {
+            _userQuestionMap['securityQuestion3'] =
+                userDetails.securityQuestion3!;
+          }
+          if (_userQuestionMap.isNotEmpty) {
+            _selectedQuestionKey = _userQuestionMap
+                .keys.first; // Default to first available question
+          } else {
+            _errorMessage = 'No security questions found for this user.';
+          }
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'User not found or no security questions configured.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to fetch security questions: ${e.toString()}';
+      });
+    } finally {
+      setState(() => _isLoadingQuestions = false);
+    }
+  }
+
   Future<void> _handleResetPassword() async {
     setState(() {
       _errorMessage = null;
@@ -75,17 +133,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         });
         return;
       }
+      if (_selectedQuestionKey == null || _userQuestionMap.isEmpty) {
+        setState(() {
+          _errorMessage = 'Please select a security question.';
+        });
+        return;
+      }
 
       setState(() => _isLoading = true);
       try {
-        // Hash the security answer when checking
-        final String hashedSecurityAnswer =
-            AuthService.hashSecurityAnswer(_securityAnswerController.text);
-
         final success = await ApiService.resetPassword(
           _usernameController.text,
-          _selectedSecurityQuestion,
-          hashedSecurityAnswer,
+          _selectedQuestionKey!, // Use the key of the selected question
+          _securityAnswerController.text, // Pass raw answer
           _newPasswordController.text,
         );
 
@@ -108,7 +168,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         }
       } catch (e) {
         setState(() {
-          _errorMessage = 'Error: $e';
+          _errorMessage = 'Error: ${e.toString()}';
         });
       } finally {
         setState(() => _isLoading = false);
@@ -124,7 +184,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       backgroundColor: Colors.grey[50],
       body: Row(
         children: [
-          // Side Navigation
           Container(
             width: 90,
             decoration: BoxDecoration(
@@ -140,7 +199,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             child: Column(
               children: [
                 const SizedBox(height: 80),
-                // App Logo
                 Container(
                   height: 60,
                   width: 60,
@@ -157,12 +215,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               ],
             ),
           ),
-
-          // Main Content
           Expanded(
             child: Row(
               children: [
-                // Left side with Illustration
                 Expanded(
                   flex: 5,
                   child: Container(
@@ -173,27 +228,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                         FadeTransition(
                           opacity: _fadeAnimation,
                           child: const Text(
-                            "Recover Your Account.",
+                            "Recover Your Account",
                             style: TextStyle(
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
                             ),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                         const SizedBox(height: 12),
                         FadeTransition(
                           opacity: _fadeAnimation,
                           child: Text(
-                            "Reset your password in a few simple steps.",
+                            "Reset your password using your security question.",
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.white.withOpacity(0.9),
                             ),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                         const SizedBox(height: 60),
-                        // Illustration - using a simple icon as placeholder
                         FadeTransition(
                           opacity: _fadeAnimation,
                           child: const SizedBox(
@@ -210,8 +266,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                     ),
                   ),
                 ),
-
-                // Right side with Reset Password Form
                 Expanded(
                   flex: 5,
                   child: Container(
@@ -225,7 +279,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Return to login text
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
@@ -250,328 +303,202 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                   ),
                                 ],
                               ),
-
-                              const SizedBox(height: 20),
-
-                              // Forgot Password Title
-                              const Text(
-                                "Reset Password",
-                                style: TextStyle(
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              const SizedBox(height: 30),
+                              Text(
+                                'Reset Password',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[800]),
                               ),
-
                               const SizedBox(height: 20),
-
-                              // Display error message if there is one
                               if (_errorMessage != null)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red[50],
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.red[300]!),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.error_outline,
-                                          color: Colors.red[700]),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _errorMessage!,
-                                          style:
-                                              TextStyle(color: Colors.red[700]),
-                                        ),
-                                      ),
-                                    ],
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10.0),
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(color: Colors.red),
                                   ),
                                 ),
-
-                              // Email/Username field
-                              const Text(
-                                "E-Mail",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
                               TextFormField(
                                 controller: _usernameController,
                                 decoration: InputDecoration(
-                                  hintText: 'youremail@email.com',
+                                  labelText: 'Username',
+                                  prefixIcon: Icon(Icons.person_outline,
+                                      color: Colors.teal[700]),
                                   border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.email_outlined),
+                                      borderRadius: BorderRadius.circular(8)),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your email';
+                                    return 'Please enter your username';
                                   }
                                   return null;
                                 },
-                                enabled: !_isLoading,
                               ),
-                              const SizedBox(height: 16),
-
-                              // Security Question field
-                              const Text(
-                                "Security Question",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String>(
-                                value: _selectedSecurityQuestion,
-                                decoration: InputDecoration(
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.help_outline),
-                                ),
-                                items: _securityQuestions
-                                    .map((question) => DropdownMenuItem(
-                                          value: question,
-                                          child: Text(question),
-                                        ))
-                                    .toList(),
-                                onChanged: _isLoading
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: _isLoadingQuestions
                                     ? null
-                                    : (value) {
-                                        setState(() {
-                                          _selectedSecurityQuestion = value!;
-                                        });
-                                      },
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please select a security question';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Security Answer field
-                              const Text(
-                                "Security Answer",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _securityAnswerController,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your answer',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.question_answer),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please enter your security answer';
-                                  }
-                                  return null;
-                                },
-                                enabled: !_isLoading,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // New Password field
-                              const Text(
-                                "New Password",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _newPasswordController,
-                                obscureText: _obscureNewPassword,
-                                decoration: InputDecoration(
-                                  hintText: 'Create a new password',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscureNewPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscureNewPassword =
-                                            !_obscureNewPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please enter a new password';
-                                  }
-                                  if (value.length < 8) {
-                                    return 'Password must be at least 8 characters long';
-                                  }
-                                  return null;
-                                },
-                                enabled: !_isLoading,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Confirm Password field
-                              const Text(
-                                "Confirm Password",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _confirmPasswordController,
-                                obscureText: _obscureConfirmPassword,
-                                decoration: InputDecoration(
-                                  hintText: 'Confirm your new password',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscureConfirmPassword
-                                          ? Icons.visibility
-                                          : Icons.visibility_off,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscureConfirmPassword =
-                                            !_obscureConfirmPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please confirm your password';
-                                  }
-                                  if (value != _newPasswordController.text) {
-                                    return 'Passwords do not match';
-                                  }
-                                  return null;
-                                },
-                                enabled: !_isLoading,
-                              ),
-                              const SizedBox(height: 32),
-
-                              // Reset Password button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal[900],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed:
-                                      _isLoading ? null : _handleResetPassword,
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
+                                    : _fetchUserSecurityQuestions,
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal[600],
+                                    foregroundColor: Colors.white),
+                                child: _isLoadingQuestions
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
                                             strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'RESET PASSWORD',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                ),
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                    Colors.white)))
+                                    : const Text('Fetch Security Questions'),
                               ),
-
-                              const SizedBox(height: 16),
-
-                              // Notice text
-                              Center(
-                                child: Text(
-                                  'Your account security is important to us. Make sure to choose a strong password.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
+                              const SizedBox(height: 12),
+                              if (_userQuestionMap.isNotEmpty) ...[
+                                DropdownButtonFormField<String>(
+                                  value: _selectedQuestionKey,
+                                  items: _userQuestionMap.entries
+                                      .map((entry) => DropdownMenuItem(
+                                            value: entry.key,
+                                            child: Text(entry.value,
+                                                overflow:
+                                                    TextOverflow.ellipsis),
+                                          ))
+                                      .toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedQuestionKey = value;
+                                    });
+                                  },
+                                  decoration: InputDecoration(
+                                    labelText: 'Select Security Question',
+                                    prefixIcon: Icon(Icons.shield_outlined,
+                                        color: Colors.teal[700]),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
                                   ),
-                                  textAlign: TextAlign.center,
+                                  validator: (value) => value == null
+                                      ? 'Please select a question'
+                                      : null,
                                 ),
-                              ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _securityAnswerController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Security Answer',
+                                    prefixIcon: Icon(Icons.vpn_key_outlined,
+                                        color: Colors.teal[700]),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter your security answer';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _newPasswordController,
+                                  decoration: InputDecoration(
+                                    labelText: 'New Password',
+                                    prefixIcon: Icon(Icons.lock_outline,
+                                        color: Colors.teal[700]),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                          _obscureNewPassword
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
+                                          color: Colors.teal[700]),
+                                      onPressed: () {
+                                        setState(() => _obscureNewPassword =
+                                            !_obscureNewPassword);
+                                      },
+                                    ),
+                                  ),
+                                  obscureText: _obscureNewPassword,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter a new password';
+                                    }
+                                    if (value.length < 6) {
+                                      return 'Password must be at least 6 characters';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _confirmPasswordController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Confirm New Password',
+                                    prefixIcon: Icon(Icons.lock_clock_outlined,
+                                        color:
+                                            Colors.teal[700]), // Corrected Icon
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                          _obscureConfirmPassword
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
+                                          color: Colors.teal[700]),
+                                      onPressed: () {
+                                        setState(() => _obscureConfirmPassword =
+                                            !_obscureConfirmPassword);
+                                      },
+                                    ),
+                                  ),
+                                  obscureText: _obscureConfirmPassword,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please confirm your new password';
+                                    }
+                                    if (value != _newPasswordController.text) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 20),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : _handleResetPassword,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.teal[700],
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 16),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8)),
+                                    ),
+                                    child: _isLoading
+                                        ? const SizedBox(
+                                            height: 24,
+                                            width: 24,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 3,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<
+                                                        Color>(Colors.white)))
+                                        : const Text('RESET PASSWORD',
+                                            style: TextStyle(fontSize: 16)),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSideNavItem({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 90,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              border: isSelected
-                  ? Border(
-                      left: BorderSide(
-                        color: Colors.teal[800]!,
-                        width: 4,
-                      ),
-                    )
-                  : null,
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  icon,
-                  color: isSelected ? Colors.teal[500] : Colors.grey[600],
-                  size: 24,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected ? Colors.teal[800] : Colors.grey[600],
-                    fontSize: 12,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ],

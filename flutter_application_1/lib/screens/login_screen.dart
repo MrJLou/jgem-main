@@ -16,9 +16,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  String _accessLevel = 'admin';
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
@@ -82,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     _animationController.dispose();
     super.dispose();
@@ -97,21 +96,21 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = true);
 
       try {
-        final username = _nameController.text;
+        final username = _usernameController.text;
 
         // Check rate limiting before attempting login
         await LoginRateLimiter.canAttemptLogin(username);
 
-        final response = await ApiService.login(
-            username, _passwordController.text, _accessLevel);
+        final response =
+            await ApiService.login(username, _passwordController.text);
 
-        // Validate that the user's actual role matches the selected access level
-        final userRole = response['user']['role'];
-        if (userRole != _accessLevel) {
+        // Validate that the user has a role (access level) from the response
+        final userRole = response['user']?['role'];
+        if (userRole == null) {
           setState(() {
-            _errorMessage =
-                'Access denied. Your account role ($userRole) does not match the selected access level ($_accessLevel).';
+            _errorMessage = 'Login failed: User role not found in response.';
           });
+          await LoginRateLimiter.recordFailedAttempt(username);
           return;
         }
 
@@ -122,7 +121,7 @@ class _LoginScreenState extends State<LoginScreen>
         await AuthService.saveLoginCredentials(
           token: response['token'],
           username: username,
-          accessLevel: response['user']['role'],
+          accessLevel: userRole,
         );
 
         // Navigate to dashboard and remove all previous routes
@@ -131,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen>
             context,
             MaterialPageRoute(
               builder: (context) => DashboardScreen(
-                accessLevel: response['user']['role'],
+                accessLevel: userRole,
               ),
             ),
             (route) => false,
@@ -139,15 +138,27 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } catch (e) {
         // Record failed attempt for rate limiting if username was provided
-        if (_nameController.text.isNotEmpty) {
-          await LoginRateLimiter.recordFailedAttempt(_nameController.text);
+        if (_usernameController.text.isNotEmpty) {
+          await LoginRateLimiter.recordFailedAttempt(_usernameController.text);
         }
 
         setState(() {
           _errorMessage = e.toString();
+          if (e.toString().contains('Too many attempts')) {
+            _errorMessage =
+                'Login failed: Too many attempts. Please try again later.';
+          } else if (e.toString().contains('Invalid credentials') ||
+              e.toString().contains('User not found')) {
+            _errorMessage = 'Login failed: Invalid username or password.';
+          } else {
+            _errorMessage =
+                'Login failed: An unexpected error occurred. ${e.toString()}';
+          }
         });
       } finally {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -366,33 +377,11 @@ class _LoginScreenState extends State<LoginScreen>
                                         ),
                                       ),
 
-                                    // Name field (Changed from Email)
-                                    const Text(
-                                      "Full Name",
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      controller: _nameController,
-                                      decoration: InputDecoration(
-                                        hintText: 'Enter your full name',
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        suffixIcon:
-                                            const Icon(Icons.person_outline),
-                                      ),
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter your full name';
-                                        }
-                                        return null;
-                                      },
-                                      enabled: !_isLoading,
+                                    // Username Field
+                                    _buildTextField(
+                                      controller: _usernameController,
+                                      label: 'Username',
+                                      icon: Icons.person_outline_rounded,
                                     ),
                                     const SizedBox(height: 24),
 
@@ -437,53 +426,6 @@ class _LoginScreenState extends State<LoginScreen>
                                       enabled: !_isLoading,
                                     ),
                                     const SizedBox(height: 24),
-
-                                    // Access level dropdown
-                                    const Text(
-                                      "Access Level",
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    DropdownButtonFormField<String>(
-                                      value: _accessLevel,
-                                      decoration: InputDecoration(
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: 'admin',
-                                          child: Text('Administrator'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'doctor',
-                                          child: Text('Doctor'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'medtech',
-                                          child: Text('Medical Technician'),
-                                        ),
-                                      ],
-                                      onChanged: _isLoading
-                                          ? null
-                                          : (value) {
-                                              setState(() {
-                                                _accessLevel = value!;
-                                              });
-                                            },
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please select an access level';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 40),
 
                                     // Login button
                                     SizedBox(
@@ -618,6 +560,30 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        hintText: 'Enter your $label',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        prefixIcon: Icon(icon),
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please enter your $label';
+        }
+        return null;
+      },
+      enabled: !_isLoading,
     );
   }
 }

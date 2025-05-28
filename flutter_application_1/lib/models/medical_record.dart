@@ -1,6 +1,8 @@
 class MedicalRecord {
   final String id;
   final String patientId;
+  final String? appointmentId;
+  final String? serviceId;
   final String recordType;
   final DateTime recordDate;
   final String? diagnosis;
@@ -15,6 +17,8 @@ class MedicalRecord {
   MedicalRecord({
     required this.id,
     required this.patientId,
+    this.appointmentId,
+    this.serviceId,
     required this.recordType,
     required this.recordDate,
     this.diagnosis,
@@ -31,6 +35,8 @@ class MedicalRecord {
     return MedicalRecord(
       id: json['id'],
       patientId: json['patientId'],
+      appointmentId: json['appointmentId'] as String?,
+      serviceId: json['serviceId'] as String?,
       recordType: json['recordType'],
       recordDate: DateTime.parse(json['recordDate']),
       diagnosis: json['diagnosis'],
@@ -48,6 +54,8 @@ class MedicalRecord {
     return {
       'id': id,
       'patientId': patientId,
+      'appointmentId': appointmentId,
+      'serviceId': serviceId,
       'recordType': recordType,
       'recordDate': recordDate.toIso8601String(),
       'diagnosis': diagnosis,
@@ -64,6 +72,8 @@ class MedicalRecord {
   MedicalRecord copyWith({
     String? id,
     String? patientId,
+    String? appointmentId,
+    String? serviceId,
     String? recordType,
     DateTime? recordDate,
     String? diagnosis,
@@ -78,6 +88,8 @@ class MedicalRecord {
     return MedicalRecord(
       id: id ?? this.id,
       patientId: patientId ?? this.patientId,
+      appointmentId: appointmentId ?? this.appointmentId,
+      serviceId: serviceId ?? this.serviceId,
       recordType: recordType ?? this.recordType,
       recordDate: recordDate ?? this.recordDate,
       diagnosis: diagnosis ?? this.diagnosis,

@@ -19,11 +19,13 @@ class ApiService {
 
   // Authentication Methods
   static Future<Map<String, dynamic>> login(
-      String username, String password, String accessLevel) async {
+      String username, String password) async {
     try {
       final auth = await _dbHelper.authenticateUser(username, password);
 
-      if (auth != null) {
+      if (auth != null &&
+          auth['user'] != null &&
+          auth['user']['role'] != null) {
         _authToken = auth['token'];
         _currentUsername = username;
         _currentUserRole = auth['user']['role'];
@@ -37,7 +39,7 @@ class ApiService {
 
         return auth;
       } else {
-        throw Exception('Invalid credentials');
+        throw Exception('Invalid credentials or user data missing');
       }
     } catch (e) {
       throw Exception('Failed to login: $e');
@@ -48,10 +50,13 @@ class ApiService {
     required String fullName,
     required String username,
     required String password,
-    required String birthDate,
     required String role,
-    required String securityQuestion,
-    required String securityAnswer,
+    required String securityQuestion1,
+    required String securityAnswer1,
+    required String securityQuestion2,
+    required String securityAnswer2,
+    required String securityQuestion3,
+    required String securityAnswer3,
   }) async {
     try {
       // Hash the password before storing
@@ -62,25 +67,41 @@ class ApiService {
         'password': hashedPassword, // Store the hashed password
         'fullName': fullName,
         'role': role,
-        'securityQuestion': securityQuestion,
-        'securityAnswer': securityAnswer,
+        'securityQuestion1': securityQuestion1,
+        'securityAnswer1': securityAnswer1,
+        'securityQuestion2': securityQuestion2,
+        'securityAnswer2': securityAnswer2,
+        'securityQuestion3': securityQuestion3,
+        'securityAnswer3': securityAnswer3,
       });
     } catch (e) {
       throw Exception('Registration failed: $e');
     }
   }
 
-  static Future<bool> resetPassword(String username, String securityQuestion,
-      String securityAnswer, String newPassword) async {
+  static Future<bool> resetPassword(String username, String questionKey,
+      String rawSecurityAnswer, String newPassword) async {
     try {
+      // DatabaseHelper.resetPassword expects the RAW security answer for verification.
       return await _dbHelper.resetPassword(
         username,
-        securityQuestion,
-        securityAnswer,
+        questionKey, // Pass the specific question key
+        rawSecurityAnswer, // Pass the raw answer
         newPassword,
       );
     } catch (e) {
-      throw Exception('Failed to reset password: $e');
+      print('ApiService: Failed to reset password: $e');
+      throw Exception(
+          'Failed to reset password: Check details or try again later.');
+    }
+  }
+
+  static Future<User?> getUserSecurityDetails(String username) async {
+    try {
+      return await _dbHelper.getUserSecurityDetails(username);
+    } catch (e) {
+      print('ApiService: Failed to get user security details: $e');
+      throw Exception('Failed to retrieve user security information.');
     }
   }
 

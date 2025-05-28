@@ -16,6 +16,8 @@ import 'billing/billing_hub_screen.dart';
 import 'payment/payment_hub_screen.dart';
 import 'maintenance/maintenance_hub_screen.dart';
 import 'help/help_screen.dart';
+import 'about_screen.dart'; // Assuming an AboutScreen exists or will be created
+import 'logs/user_activity_log_screen.dart'; // Corrected import path
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
@@ -47,45 +49,144 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
   }
 
-  // Widget _currentScreen = const Center(child: CircularProgressIndicator()); // Replaced by _screens logic
-  late String _currentTitle; // Updated to be initialized in initState
+  late List<String> _menuTitles; // Made non-final
+  late List<Widget> _screens; // Made non-final
+  late List<IconData> _menuIcons; // Made non-final
 
-  final List<String> _menuTitles = [
-    'Registration',
-    'Maintenance',
-    'Search',
-    'Patient Laboratory Histories',
-    'Patient Queue',
-    'Appointment Schedule',
-    'Patient Analytics',
-    'Report',
-    'Payment',
-    'Billing',
-    'Help',
-    'About',
-  ];
+  // Define all possible menu items with their screens and icons
+  final Map<String, Map<String, dynamic>> _allMenuItems = {
+    'Registration': {
+      'screen': RegistrationHubScreen(),
+      'icon': Icons.app_registration
+    },
+    'Maintenance': {
+      'screen': MaintenanceHubScreen(),
+      'icon': Icons.build_circle_outlined
+    },
+    'Search': {'screen': SearchHubScreen(), 'icon': Icons.search_outlined},
+    'Patient Laboratory Histories': {
+      'screen': LaboratoryHubScreen(),
+      'icon': Icons.science_outlined
+    },
+    'Patient Queue': {
+      'screen': PatientQueueHubScreen(),
+      'icon': Icons.groups_outlined
+    },
+    'Appointment Schedule': {
+      'screen': const Text("Placeholder"),
+      'icon': Icons.calendar_month_outlined
+    },
+    'Patient Analytics': {
+      'screen': PatientAnalyticsScreen(),
+      'icon': Icons.analytics_outlined
+    },
+    'Report': {
+      'screen': ReportHubScreen(),
+      'icon': Icons.receipt_long_outlined
+    },
+    'Payment': {'screen': PaymentHubScreen(), 'icon': Icons.payment_outlined},
+    'Billing': {
+      'screen': BillingHubScreen(),
+      'icon': Icons.request_quote_outlined
+    },
+    'Help': {'screen': HelpScreen(), 'icon': Icons.help_outline},
+    'About': {'screen': const AboutScreen(), 'icon': Icons.info_outline},
+  };
 
-  late List<Widget> _screens; // Updated to be initialized in initState
+  // Define which menu items each role can access
+  final Map<String, List<String>> _rolePermissions = {
+    'admin': [
+      'Registration',
+      'Maintenance',
+      'Search',
+      'Patient Laboratory Histories',
+      'Patient Queue',
+      'Appointment Schedule',
+      'Patient Analytics',
+      'Report',
+      'Payment',
+      'Billing',
+      'Help',
+      'About'
+    ],
+    'medtech': [
+      // MedTech has same access as Admin based on flowcharts
+      'Registration', 'Maintenance', 'Search', 'Patient Laboratory Histories',
+      'Patient Queue', 'Appointment Schedule', 'Patient Analytics', 'Report',
+      'Payment', 'Billing', 'Help', 'About'
+    ],
+    'doctor': [
+      'Search',
+      'Patient Laboratory Histories',
+      'Patient Queue',
+      'Appointment Schedule',
+      'Patient Analytics',
+      'Report',
+      'Payment',
+      'Billing',
+      'Help',
+      'About'
+    ],
+    // Default to a restricted view or handle as an error if role is unexpected
+    'patient': [
+      // Example: Patients might only see appointments and their profile
+      'Appointment Schedule', 'Help', 'About'
+    ]
+  };
 
   @override
   void initState() {
     super.initState();
-    _currentTitle = _menuTitles[_selectedIndex];
-    _screens = [
-      RegistrationHubScreen(),
-      MaintenanceHubScreen(),
-      SearchHubScreen(),
-      LaboratoryHubScreen(), // Assuming this is Patient Lab Histories
-      PatientQueueHubScreen(),
-      _buildAppointmentModule(), // Existing appointment module
-      PatientAnalyticsScreen(),
-      ReportHubScreen(),
-      PaymentHubScreen(),
-      BillingHubScreen(),
-      HelpScreen(),
-      const Center(child: Text('About Screen - Placeholder')), // Placeholder
-    ];
-    _loadInitialData(); // Keep this for now, relevant to appointment module
+    _configureMenuForRole();
+    _loadInitialData(); // For appointment module
+  }
+
+  void _configureMenuForRole() {
+    List<String> allowedMenuKeys = _rolePermissions[widget.accessLevel] ??
+        _rolePermissions['patient']!; // Default to patient or a minimal set
+
+    List<String> tempTitles = [];
+    List<Widget> tempScreens = [];
+    List<IconData> tempIcons = [];
+
+    for (String key in _allMenuItems.keys) {
+      if (allowedMenuKeys.contains(key)) {
+        tempTitles.add(key);
+        Widget screenToShow = _allMenuItems[key]!['screen'] as Widget;
+
+        if (key == 'Appointment Schedule') {
+          screenToShow = _buildAppointmentModule();
+        } else if (key == 'Registration') {
+          if (widget.accessLevel == 'admin') {
+            screenToShow = UserManagementScreen(); // Admin sees User Management
+          } else if (widget.accessLevel == 'medtech') {
+            // Medtech sees Patient Registration. If RegistrationHubScreen is desired for Medtechs
+            // to choose patient/service, then keep _allMenuItems[key]!['screen']
+            // For now, direct to PatientRegistrationScreen for Medtech
+            screenToShow = PatientRegistrationScreen();
+          } else {
+            // For other roles (e.g. doctor), Registration might not be shown or lead to a default/error view
+            // Currently, doctors don't have 'Registration' in _rolePermissions
+            // If they did, this else would be relevant.
+            // Defaulting to the original hub if role is not admin/medtech but has Registration permission.
+            screenToShow = _allMenuItems[key]!['screen'] as Widget;
+          }
+        }
+        tempScreens.add(screenToShow);
+        tempIcons.add(_allMenuItems[key]!['icon'] as IconData);
+      }
+    }
+
+    setState(() {
+      _menuTitles = tempTitles;
+      _screens = tempScreens;
+      _menuIcons = tempIcons;
+
+      // Ensure _selectedIndex is valid for the filtered list
+      if (_selectedIndex >= _menuTitles.length) {
+        _selectedIndex = 0;
+      }
+    });
   }
 
   Future<void> _loadAppointments() async {
@@ -115,65 +216,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _appointments = [
         Appointment(
           id: '1',
-          patientName: 'John Doe',
           patientId: 'PT-1001',
           date: DateTime.now(),
           time: const TimeOfDay(hour: 9, minute: 0),
-          doctor: 'Dr. Smith',
+          doctorId: 'dr_smith_id',
           status: 'Confirmed',
           notes: 'Regular checkup',
         ),
         Appointment(
           id: '2',
-          patientName: 'Jane Smith',
           patientId: 'PT-1002',
           date: DateTime.now(),
           time: const TimeOfDay(hour: 11, minute: 30),
-          doctor: 'Dr. Johnson',
+          doctorId: 'dr_johnson_id',
           status: 'Pending',
           notes: 'New patient consultation',
         ),
         Appointment(
           id: '3',
-          patientName: 'Robert Brown',
           patientId: 'PT-1003',
           date: DateTime.now().add(const Duration(days: 1)),
           time: const TimeOfDay(hour: 14, minute: 0),
-          doctor: 'Dr. Smith',
+          doctorId: 'dr_smith_id',
           status: 'Confirmed',
           notes: 'Follow-up appointment',
         ),
         Appointment(
           id: '4',
-          patientName: 'Mary Johnson',
           patientId: 'PT-1004',
           date: DateTime.now(),
           time: const TimeOfDay(hour: 15, minute: 30),
-          doctor: 'Dr. Wilson',
+          doctorId: 'dr_wilson_id',
           status: 'Cancelled',
           notes: 'Annual physical examination',
         ),
         Appointment(
           id: '5',
-          patientName: 'David Lee',
           patientId: 'PT-1005',
           date: DateTime.now().add(const Duration(days: 2)),
           time: const TimeOfDay(hour: 10, minute: 0),
-          doctor: 'Dr. Johnson',
+          doctorId: 'dr_johnson_id',
           status: 'Pending',
           notes: 'Follow-up on lab results',
         ),
       ];
 
       // Try to get appointments from API (can fail silently for now)
-      try {
-        final apiAppointments = await ApiService.getAppointments(_selectedDate);
-        if (apiAppointments.isNotEmpty) {
-          _appointments = apiAppointments;
+      if (_menuTitles.contains('Appointment Schedule')) {
+        // Only load if module is accessible
+        try {
+          final apiAppointments =
+              await ApiService.getAppointments(_selectedDate);
+          if (apiAppointments.isNotEmpty) {
+            _appointments = apiAppointments;
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('Error loading appointments: ${e.toString()}')),
+            );
+          }
+          print('Error loading appointments: $e');
         }
-      } catch (e) {
-        // Silently fail and use mock data
-        print('Using mock data: $e');
       }
     } finally {
       if (mounted) {
@@ -206,11 +311,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final newAppointment = Appointment(
           id: newId,
-          patientName: _patientNameController.text,
           patientId: _patientIdController.text,
           date: _selectedDate,
           time: _selectedTime,
-          doctor: _doctorController.text,
+          doctorId: _doctorController.text,
           status: 'Confirmed',
           notes: _notesController.text,
         );
@@ -391,86 +495,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> menuItems = [];
-
-    if (widget.accessLevel == 'admin') {
-      // Admin sees all options based on Figure 8 MedTech Main
-      menuItems = [
-        // Example:
-        ListTile(
-            title: const Text('Registration (User Accounts)'),
-            onTap: () {/* Navigate to UserManagementScreen */}),
-        ListTile(title: const Text('Maintenance'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Patient Laboratory Histories'),
-            onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Payment'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
-        ListTile(title: const Text('About'), onTap: () {/* ... */}),
-        // ... add all admin menu items
-      ];
-    } else if (widget.accessLevel == 'doctor') {
-      // Doctor sees options based on Figure 7 MedTech Main (Doctor view)
-      menuItems = [
-        // Example:
-        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Patient Laboratory Histories'),
-            onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Payment'),
-            onTap: () {
-              /* ... */
-            }), // Assuming A1 leads to Payment/Billing/Help/About
-        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
-        ListTile(title: const Text('About'), onTap: () {/* ... */}),
-        // ... add all doctor menu items
-      ];
-    } else if (widget.accessLevel == 'medtech') {
-      // Medtech sees options based on Figure 8 MedTech Main, but with specific restrictions.
-      // The "Registration" for MedTech should lead to Patient Registration.
-      menuItems = [
-        // Example:
-        ListTile(
-            title: const Text('Registration (Patients)'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => PatientRegistrationScreen()),
-              );
-            }),
-        // Maintenance is typically an Admin function.
-        ListTile(title: const Text('Search'), onTap: () {/* ... */}),
-        ListTile(
-            title: const Text('Patient Laboratory Histories'),
-            onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Queue'), onTap: () {/* ... */}),
-        // G Connector items for MedTech (from Figure 8, left flow after Patient Queue)
-        ListTile(
-            title: const Text('Appointment Schedule'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Patient Analytics'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Report'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Payment'), onTap: () {/* ... */}),
-        ListTile(title: const Text('Billing'), onTap: () {/* ... */}),
-        // H Connector items for MedTech (from Figure 8, right flow after Billing)
-        ListTile(title: const Text('Help'), onTap: () {/* ... */}),
-        ListTile(title: const Text('About'), onTap: () {/* ... */}),
-        // ... add all medtech menu items
-      ];
+    if (_menuTitles.isEmpty && widget.accessLevel != 'patient') {
+      // Handle case where role might not have menus (e.g. during init)
+      // This might happen if _configureMenuForRole hasn't completed or an unknown role is passed.
+      // Provide a loading state or a restricted view.
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_menuTitles.isEmpty && widget.accessLevel == 'patient') {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Patient Dashboard")),
+        body: const Center(
+            child: Text(
+                "Welcome Patient! Limited view.")), // Or specific patient view
+      );
     }
 
     return Scaffold(
@@ -478,6 +515,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text('Dashboard - ${widget.accessLevel}'),
         backgroundColor: Colors.teal[700],
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const UserActivityLogScreen()),
+              );
+            },
+            tooltip: 'View Activity Logs',
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _logout,
@@ -492,7 +540,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onDestinationSelected: (int index) {
               setState(() {
                 _selectedIndex = index;
-                _currentTitle = _menuTitles[index];
                 // If the selected screen is not the appointment module,
                 // reset appointment specific state if necessary
                 if (_menuTitles[index] != 'Appointment Schedule') {
@@ -503,87 +550,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             labelType: NavigationRailLabelType.all,
             selectedLabelTextStyle: TextStyle(color: Colors.teal[700]),
             unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.teal[100],
-                    child: Icon(Icons.admin_panel_settings,
-                        size: 30, color: Colors.teal[800]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Admin', // Or dynamically set username
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.teal[800]),
-                  ),
-                ],
-              ),
-            ),
-            destinations: const <NavigationRailDestination>[
-              NavigationRailDestination(
-                icon: Icon(Icons.app_registration),
-                selectedIcon: Icon(Icons.app_registration, color: Colors.teal),
-                label: Text('Registration'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.build_circle_outlined),
-                selectedIcon: Icon(Icons.build_circle, color: Colors.teal),
-                label: Text('Maintenance'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.search_outlined),
-                selectedIcon: Icon(Icons.search, color: Colors.teal),
-                label: Text('Search'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.science_outlined),
-                selectedIcon: Icon(Icons.science, color: Colors.teal),
-                label: Text('Lab Histories'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.people_alt_outlined),
-                selectedIcon: Icon(Icons.people_alt, color: Colors.teal),
-                label: Text('Patient Queue'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.calendar_today_outlined),
-                selectedIcon: Icon(Icons.calendar_today, color: Colors.teal),
-                label: Text('Appointments'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.analytics_outlined),
-                selectedIcon: Icon(Icons.analytics, color: Colors.teal),
-                label: Text('Analytics'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.description_outlined),
-                selectedIcon: Icon(Icons.description, color: Colors.teal),
-                label: Text('Report'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.payment_outlined),
-                selectedIcon: Icon(Icons.payment, color: Colors.teal),
-                label: Text('Payment'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                selectedIcon: Icon(Icons.receipt_long, color: Colors.teal),
-                label: Text('Billing'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.help_outline),
-                selectedIcon: Icon(Icons.help, color: Colors.teal),
-                label: Text('Help'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.info_outline),
-                selectedIcon: Icon(Icons.info, color: Colors.teal),
-                label: Text('About'),
-              ),
-            ],
+            destinations: List.generate(_menuTitles.length, (index) {
+              return NavigationRailDestination(
+                icon: Icon(_menuIcons[index]),
+                selectedIcon: Icon(_menuIcons[index],
+                    color: Theme.of(context).primaryColor),
+                label: SizedBox
+                    .shrink(), // Further simplified: remove Text label entirely for now
+              );
+            }),
+            minExtendedWidth: 180,
+            minWidth: 100,
+            extended: false,
+            groupAlignment: -0.85,
             backgroundColor: Colors.grey[100],
             elevation: 4,
           ),
@@ -798,13 +777,13 @@ Widget _buildAppointmentCard(Appointment appointment,
     child: ListTile(
       leading: Icon(statusIcon, color: statusColor, size: 30),
       title: Text(
-        '${appointment.patientName} (${appointment.patientId})',
+        'Patient ID: ${appointment.patientId}',
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Doctor: ${appointment.doctor}'),
+          Text('Doctor ID: ${appointment.doctorId}'),
           Text('Time: ${appointment.time.format(context)}'),
           if (appointment.notes != null && appointment.notes!.isNotEmpty)
             Text('Notes: ${appointment.notes}'),
@@ -938,7 +917,7 @@ class AppointmentCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    appointment.patientName,
+                    'Patient ID: ${appointment.patientId}',
                     style: const TextStyle(
                         fontSize: 18, fontWeight: FontWeight.bold),
                   ),
@@ -953,8 +932,7 @@ class AppointmentCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('ID: ${appointment.patientId}'),
-              Text('Doctor: ${appointment.doctor}'),
+              Text('Doctor ID: ${appointment.doctorId}'),
               Text('Time: ${appointment.time.format(context)}'),
               if (appointment.notes != null && appointment.notes!.isNotEmpty)
                 Padding(
@@ -990,14 +968,14 @@ class AppointmentDetailDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Appointment Details - ${appointment.patientName}'),
+      title: Text('Appointment Details - PID: ${appointment.patientId}'),
       content: SingleChildScrollView(
         child: ListBody(
           children: <Widget>[
             Text('Patient ID: ${appointment.patientId}'),
             Text('Date: ${DateFormat('yyyy-MM-dd').format(appointment.date)}'),
             Text('Time: ${appointment.time.format(context)}'),
-            Text('Doctor: ${appointment.doctor}'),
+            Text('Doctor ID: ${appointment.doctorId}'),
             Text('Status: ${appointment.status}'),
             if (appointment.notes != null && appointment.notes!.isNotEmpty)
               Text('Notes: ${appointment.notes}'),

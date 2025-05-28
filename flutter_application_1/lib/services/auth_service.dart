@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'database_helper.dart';
 
 class AuthService {
   static const bool isDevMode = false; // Set to false for production
@@ -13,6 +14,12 @@ class AuthService {
   static const _accessLevelKey = 'access_level';
   static const _deviceIdKey = 'device_id';
   static const _isLoggedInKey = 'is_logged_in'; // Key for logged in state
+
+  // --- Additions for debounce ----
+  static String? _lastLoggedInUser;
+  static DateTime? _lastLoginLogTime;
+  static const Duration _loginLogDebounceDuration = Duration(seconds: 5);
+  // --- End additions ----
 
   // Token expiration duration (in minutes)
   static const int _tokenValidityMinutes = 60; // 1 hour
@@ -84,6 +91,9 @@ class AuthService {
   // Completely clear all credentials on logout
   static Future<void> logout() async {
     try {
+      // Get username before clearing credentials
+      final username = await _secureStorage.read(key: _usernameKey);
+
       // Clear secure storage data
       await _secureStorage.delete(key: _authTokenKey);
       await _secureStorage.delete(key: _tokenExpiryKey);
@@ -98,6 +108,15 @@ class AuthService {
 
       // Make sure to explicitly set the logged in state to false
       await prefs.setBool(_isLoggedInKey, false);
+
+      // Log the logout activity if we have the username
+      if (username != null) {
+        final db = DatabaseHelper();
+        await db.logUserActivity(
+          username,
+          'User logged out',
+        );
+      }
 
       if (kDebugMode) {
         print('Logout completed successfully - all credentials cleared');
@@ -178,6 +197,29 @@ class AuthService {
     // Also store non-sensitive login status in regular preferences for quick checks
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_isLoggedInKey, true);
+
+    // ---- Debounce logic for logging ----
+    final now = DateTime.now();
+    if (_lastLoggedInUser == username &&
+        _lastLoginLogTime != null &&
+        now.difference(_lastLoginLogTime!) < _loginLogDebounceDuration) {
+      if (kDebugMode) {
+        print('Login log debounced for user: $username');
+      }
+    } else {
+      final db = DatabaseHelper();
+      await db.logUserActivity(
+        username,
+        'User logged in',
+        details: 'Access Level: $accessLevel',
+      );
+      _lastLoggedInUser = username;
+      _lastLoginLogTime = now;
+      if (kDebugMode) {
+        print('Login activity logged for user: $username');
+      }
+    }
+    // ---- End debounce logic ----
   }
 
   // Clear saved credentials

@@ -20,12 +20,16 @@ class _SignUpScreenState extends State<SignUpScreen>
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
-  final TextEditingController _birthDateController = TextEditingController();
-  final TextEditingController _securityAnswerController =
+  final TextEditingController _securityAnswer1Controller =
       TextEditingController();
-  String _selectedSecurityQuestion = 'What was your first pet\'s name?';
-  final String _selectedRole = 'patient'; // Default role for new signups
-  DateTime? _selectedDate;
+  final TextEditingController _securityAnswer2Controller =
+      TextEditingController();
+  final TextEditingController _securityAnswer3Controller =
+      TextEditingController();
+  String _selectedSecurityQuestion1 = 'What was your first pet\'s name?';
+  String _selectedSecurityQuestion2 = 'What city were you born in?';
+  String _selectedSecurityQuestion3 = 'What is your mother\'s maiden name?';
+  String _selectedRole = 'medtech'; // Default role, will be selectable
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -38,7 +42,9 @@ class _SignUpScreenState extends State<SignUpScreen>
     'What was your first pet\'s name?',
     'What city were you born in?',
     'What is your mother\'s maiden name?',
-    'What was the name of your first school?'
+    'What was the name of your first school?',
+    'What is your favorite book?',
+    'What was the model of your first car?'
   ];
 
   @override
@@ -63,39 +69,11 @@ class _SignUpScreenState extends State<SignUpScreen>
     _usernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _birthDateController.dispose();
-    _securityAnswerController.dispose();
+    _securityAnswer1Controller.dispose();
+    _securityAnswer2Controller.dispose();
+    _securityAnswer3Controller.dispose();
     _animationController.dispose();
     super.dispose();
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate ??
-          DateTime.now()
-              .subtract(const Duration(days: 6570)), // Default to 18 years ago
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).primaryColor,
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-        _birthDateController.text = DateFormat('yyyy-MM-dd').format(picked);
-      });
-    }
   }
 
   Future<void> _signUp() async {
@@ -104,6 +82,16 @@ class _SignUpScreenState extends State<SignUpScreen>
     });
 
     if (_formKey.currentState!.validate()) {
+      // Check for unique security questions first
+      if (_selectedSecurityQuestion1 == _selectedSecurityQuestion2 ||
+          _selectedSecurityQuestion1 == _selectedSecurityQuestion3 ||
+          _selectedSecurityQuestion2 == _selectedSecurityQuestion3) {
+        setState(() {
+          _errorMessage = 'Please select three unique security questions.';
+        });
+        return;
+      }
+
       if (_passwordController.text != _confirmPasswordController.text) {
         setState(() {
           _errorMessage = 'Passwords do not match';
@@ -113,35 +101,54 @@ class _SignUpScreenState extends State<SignUpScreen>
 
       setState(() => _isLoading = true);
       try {
-        // Hash the security answer when registering
-        final String hashedSecurityAnswer =
-            AuthService.hashSecurityAnswer(_securityAnswerController.text);
+        final String hashedSecurityAnswer1 =
+            AuthService.hashSecurityAnswer(_securityAnswer1Controller.text);
+        final String hashedSecurityAnswer2 =
+            AuthService.hashSecurityAnswer(_securityAnswer2Controller.text);
+        final String hashedSecurityAnswer3 =
+            AuthService.hashSecurityAnswer(_securityAnswer3Controller.text);
 
-        // Call your API service for registration
+        // Ensure ApiService.register is updated on the backend to accept these fields
         await ApiService.register(
           fullName: _fullNameController.text,
           username: _usernameController.text,
           password: _passwordController.text,
-          birthDate: _birthDateController.text,
           role: _selectedRole,
-          securityQuestion: _selectedSecurityQuestion,
-          securityAnswer: hashedSecurityAnswer,
+          securityQuestion1: _selectedSecurityQuestion1,
+          securityAnswer1: hashedSecurityAnswer1,
+          securityQuestion2: _selectedSecurityQuestion2,
+          securityAnswer2: hashedSecurityAnswer2,
+          securityQuestion3: _selectedSecurityQuestion3,
+          securityAnswer3: hashedSecurityAnswer3,
+          // birthDate: _birthDateController.text, // Removed
         );
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Registration successful! Please login')),
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Registration successful! Please login')),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+        }
       } catch (e) {
-        setState(() {
-          _errorMessage = 'Registration failed: $e';
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Registration failed: ${e.toString()}';
+            // More specific error for API issues if possible
+            if (e.toString().contains('NoSuchMethodError') ||
+                e.toString().contains('Invalid argument')) {
+              _errorMessage =
+                  'Registration failed due to API incompatibility. Please contact support. (Details: $e)';
+            }
+          });
+        }
       } finally {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -150,6 +157,8 @@ class _SignUpScreenState extends State<SignUpScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final theme = Theme.of(context);
+
+    final List<String> availableRoles = ['doctor', 'medtech'];
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -193,7 +202,8 @@ class _SignUpScreenState extends State<SignUpScreen>
                   label: 'Sign In',
                   isSelected: _selectedIndex == 0,
                   onTap: () {
-                    Navigator.push(
+                    Navigator.pushReplacement(
+                      // Use pushReplacement to avoid stacking screens
                       context,
                       MaterialPageRoute(
                           builder: (context) => const LoginScreen()),
@@ -207,6 +217,7 @@ class _SignUpScreenState extends State<SignUpScreen>
                   label: 'Sign Up',
                   isSelected: _selectedIndex == 1,
                   onTap: () {
+                    // Already on Sign Up, do nothing or refresh state if needed
                     setState(() {
                       _selectedIndex = 1;
                     });
@@ -232,6 +243,7 @@ class _SignUpScreenState extends State<SignUpScreen>
                           opacity: _fadeAnimation,
                           child: const Text(
                             "J-Gem Medical and Diagnostic Clinic",
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 30,
                               fontWeight: FontWeight.bold,
@@ -243,284 +255,153 @@ class _SignUpScreenState extends State<SignUpScreen>
                         FadeTransition(
                           opacity: _fadeAnimation,
                           child: Text(
-                            "Create an account to manage records.",
+                            "Create an account to manage patient records efficiently and securely.",
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.white.withOpacity(0.9),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 60),
-                        // Illustration matching the provided image
-                        FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: const SizedBox(
-                            height: 250,
-                            width: 250,
-                            child: Icon(
-                              Icons.how_to_reg,
-                              size: 120,
-                              color: Colors.white,
-                            ),
-                          ),
+                        const SizedBox(height: 20),
+                        Image.asset(
+                          'assets/images/medical_illustration_2.png', // Ensure this asset exists
+                          height: size.height * 0.30,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(Icons.image_not_supported_outlined,
+                                color: Colors.white70, size: size.height * 0.2);
+                          },
                         ),
                       ],
                     ),
                   ),
                 ),
-
-                // Right side with Sign up Form
+                // Right side with Form
                 Expanded(
-                  flex: 5,
-                  child: Container(
-                    color: Colors.white,
+                  flex: 4,
+                  child: Center(
                     child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 50.0, vertical: 30.0),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: size.width * 0.04,
+                          vertical: 30), // Adjusted padding
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
                         child: Form(
                           key: _formKey,
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Already have an account text
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  const Text("Already have an account?"),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              const LoginScreen(),
-                                        ),
-                                      );
-                                    },
-                                    child: Text(
-                                      'Sign In',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.primaryColor,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 20),
-
-                              // Sign Up Title
-                              const Text(
-                                "Sign Up",
-                                style: TextStyle(
-                                  fontSize: 30,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              Text(
+                                "Create Account",
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  // Adjusted style
                                   fontWeight: FontWeight.bold,
+                                  color: Colors.teal[800],
                                 ),
                               ),
-
-                              const SizedBox(height: 20),
-
-                              // Display error message if there is one
+                              const SizedBox(height: 25), // Adjusted spacing
                               if (_errorMessage != null)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red[50],
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.red[300]!),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.error_outline,
-                                          color: Colors.red[700]),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _errorMessage!,
-                                          style:
-                                              TextStyle(color: Colors.red[700]),
-                                        ),
-                                      ),
-                                    ],
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 15.0),
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(
+                                        color: Colors.redAccent,
+                                        fontSize: 14), // Enhanced error style
+                                    textAlign: TextAlign.center,
                                   ),
                                 ),
 
-                              // Full Name field
-                              const Text(
-                                "Full Name",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              // Full Name
+                              _buildTextField(
                                 controller: _fullNameController,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your full name',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.person_outline),
-                                ),
+                                label: 'Full Name',
+                                icon: Icons.person_outline_rounded,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Please enter your full name';
                                   }
-                                  if (value.trim().split(' ').length < 2) {
-                                    return 'Please enter both first and last name';
-                                  }
                                   return null;
                                 },
-                                enabled: !_isLoading,
                               ),
                               const SizedBox(height: 16),
 
-                              // Username field
-                              const Text(
-                                "Username",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              // Username
+                              _buildTextField(
                                 controller: _usernameController,
-                                decoration: InputDecoration(
-                                  hintText: 'Choose a unique username',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.alternate_email),
-                                ),
+                                label: 'Username',
+                                icon: Icons.account_circle_outlined,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Please enter a username';
                                   }
-                                  if (value.length < 3) {
-                                    return 'Username must be at least 3 characters';
-                                  }
-                                  if (value.contains(' ')) {
-                                    return 'Username cannot contain spaces';
+                                  if (value.length < 4) {
+                                    return 'Username must be at least 4 characters';
                                   }
                                   return null;
                                 },
-                                enabled: !_isLoading,
                               ),
                               const SizedBox(height: 16),
 
-                              // Birth Date field
-                              const Text(
-                                "Birth Date",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _birthDateController,
-                                readOnly: true,
+                              // Role Selection Dropdown
+                              DropdownButtonFormField<String>(
+                                value: _selectedRole,
                                 decoration: InputDecoration(
-                                  hintText: 'Select your birth date',
+                                  labelText: 'Role',
+                                  prefixIcon: Icon(Icons.verified_user_outlined,
+                                      color: theme.primaryColorDark),
                                   border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.calendar_today),
+                                      borderRadius: BorderRadius.circular(12)),
+                                  filled: true,
+                                  fillColor: Colors.white,
                                 ),
-                                onTap: () => _selectDate(context),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please select your birth date';
-                                  }
-                                  return null;
+                                items: availableRoles.map((String role) {
+                                  return DropdownMenuItem<String>(
+                                    value: role,
+                                    child: Text(role[0].toUpperCase() +
+                                        role.substring(
+                                            1)), // Capitalize first letter
+                                  );
+                                }).toList(),
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    _selectedRole = newValue!;
+                                  });
                                 },
+                                validator: (value) =>
+                                    value == null || value.isEmpty
+                                        ? 'Please select a role'
+                                        : null,
                               ),
                               const SizedBox(height: 16),
 
-                              // Password field
-                              const Text(
-                                "Password",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
+                              // Password
+                              _buildPasswordField(
                                 controller: _passwordController,
+                                label: 'Password',
                                 obscureText: _obscurePassword,
-                                decoration: InputDecoration(
-                                  hintText: 'Create a strong password',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscurePassword = !_obscurePassword;
-                                      });
-                                    },
-                                  ),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please enter a password';
-                                  }
-                                  if (value.length < 8) {
-                                    return 'Password must be at least 8 characters';
-                                  }
-                                  if (!RegExp(
-                                          r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)')
-                                      .hasMatch(value)) {
-                                    return 'Password must contain uppercase, lowercase, and number';
-                                  }
-                                  return null;
+                                toggleObscure: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
                                 },
-                                enabled: !_isLoading,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Confirm Password field
-                              const Text(
-                                "Confirm Password",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
                               ),
                               const SizedBox(height: 8),
-                              TextFormField(
+                              const SizedBox(height: 16),
+
+                              // Confirm Password
+                              _buildPasswordField(
                                 controller: _confirmPasswordController,
+                                label: 'Confirm Password',
                                 obscureText: _obscureConfirmPassword,
-                                decoration: InputDecoration(
-                                  hintText: 'Re-enter your password',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscureConfirmPassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _obscureConfirmPassword =
-                                            !_obscureConfirmPassword;
-                                      });
-                                    },
-                                  ),
-                                ),
+                                toggleObscure: () {
+                                  setState(() {
+                                    _obscureConfirmPassword =
+                                        !_obscureConfirmPassword;
+                                  });
+                                },
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Please confirm your password';
@@ -530,127 +411,186 @@ class _SignUpScreenState extends State<SignUpScreen>
                                   }
                                   return null;
                                 },
-                                enabled: !_isLoading,
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 20), // Adjusted spacing
 
-                              // Security Question dropdown
-                              const Text(
-                                "Security Question",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              DropdownButtonFormField<String>(
-                                value: _selectedSecurityQuestion,
-                                decoration: InputDecoration(
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                items: _securityQuestions
-                                    .map((question) => DropdownMenuItem(
-                                          value: question,
-                                          child: Text(question),
-                                        ))
-                                    .toList(),
-                                onChanged: _isLoading
-                                    ? null
-                                    : (value) {
-                                        setState(() {
-                                          _selectedSecurityQuestion = value!;
-                                        });
-                                      },
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Please select a security question';
-                                  }
-                                  return null;
+                              // Security Question 1
+                              _buildSecurityQuestionDropdown(
+                                label: 'Security Question 1',
+                                value: _selectedSecurityQuestion1,
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    if (newValue == null) return;
+                                    if (newValue ==
+                                            _selectedSecurityQuestion2 ||
+                                        newValue ==
+                                            _selectedSecurityQuestion3) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              duration: Duration(seconds: 2),
+                                              content: Text(
+                                                  "Please select a unique security question.")));
+                                    } else {
+                                      _selectedSecurityQuestion1 = newValue;
+                                    }
+                                  });
                                 },
+                                items: _securityQuestions,
                               ),
-                              const SizedBox(height: 16),
-
-                              // Security Answer field
-                              const Text(
-                                "Security Answer",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextFormField(
-                                controller: _securityAnswerController,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter your answer',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  suffixIcon: const Icon(Icons.question_answer),
-                                ),
+                              const SizedBox(height: 10),
+                              _buildTextField(
+                                controller: _securityAnswer1Controller,
+                                label: 'Answer for Security Question 1',
+                                icon: Icons.security_update_good_outlined,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter the security answer';
+                                    return 'Please answer security question 1';
                                   }
                                   if (value.length < 2) {
                                     return 'Answer must be at least 2 characters';
                                   }
                                   return null;
                                 },
-                                enabled: !_isLoading,
                               ),
-                              const SizedBox(height: 24),
-
-                              // Register button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                    backgroundColor: Colors.teal[700],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: _isLoading ? null : _signUp,
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'SIGN UP',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                ),
-                              ),
-
                               const SizedBox(height: 16),
 
-                              // Terms text
-                              Center(
-                                child: Text(
-                                  'By clicking Sign Up, you agree to our Terms of Service and Privacy Policy.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
+                              // Security Question 2
+                              _buildSecurityQuestionDropdown(
+                                label: 'Security Question 2',
+                                value: _selectedSecurityQuestion2,
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    if (newValue == null) return;
+                                    if (newValue ==
+                                            _selectedSecurityQuestion1 ||
+                                        newValue ==
+                                            _selectedSecurityQuestion3) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              duration: Duration(seconds: 2),
+                                              content: Text(
+                                                  "Please select a unique security question.")));
+                                    } else {
+                                      _selectedSecurityQuestion2 = newValue;
+                                    }
+                                  });
+                                },
+                                items: _securityQuestions,
                               ),
+                              const SizedBox(height: 10),
+                              _buildTextField(
+                                controller: _securityAnswer2Controller,
+                                label: 'Answer for Security Question 2',
+                                icon: Icons.security_update_good_outlined,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please answer security question 2';
+                                  }
+                                  if (value.length < 2) {
+                                    return 'Answer must be at least 2 characters';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
 
+                              // Security Question 3
+                              _buildSecurityQuestionDropdown(
+                                label: 'Security Question 3',
+                                value: _selectedSecurityQuestion3,
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    if (newValue == null) return;
+                                    if (newValue ==
+                                            _selectedSecurityQuestion1 ||
+                                        newValue ==
+                                            _selectedSecurityQuestion2) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              duration: Duration(seconds: 2),
+                                              content: Text(
+                                                  "Please select a unique security question.")));
+                                    } else {
+                                      _selectedSecurityQuestion3 = newValue;
+                                    }
+                                  });
+                                },
+                                items: _securityQuestions,
+                              ),
+                              const SizedBox(height: 10),
+                              _buildTextField(
+                                controller: _securityAnswer3Controller,
+                                label: 'Answer for Security Question 3',
+                                icon: Icons.security_update_good_outlined,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please answer security question 3';
+                                  }
+                                  if (value.length < 2) {
+                                    return 'Answer must be at least 2 characters';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 25), // Adjusted spacing
+
+                              // Sign Up Button
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal[700],
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 16.0),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 5,
+                                ),
+                                onPressed: _isLoading ? null : _signUp,
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 3,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Sign Up',
+                                        style: TextStyle(
+                                            fontSize: 16, color: Colors.white),
+                                      ),
+                              ),
                               const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    "Already have an account?",
+                                    style: TextStyle(color: Colors.grey[700]),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pushReplacement(
+                                        // Use pushReplacement
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) =>
+                                                const LoginScreen()),
+                                      );
+                                    },
+                                    child: Text(
+                                      'Sign In',
+                                      style: TextStyle(
+                                        color: Colors.teal[700],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -672,45 +612,243 @@ class _SignUpScreenState extends State<SignUpScreen>
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 90,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              border: isSelected
-                  ? Border(
-                      left: BorderSide(
-                        color: Colors.teal[700]!,
-                        width: 4,
-                      ),
-                    )
-                  : null,
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  icon,
-                  color: isSelected ? Colors.teal[700] : Colors.grey[600],
-                  size: 24,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected ? Colors.teal[700] : Colors.grey[600],
-                    fontSize: 12,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        splashColor: Colors.teal.withOpacity(0.1),
+        highlightColor: Colors.teal.withOpacity(0.05),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color:
+                isSelected ? Colors.teal.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? Colors.teal[700] : Colors.grey[600],
+                size: 26,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.teal[800] : Colors.grey[700],
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool obscureText = false,
+    String? Function(String?)? validator,
+    TextInputType? keyboardType,
+    VoidCallback? onTap,
+    bool readOnly = false,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.teal[700]),
+        prefixIcon: Icon(icon, color: Colors.teal[700]),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade300, width: 1.0),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade700, width: 2.0),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+      ),
+      obscureText: obscureText,
+      validator: validator,
+      keyboardType: keyboardType,
+      onTap: onTap,
+      readOnly: readOnly,
+      style: TextStyle(color: Colors.grey[800]),
+    );
+  }
+
+  Widget _buildPasswordField({
+    required TextEditingController controller,
+    required String label,
+    required bool obscureText,
+    required VoidCallback toggleObscure,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.teal[700]),
+        prefixIcon: Icon(Icons.lock_outline, color: Colors.teal[700]),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            color: Colors.teal[700]?.withOpacity(0.7),
+          ),
+          onPressed: toggleObscure,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade300, width: 1.0),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.teal.shade700, width: 2.0),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+      ),
+      obscureText: obscureText,
+      validator: validator ??
+          (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter a password';
+            }
+            // Password strength check (example)
+            if (value.length < 8) {
+              return 'Password must be at least 8 characters';
+            }
+            if (!value.contains(RegExp(r'[A-Z]'))) {
+              return 'Password must contain an uppercase letter';
+            }
+            if (!value.contains(RegExp(r'[a-z]'))) {
+              return 'Password must contain a lowercase letter';
+            }
+            if (!value.contains(RegExp(r'[0-9]'))) {
+              return 'Password must contain a number';
+            }
+            if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]' ''))) {
+              // Escaped '''
+              return 'Password must contain a special character';
+            }
+            return null;
+          },
+      style: TextStyle(color: Colors.grey[800]),
+    );
+  }
+
+  Widget _buildSecurityQuestionDropdown({
+    required String label,
+    required String value,
+    required ValueChanged<String?> onChanged,
+    required List<String> items,
+  }) {
+    // Filter out already selected questions from other dropdowns to ensure uniqueness
+    List<String> availableItems = items.where((item) {
+      if (label == 'Security Question 1') {
+        return item != _selectedSecurityQuestion2 &&
+            item != _selectedSecurityQuestion3;
+      } else if (label == 'Security Question 2') {
+        return item != _selectedSecurityQuestion1 &&
+            item != _selectedSecurityQuestion3;
+      } else if (label == 'Security Question 3') {
+        return item != _selectedSecurityQuestion1 &&
+            item != _selectedSecurityQuestion2;
+      }
+      return true;
+    }).toList();
+
+    String? currentValueInDropdown = items.contains(value) ? value : null;
+    if (currentValueInDropdown == null &&
+        availableItems.isNotEmpty &&
+        !availableItems.contains(value)) {
+      // If current value is invalid due to other selections, try to pick first from all items
+      // if it doesn't create a new conflict. This is tricky, _signUp is main guard.
+      // Forcing a valid display or null (prompting selection) is safer here.
+      currentValueInDropdown = null;
+    }
+
+    return DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Colors.teal[700]),
+          prefixIcon: Icon(Icons.shield_outlined, color: Colors.teal[700]),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.teal.shade200),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.teal.shade300, width: 1.0),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.teal.shade700, width: 2.0),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+        ),
+        value: currentValueInDropdown,
+        icon: Icon(Icons.arrow_drop_down_rounded, color: Colors.teal[700]),
+        iconSize: 28,
+        elevation: 16,
+        style: TextStyle(color: Colors.grey[800], fontSize: 16),
+        dropdownColor: Colors.white,
+        onChanged:
+            onChanged, // Let parent handle state update and main validation
+        items: items.map<DropdownMenuItem<String>>((String question) {
+          bool isSelectedElsewhere = (label != 'Security Question 1' &&
+                  question == _selectedSecurityQuestion1) ||
+              (label != 'Security Question 2' &&
+                  question == _selectedSecurityQuestion2) ||
+              (label != 'Security Question 3' &&
+                  question == _selectedSecurityQuestion3);
+          return DropdownMenuItem<String>(
+            value: question,
+            enabled: !isSelectedElsewhere,
+            child: Text(question,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSelectedElsewhere
+                      ? Colors.grey[400] // Grey out if selected elsewhere
+                      : Colors.grey[800],
+                  decoration:
+                      isSelectedElsewhere ? TextDecoration.lineThrough : null,
+                )),
+          );
+        }).toList(),
+        validator: (val) {
+          if (val == null || val.isEmpty) return 'Please select a question';
+          // More robust validation is in _signUp to check uniqueness across all three
+          return null;
+        });
   }
 }
