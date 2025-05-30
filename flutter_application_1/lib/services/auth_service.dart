@@ -198,28 +198,16 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_isLoggedInKey, true);
 
-    // ---- Debounce logic for logging ----
+    // Log login activity with debounce
     final now = DateTime.now();
-    if (_lastLoggedInUser == username &&
-        _lastLoginLogTime != null &&
-        now.difference(_lastLoginLogTime!) < _loginLogDebounceDuration) {
-      if (kDebugMode) {
-        print('Login log debounced for user: $username');
-      }
-    } else {
+    if (_lastLoggedInUser != username ||
+        _lastLoginLogTime == null ||
+        now.difference(_lastLoginLogTime!) > _loginLogDebounceDuration) {
       final db = DatabaseHelper();
-      await db.logUserActivity(
-        username,
-        'User logged in',
-        details: 'Access Level: $accessLevel',
-      );
+      await db.logUserActivity(username, 'User logged in');
       _lastLoggedInUser = username;
       _lastLoginLogTime = now;
-      if (kDebugMode) {
-        print('Login activity logged for user: $username');
-      }
     }
-    // ---- End debounce logic ----
   }
 
   // Clear saved credentials
@@ -319,5 +307,23 @@ class AuthService {
     final remainingMillis = expiryTime - currentTime;
 
     return remainingMillis > 0 ? (remainingMillis ~/ 1000) : 0;
+  }
+
+  // Get current logged-in username
+  static Future<String?> getCurrentUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    final loggedIn = prefs.getBool(_isLoggedInKey) ?? false;
+    if (!loggedIn) return null;
+    return await _secureStorage.read(key: _usernameKey);
+  }
+
+  // Get current logged-in user ID
+  Future<String?> getCurrentUserId() async {
+    final username = await getCurrentUsername();
+    if (username == null) return null;
+
+    final dbHelper = DatabaseHelper();
+    final user = await dbHelper.getUserByUsername(username);
+    return user?.id;
   }
 }

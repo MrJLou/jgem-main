@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/appointment.dart';
 import 'package:http/http.dart' as http;
+import '../models/active_patient_queue_item.dart';
 
 class DatabaseHelper {
   // Singleton pattern
@@ -22,7 +23,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   final String _databaseName = 'patient_management.db';
-  final int _databaseVersion = 7;
+  final int _databaseVersion = 10;
 
   // Database sync settings
   final String _syncUrl =
@@ -41,6 +42,8 @@ class DatabaseHelper {
   final String tableBillItems = 'bill_items';
   final String tablePayments = 'payments';
   final String tableSyncLog = 'sync_log';
+  final String tablePatientQueue = 'patient_queue';
+  final String tableActivePatientQueue = 'active_patient_queue';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -157,12 +160,25 @@ class DatabaseHelper {
     // }
     // END DEVELOPMENT ONLY SECTION
 
-    return await openDatabase(
+    final openedDb = await openDatabase(
       _instanceDbPath!,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      // onOpen: (db) async { // Alternative place to clear, but doing it after ensures table exists
+      //   print('DATABASE_HELPER: Clearing active_patient_queue onOpen.');
+      //   await db.delete(tableActivePatientQueue);
+      // }
     );
+
+    // Clear the active_patient_queue table every time the database is initialized
+    // This ensures it starts fresh for the day.
+    print(
+        'DATABASE_HELPER: Clearing $tableActivePatientQueue after DB open/creation/upgrade.');
+    await openedDb.delete(tableActivePatientQueue);
+    print('DATABASE_HELPER: $tableActivePatientQueue cleared.');
+
+    return openedDb;
   }
 
   // Create database tables
@@ -326,6 +342,42 @@ class DatabaseHelper {
       )
     ''');
 
+    // Patient Queue Reports table (for daily history)
+    await db.execute('''
+      CREATE TABLE $tablePatientQueue (
+        id TEXT PRIMARY KEY,
+        reportDate TEXT NOT NULL,
+        totalPatients INTEGER NOT NULL,
+        patientsServed INTEGER NOT NULL,
+        averageWaitTime TEXT,
+        peakHour TEXT,
+        queueData TEXT NOT NULL,
+        generatedAt TEXT NOT NULL,
+        exportedToPdf INTEGER DEFAULT 0
+      )
+    ''');
+
+    // Active Patient Queue table (for current day's active queue)
+    await db.execute('''
+      CREATE TABLE $tableActivePatientQueue (
+        queueEntryId TEXT PRIMARY KEY,
+        patientId TEXT,
+        patientName TEXT NOT NULL,
+        arrivalTime TEXT NOT NULL,
+        gender TEXT,
+        age INTEGER,
+        conditionOrPurpose TEXT,
+        status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
+        createdAt TEXT NOT NULL,
+        addedByUserId TEXT,
+        servedAt TEXT,          -- New field
+        removedAt TEXT,         -- New field
+        consultationStartedAt TEXT, -- New field
+        FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+        FOREIGN KEY (addedByUserId) REFERENCES $tableUsers (id) ON DELETE SET NULL
+      )
+    ''');
+
     // Create admin user by default
     await _createDefaultAdmin(db);
 
@@ -467,6 +519,65 @@ class DatabaseHelper {
       await _createIndexes(db);
       print(
           'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Indexes.');
+    }
+    if (oldVersion < 8) {
+      // Create patient queue reports table (for daily history)
+      await db.execute('''
+        CREATE TABLE $tablePatientQueue (
+          id TEXT PRIMARY KEY,
+          reportDate TEXT NOT NULL,
+          totalPatients INTEGER NOT NULL,
+          patientsServed INTEGER NOT NULL,
+          averageWaitTime TEXT,
+          peakHour TEXT,
+          queueData TEXT NOT NULL,
+          generatedAt TEXT NOT NULL,
+          exportedToPdf INTEGER DEFAULT 0
+        )
+      ''');
+      print(
+          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Patient Queue Reports table.');
+    }
+    if (oldVersion < 9) {
+      // Active Patient Queue table
+      await db.execute('''
+        CREATE TABLE $tableActivePatientQueue (
+          queueEntryId TEXT PRIMARY KEY,
+          patientId TEXT,
+          patientName TEXT NOT NULL,
+          arrivalTime TEXT NOT NULL,
+          gender TEXT,
+          age INTEGER,
+          conditionOrPurpose TEXT,
+          status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
+          createdAt TEXT NOT NULL,
+          addedByUserId TEXT,
+          servedAt TEXT,          -- New field
+          removedAt TEXT,         -- New field
+          consultationStartedAt TEXT, -- New field
+          FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+          FOREIGN KEY (addedByUserId) REFERENCES $tableUsers (id) ON DELETE SET NULL
+        )
+      ''');
+      // Add indexes for the new table
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_status ON $tableActivePatientQueue (status)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_arrival_time ON $tableActivePatientQueue (arrivalTime)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_patient_id ON $tableActivePatientQueue (patientId)');
+      print(
+          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Active Patient Queue table and its indexes.');
+    }
+    if (oldVersion < 10) {
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'servedAt', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'removedAt', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'consultationStartedAt', 'TEXT');
+      print(
+          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added timestamp fields to Active Patient Queue table.');
     }
   }
 
@@ -805,6 +916,36 @@ class DatabaseHelper {
       where: 'fullName LIKE ?',
       whereArgs: ['%$query%'],
     );
+  }
+
+  Future<Map<String, dynamic>?> findRegisteredPatient(
+      {String? patientId, required String fullName}) async {
+    final db = await database;
+    List<Map<String, dynamic>> maps = [];
+
+    if (patientId != null && patientId.isNotEmpty) {
+      maps = await db.query(
+        tablePatients,
+        where: 'id = ?',
+        whereArgs: [patientId],
+        limit: 1,
+      );
+    }
+
+    if (maps.isEmpty && fullName.isNotEmpty) {
+      // If not found by ID, or ID was not provided, search by full name (exact match)
+      maps = await db.query(
+        tablePatients,
+        where: 'fullName = ?',
+        whereArgs: [fullName],
+        limit: 1,
+      );
+    }
+
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
   }
 
   // APPOINTMENT MANAGEMENT METHODS
@@ -1223,6 +1364,113 @@ To view live changes in DB Browser:
     });
   }
 
+  // REAL-TIME SYNC METHODS FOR PATIENT QUEUE AND INFO
+
+  /// Update patient queue from real-time sync
+  Future<void> updatePatientQueueFromSync(
+      Map<String, dynamic> queueData) async {
+    final db = await database;
+
+    try {
+      // Check if this is a patient queue/appointment update
+      if (queueData.containsKey('appointmentId')) {
+        await db.update(
+          tableAppointments,
+          queueData,
+          where: 'id = ?',
+          whereArgs: [queueData['appointmentId']],
+        );
+
+        // Log the sync update
+        await logUserActivity(
+          'SYNC_SYSTEM',
+          'Patient queue updated via real-time sync',
+          targetRecordId: queueData['appointmentId']?.toString(),
+          targetTable: tableAppointments,
+          details: 'Real-time sync update from another device',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating patient queue from sync: $e');
+      rethrow;
+    }
+  }
+
+  /// Update patient info from real-time sync
+  Future<void> updatePatientFromSync(Map<String, dynamic> patientData) async {
+    final db = await database;
+
+    try {
+      // Update patient information
+      await db.update(
+        tablePatients,
+        patientData,
+        where: 'id = ?',
+        whereArgs: [patientData['id']],
+      );
+
+      // Log the sync update
+      await logUserActivity(
+        'SYNC_SYSTEM',
+        'Patient information updated via real-time sync',
+        targetRecordId: patientData['id']?.toString(),
+        targetTable: tablePatients,
+        details: 'Real-time sync update from another device',
+      );
+    } catch (e) {
+      debugPrint('Error updating patient info from sync: $e');
+      rethrow;
+    }
+  }
+
+  /// Get current patient queue for real-time sharing
+  Future<List<Map<String, dynamic>>> getCurrentPatientQueue() async {
+    final db = await database;
+
+    final today = DateTime.now();
+    final todayStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+    return await db.rawQuery('''
+      SELECT a.*, p.firstName, p.lastName, p.contactNumber
+      FROM $tableAppointments a
+      LEFT JOIN $tablePatients p ON a.patientId = p.id
+      WHERE DATE(a.date) = ?
+      AND a.status != 'Cancelled'
+      ORDER BY a.time ASC
+    ''', [todayStr]);
+  }
+
+  /// Mark patient as real-time sync enabled
+  Future<void> enableRealTimeSync(String patientId) async {
+    final db = await database;
+
+    await db.update(
+      tablePatients,
+      {
+        'realTimeSyncEnabled': 1,
+        'lastSyncTime': DateTime.now().toIso8601String()
+      },
+      where: 'id = ?',
+      whereArgs: [patientId],
+    );
+  }
+
+  /// Check if patient needs real-time sync
+  Future<bool> needsRealTimeSync(String patientId) async {
+    final db = await database;
+
+    final result = await db.query(
+      tablePatients,
+      where:
+          'id = ? AND (realTimeSyncEnabled IS NULL OR realTimeSyncEnabled = 0)',
+      whereArgs: [patientId],
+      limit: 1,
+    );
+
+    return result.isNotEmpty;
+  }
+
   // Create indexes (helper method)
   Future<void> _createIndexes(Database db) async {
     // Indexes for users table
@@ -1303,6 +1551,222 @@ To view live changes in DB Browser:
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_sync_log_synced ON $tableSyncLog (synced)');
 
+    // Indexes for active_patient_queue table
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_status ON $tableActivePatientQueue (status)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_arrival_time ON $tableActivePatientQueue (arrivalTime)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_patient_id ON $tableActivePatientQueue (patientId)');
+
     print('DATABASE_HELPER: Ensured all indexes are created.');
+  }
+
+  // DAILY QUEUE REPORT METHODS
+
+  /// Save daily queue report to database
+  Future<String> saveDailyQueueReport(Map<String, dynamic> queueReport) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    final reportId = 'queue_report_${DateTime.now().millisecondsSinceEpoch}';
+
+    final reportData = {
+      'id': reportId,
+      'reportDate': queueReport['reportDate'],
+      'totalPatients': queueReport['totalPatients'],
+      'patientsServed': queueReport['patientsServed'],
+      'averageWaitTime': queueReport['averageWaitTime'],
+      'peakHour': queueReport['peakHour'],
+      'queueData': jsonEncode(queueReport['queueData']),
+      'generatedAt': now,
+      'exportedToPdf': 0,
+    };
+
+    await db.insert(tablePatientQueue, reportData);
+    await _logChange(tablePatientQueue, reportId, 'insert');
+
+    return reportId;
+  }
+
+  /// Get daily queue reports
+  Future<List<Map<String, dynamic>>> getDailyQueueReports(
+      {int limit = 30}) async {
+    final db = await database;
+
+    final results = await db.query(
+      tablePatientQueue,
+      orderBy: 'reportDate DESC',
+      limit: limit,
+    );
+
+    // Parse the queueData JSON back to objects
+    return results.map((report) {
+      final reportCopy = Map<String, dynamic>.from(report);
+      try {
+        reportCopy['queueData'] = jsonDecode(report['queueData'] as String);
+      } catch (e) {
+        reportCopy['queueData'] = [];
+      }
+      return reportCopy;
+    }).toList();
+  }
+
+  /// Get queue report by date
+  Future<Map<String, dynamic>?> getQueueReportByDate(String date) async {
+    final db = await database;
+
+    final results = await db.query(
+      tablePatientQueue,
+      where: 'reportDate = ?',
+      whereArgs: [date],
+      limit: 1,
+    );
+
+    if (results.isNotEmpty) {
+      final report = Map<String, dynamic>.from(results.first);
+      try {
+        report['queueData'] = jsonDecode(report['queueData'] as String);
+      } catch (e) {
+        report['queueData'] = [];
+      }
+      return report;
+    }
+
+    return null;
+  }
+
+  /// Mark queue report as exported to PDF
+  Future<void> markQueueReportAsExported(String reportId) async {
+    final db = await database;
+
+    await db.update(
+      tablePatientQueue,
+      {'exportedToPdf': 1},
+      where: 'id = ?',
+      whereArgs: [reportId],
+    );
+
+    await _logChange(tablePatientQueue, reportId, 'update');
+  }
+
+  /// Delete old queue reports (older than specified days)
+  Future<int> deleteOldQueueReports(int daysToKeep) async {
+    final db = await database;
+    final cutoffDate = DateTime.now().subtract(Duration(days: daysToKeep));
+    final cutoffDateStr = cutoffDate.toIso8601String().split('T')[0];
+
+    final result = await db.delete(
+      tablePatientQueue,
+      where: 'reportDate < ?',
+      whereArgs: [cutoffDateStr],
+    );
+
+    return result;
+  }
+
+  // ACTIVE PATIENT QUEUE METHODS
+
+  /// Adds a patient to the active queue.
+  Future<ActivePatientQueueItem> addToActiveQueue(
+      ActivePatientQueueItem item) async {
+    final db = await database;
+    await db.insert(tableActivePatientQueue, item.toJson());
+    await _logChange(tableActivePatientQueue, item.queueEntryId, 'insert');
+    return item;
+  }
+
+  /// Removes a patient from the active queue by their queueEntryId.
+  Future<int> removeFromActiveQueue(String queueEntryId) async {
+    final db = await database;
+    final result = await db.delete(
+      tableActivePatientQueue,
+      where: 'queueEntryId = ?',
+      whereArgs: [queueEntryId],
+    );
+    if (result > 0) {
+      await _logChange(tableActivePatientQueue, queueEntryId, 'delete');
+    }
+    return result;
+  }
+
+  /// Updates the status of a patient in the active queue.
+  Future<int> updateActiveQueueItemStatus(
+      String queueEntryId, String newStatus) async {
+    final db = await database;
+    final result = await db.update(
+      tableActivePatientQueue,
+      {'status': newStatus},
+      where: 'queueEntryId = ?',
+      whereArgs: [queueEntryId],
+    );
+    if (result > 0) {
+      await _logChange(tableActivePatientQueue, queueEntryId, 'update');
+    }
+    return result;
+  }
+
+  /// Updates an entire item in the active queue.
+  Future<int> updateActiveQueueItem(ActivePatientQueueItem item) async {
+    final db = await database;
+    final result = await db.update(
+      tableActivePatientQueue,
+      item.toJson(),
+      where: 'queueEntryId = ?',
+      whereArgs: [item.queueEntryId],
+    );
+    if (result > 0) {
+      await _logChange(tableActivePatientQueue, item.queueEntryId, 'update');
+    }
+    return result;
+  }
+
+  /// Gets the current active patient queue, ordered by arrival time.
+  /// Optionally filters by status(es).
+  Future<List<ActivePatientQueueItem>> getActiveQueue(
+      {List<String>? statuses}) async {
+    final db = await database;
+    String? whereClause;
+    List<dynamic>? whereArgs;
+
+    if (statuses != null && statuses.isNotEmpty) {
+      whereClause = 'status IN (${statuses.map((_) => '?').join(',')})';
+      whereArgs = statuses;
+    }
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      tableActivePatientQueue,
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'arrivalTime ASC',
+    );
+    return maps.map((map) => ActivePatientQueueItem.fromJson(map)).toList();
+  }
+
+  /// Gets a specific item from the active queue by its ID.
+  Future<ActivePatientQueueItem?> getActiveQueueItem(
+      String queueEntryId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      tableActivePatientQueue,
+      where: 'queueEntryId = ?',
+      whereArgs: [queueEntryId],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return ActivePatientQueueItem.fromJson(maps.first);
+    }
+    return null;
+  }
+
+  /// Clears all entries from the active_patient_queue table (e.g., at the end of a day).
+  Future<int> clearActiveQueue() async {
+    final db = await database;
+    final count = await db.delete(tableActivePatientQueue);
+    // Optionally log this as a bulk operation if needed, though _logChange is per-record.
+    // For simplicity, not logging each deletion during a clear.
+    print(
+        'DATABASE_HELPER: Cleared $count entries from $tableActivePatientQueue.');
+    return count;
   }
 }

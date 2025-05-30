@@ -124,25 +124,61 @@ class LanSyncService {
   // Set up database for sharing
   static Future<void> _setupDbForSharing() async {
     try {
-      // Get external directory
-      final externalDir = await getExternalStorageDirectory();
-      if (externalDir == null) {
-        throw Exception('External storage not available');
+      Directory targetDir;
+
+      // Platform-specific directory selection
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        // For desktop platforms, use documents directory
+        targetDir = await getApplicationDocumentsDirectory();
+      } else if (Platform.isAndroid) {
+        // For Android, try external storage first, fallback to documents
+        try {
+          final externalDir = await getExternalStorageDirectory();
+          targetDir = externalDir ?? await getApplicationDocumentsDirectory();
+        } catch (e) {
+          targetDir = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        // For other platforms (iOS), use documents directory
+        targetDir = await getApplicationDocumentsDirectory();
       }
 
       // Ensure the directory exists and is accessible
-      if (!await externalDir.exists()) {
-        await externalDir.create(recursive: true);
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
       }
 
-      // Path for the database
-      _dbPath = join(externalDir.path, 'patient_management.db');
-      _watchDir = externalDir;
+      // Path for the shared database
+      _dbPath = join(targetDir.path, 'patient_management_shared.db');
+      _watchDir = targetDir;
+
+      // Copy current database to shared location
+      await _copyDatabaseToSharedLocation();
 
       debugPrint('DB path for LAN sharing: $_dbPath');
     } catch (e) {
       debugPrint('Error setting up DB for sharing: $e');
       rethrow;
+    }
+  }
+
+  // Copy database to shared location
+  static Future<void> _copyDatabaseToSharedLocation() async {
+    if (_dbHelper == null) return;
+
+    try {
+      final dbPath = await _dbHelper!.currentDatabasePath;
+      if (dbPath != null && _dbPath != null) {
+        final sourceFile = File(dbPath);
+        final targetFile = File(_dbPath!);
+
+        if (await sourceFile.exists()) {
+          await sourceFile.copy(targetFile.path);
+          debugPrint('Database copied to shared location: $_dbPath');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error copying database to shared location: $e');
     }
   }
 
@@ -231,9 +267,7 @@ class LanSyncService {
             debugPrint(
                 'Blocked non-LAN request from: ${request.connectionInfo?.remoteAddress.address}');
             return;
-          }
-
-          // API endpoints
+          } // API endpoints
           if (request.method == 'GET' && request.uri.path == '/db') {
             // Require authentication for database access
             if (!_validateAuth(request)) {
@@ -257,6 +291,47 @@ class LanSyncService {
               request.response.write('Database file not found');
               await request.response.close();
             }
+          } else if (request.method == 'POST' && request.uri.path == '/sync') {
+            // Handle sync requests from other devices
+            if (!_validateAuth(request)) {
+              request.response.statusCode = HttpStatus.unauthorized;
+              request.response.headers.add('WWW-Authenticate', 'Bearer');
+              request.response.write('Authentication required');
+              await request.response.close();
+              return;
+            } // Handle sync data
+            final content = await utf8.decoder.bind(request).join();
+            final syncData = jsonDecode(content);
+
+            // Process sync request - for now, just acknowledge
+            request.response.headers.contentType =
+                ContentType('application', 'json');
+            request.response.write(jsonEncode({
+              'status': 'success',
+              'message': 'Sync request received',
+              'dataReceived': syncData.keys.toList(),
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+            await request.response.close();
+          } else if (request.method == 'GET' &&
+              request.uri.path == '/changes') {
+            // Get pending changes for sync
+            if (!_validateAuth(request)) {
+              request.response.statusCode = HttpStatus.unauthorized;
+              request.response.headers.add('WWW-Authenticate', 'Bearer');
+              request.response.write('Authentication required');
+              await request.response.close();
+              return;
+            }
+
+            final pendingChanges = await _dbHelper!.getPendingChanges();
+            request.response.headers.contentType =
+                ContentType('application', 'json');
+            request.response.write(jsonEncode({
+              'changes': pendingChanges,
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+            await request.response.close();
           } else if (request.method == 'GET' && request.uri.path == '/status') {
             // Return server status (no auth required for status check)
             request.response.headers.contentType =
@@ -496,5 +571,44 @@ class LanSyncService {
         debugPrint('Error updating live copy: $e');
       }
     });
+  }
+
+  // Add periodic database copy for live sharing
+  static void _startDatabaseSync() {
+    Timer.periodic(const Duration(seconds: 10), (_) async {
+      try {
+        // Copy the main database to the shared location for live updates
+        await _copyDatabaseToSharedLocation();
+      } catch (e) {
+        debugPrint('Error in periodic database sync: $e');
+      }
+    });
+  }
+
+  // Initialize LAN sharing with better error handling
+  static Future<bool> initializeLanSharing() async {
+    try {
+      if (_dbHelper == null) {
+        debugPrint('Database helper not initialized');
+        return false;
+      }
+
+      await _setupDbForSharing();
+      _startDatabaseSync();
+
+      // Auto-start LAN server if enabled
+      final prefs = await SharedPreferences.getInstance();
+      final lanEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
+
+      if (lanEnabled) {
+        final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
+        await startLanServer(port: port);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Failed to initialize LAN sharing: $e');
+      return false;
+    }
   }
 }

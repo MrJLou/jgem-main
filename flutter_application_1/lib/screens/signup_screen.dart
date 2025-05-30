@@ -38,6 +38,11 @@ class _SignUpScreenState extends State<SignUpScreen>
   int _selectedIndex = 1; // 0 for Sign In, 1 for Sign Up
   String? _errorMessage;
 
+  // For password strength indicator
+  double _passwordStrengthValue = 0.0;
+  Color _passwordStrengthColor = Colors.grey.shade300;
+  String _passwordStrengthText = "";
+
   final List<String> _securityQuestions = [
     'What was your first pet\'s name?',
     'What city were you born in?',
@@ -61,10 +66,76 @@ class _SignUpScreenState extends State<SignUpScreen>
       ),
     );
     _animationController.forward();
+    _passwordController.addListener(_onPasswordChanged);
+    _updatePasswordStrengthUi(
+        ""); // Initial call to set default state for indicator
+  }
+
+  void _onPasswordChanged() {
+    _updatePasswordStrengthUi(_passwordController.text);
+  }
+
+  void _updatePasswordStrengthUi(String password) {
+    if (password.isEmpty) {
+      setState(() {
+        _passwordStrengthValue = 0.0;
+        _passwordStrengthColor = Colors.grey.shade300;
+        _passwordStrengthText = "";
+      });
+      return;
+    }
+
+    int score = 0;
+    // Criterion 1: Length
+    if (password.length >= 12) {
+      score += 2;
+    } else if (password.length >= 8) {
+      score += 1;
+    }
+
+    // Criterion 2: Uppercase
+    if (RegExp(r'[A-Z]').hasMatch(password)) {
+      score++;
+    }
+    // Criterion 3: Lowercase
+    if (RegExp(r'[a-z]').hasMatch(password)) {
+      score++;
+    }
+    // Criterion 4: Number
+    if (RegExp(r'[0-9]').hasMatch(password)) {
+      score++;
+    }
+    // Criterion 5: Special Character
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) {
+      // Escaped '''
+      score++;
+    }
+
+    // Max score could be 6 (e.g. length > 12 counts as 2, plus 4 other criteria)
+    if (score <= 2) {
+      setState(() {
+        _passwordStrengthValue = 0.33;
+        _passwordStrengthColor = Colors.red;
+        _passwordStrengthText = "Weak";
+      });
+    } else if (score <= 4) {
+      setState(() {
+        _passwordStrengthValue = 0.66;
+        _passwordStrengthColor = Colors.yellow.shade700;
+        _passwordStrengthText = "Medium";
+      });
+    } else {
+      setState(() {
+        _passwordStrengthValue = 1.0;
+        _passwordStrengthColor = Colors.green;
+        _passwordStrengthText = "Strong";
+      });
+    }
   }
 
   @override
   void dispose() {
+    _passwordController.removeListener(_onPasswordChanged);
     _fullNameController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
@@ -389,6 +460,9 @@ class _SignUpScreenState extends State<SignUpScreen>
                                 },
                               ),
                               const SizedBox(height: 8),
+                              // PasswordValidator(controller: _passwordController), // Commented out due to unknown constructor
+                              const SizedBox(height: 8),
+                              _buildPasswordStrengthIndicator(),
                               const SizedBox(height: 16),
 
                               // Confirm Password
@@ -606,6 +680,34 @@ class _SignUpScreenState extends State<SignUpScreen>
     );
   }
 
+  Widget _buildPasswordStrengthIndicator() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_passwordController
+            .text.isNotEmpty) // Only show if password is not empty
+          Padding(
+            padding: const EdgeInsets.only(
+                top: 0.0, bottom: 4.0), // Reduced top padding
+            child: Text(
+              "Password Strength: $_passwordStrengthText",
+              style: TextStyle(
+                color: _passwordStrengthColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        LinearProgressIndicator(
+          value: _passwordStrengthValue,
+          backgroundColor: Colors.grey[300],
+          valueColor: AlwaysStoppedAnimation<Color>(_passwordStrengthColor),
+          minHeight: 6, // Slightly thicker bar
+        ),
+      ],
+    );
+  }
+
   Widget _buildSideNavItem({
     required IconData icon,
     required String label,
@@ -740,23 +842,24 @@ class _SignUpScreenState extends State<SignUpScreen>
             if (value == null || value.isEmpty) {
               return 'Please enter a password';
             }
-            // Password strength check (example)
-            if (value.length < 8) {
+            // Password strength check (example) - This validator is for form submission
+            // The visual cues are handled by PasswordValidator widget and strength bar
+            bool hasUppercase = value.contains(RegExp(r'[A-Z]'));
+            bool hasLowercase = value.contains(RegExp(r'[a-z]'));
+            bool hasDigits = value.contains(RegExp(r'[0-9]'));
+            bool hasSpecialCharacters = value
+                .contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')); // Escaped '''
+
+            if (value.length < 8)
               return 'Password must be at least 8 characters';
-            }
-            if (!value.contains(RegExp(r'[A-Z]'))) {
+            if (!hasUppercase)
               return 'Password must contain an uppercase letter';
-            }
-            if (!value.contains(RegExp(r'[a-z]'))) {
+            if (!hasLowercase)
               return 'Password must contain a lowercase letter';
-            }
-            if (!value.contains(RegExp(r'[0-9]'))) {
-              return 'Password must contain a number';
-            }
-            if (!value.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]' ''))) {
-              // Escaped '''
+            if (!hasDigits) return 'Password must contain a number';
+            if (!hasSpecialCharacters)
               return 'Password must contain a special character';
-            }
+
             return null;
           },
       style: TextStyle(color: Colors.grey[800]),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'add_to_queue_screen.dart';
 import 'remove_from_queue_screen.dart';
 import 'view_queue_screen.dart';
+import 'queue_reports_screen.dart';
+import '../../services/queue_service.dart';
 
 class PatientQueueHubScreen extends StatefulWidget {
   @override
@@ -9,7 +11,7 @@ class PatientQueueHubScreen extends StatefulWidget {
 }
 
 class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
-  List<Map<String, dynamic>> _queue = [];
+  final QueueService _queueService = QueueService();
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +38,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
             ),
             SizedBox(height: 5),
             Text(
-              'Manage patient queue and appointments',
+              'Manage patient queue and generate daily reports',
               style: TextStyle(color: Colors.grey[600]),
             ),
             SizedBox(height: 30),
@@ -46,27 +48,29 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                   _QueueCard(
                     icon: Icons.person_add,
                     title: 'Add to Queue',
-                    subtitle: 'Add new patients to the queue',
+                    subtitle: 'Add new patients to today\'s queue',
                     color: Colors.teal[700]!,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => AddToQueueScreen(queue: _queue),
+                        builder: (context) =>
+                            AddToQueueScreen(queueService: _queueService),
                       ),
-                    ),
+                    ).then((_) => setState(() {})),
                   ),
                   SizedBox(height: 20),
                   _QueueCard(
                     icon: Icons.person_remove,
                     title: 'Remove from Queue',
-                    subtitle: 'Remove patients from the queue',
+                    subtitle: 'Remove patients from today\'s queue',
                     color: Colors.teal[600]!,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RemoveFromQueueScreen(queue: _queue),
+                        builder: (context) =>
+                            RemoveFromQueueScreen(queueService: _queueService),
                       ),
-                    ),
+                    ).then((_) => setState(() {})),
                   ),
                   SizedBox(height: 20),
                   _QueueCard(
@@ -77,7 +81,21 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ViewQueueScreen(queue: _queue),
+                        builder: (context) =>
+                            ViewQueueScreen(queueService: _queueService),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  _QueueCard(
+                    icon: Icons.analytics,
+                    title: 'Queue Reports',
+                    subtitle: 'View daily reports and export as PDF',
+                    color: Colors.teal[400]!,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => QueueReportsScreen(),
                       ),
                     ),
                   ),

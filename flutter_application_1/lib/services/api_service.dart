@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:path/path.dart';
@@ -10,24 +8,19 @@ import '../models/user.dart';
 import '../models/patient.dart';
 import '../models/medical_record.dart';
 import '../services/auth_service.dart';
+import '../services/lan_sync_service.dart';
 
 class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
-  static String? _authToken;
-  static String? _currentUsername;
   static String? _currentUserRole;
 
   // Authentication Methods
   static Future<Map<String, dynamic>> login(
       String username, String password) async {
     try {
-      final auth = await _dbHelper.authenticateUser(username, password);
-
-      if (auth != null &&
+      final auth = await _dbHelper.authenticateUser(username, password);      if (auth != null &&
           auth['user'] != null &&
           auth['user']['role'] != null) {
-        _authToken = auth['token'];
-        _currentUsername = username;
         _currentUserRole = auth['user']['role'];
 
         // Save to SharedPreferences
@@ -104,10 +97,7 @@ class ApiService {
       throw Exception('Failed to retrieve user security information.');
     }
   }
-
   static Future<void> logout() async {
-    _authToken = null;
-    _currentUsername = null;
     _currentUserRole = null;
     await AuthService.clearCredentials();
   }
@@ -331,12 +321,20 @@ class ApiService {
     } catch (e) {
       throw Exception('Failed to get network sharing info: $e');
     }
-  }
+  } // Initialize database for LAN access - Cross-platform safe implementation
 
-  // Initialize database for LAN access - Cross-platform safe implementation
   static Future<void> initializeDatabaseForLan() async {
     try {
       await _dbHelper.database; // Ensure database is initialized
+
+      // Initialize LAN sync service
+      try {
+        await LanSyncService.initialize(_dbHelper);
+        print('LAN sync service initialized successfully');
+      } catch (e) {
+        print('LAN sync service initialization failed: $e');
+        // Continue execution even if this fails
+      }
 
       // Try to set up DB Browser view, but don't fail if it doesn't work
       try {

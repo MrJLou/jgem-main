@@ -48,13 +48,6 @@ class MaintenanceHubScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 20),
                   _buildMaintenanceCard(
-                    icon: Icons.settings_applications,
-                    title: 'System Settings',
-                    subtitle: 'Configure system preferences',
-                    color: Colors.teal[500]!,
-                  ),
-                  SizedBox(height: 20),
-                  _buildMaintenanceCard(
                     icon: Icons.update,
                     title: 'Updates',
                     subtitle: 'Check and install system updates',

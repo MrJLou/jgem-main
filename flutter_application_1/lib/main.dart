@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/real_time_sync_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/dashboard_overview_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
+import 'screens/lan_client_connection_screen.dart';
+import 'services/lan_connection_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 
@@ -23,6 +26,10 @@ void main() async {
   }
 
   await ApiService.initializeDatabaseForLan();
+
+  // Initialize real-time sync service for persistent connection
+  await RealTimeSyncService.initialize();
+
   runApp(const PatientRecordManagementApp());
 }
 
@@ -46,6 +53,8 @@ class PatientRecordManagementApp extends StatelessWidget {
             ), // Add route for DashboardScreen
         '/laboratory-hub': (context) =>
             LaboratoryHubScreen(), // Add route for LaboratoryHubScreen
+        '/lan-connection': (context) => const LanConnectionScreen(),
+        '/lan-client': (context) => const LanClientConnectionScreen(),
       },
       debugShowCheckedModeBanner: false,
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart';
+import 'package:flutter_application_1/screens/settings/system_settings_screen.dart'; // Import SystemSettingsScreen
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../models/appointment.dart';
@@ -9,7 +10,7 @@ import 'user_management_screen.dart';
 import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
 import 'laboratory/laboratory_hub_screen.dart';
-import 'patient/patient_queue_hub_screen.dart';
+import 'patient_queue/patient_queue_hub_screen.dart';
 import 'analytics/patient_analytics_screen.dart';
 import 'reports/report_hub_screen.dart'; // Import the ReportHubScreen
 import 'billing/billing_hub_screen.dart';
@@ -18,6 +19,7 @@ import 'maintenance/maintenance_hub_screen.dart';
 import 'help/help_screen.dart';
 import 'about_screen.dart'; // Assuming an AboutScreen exists or will be created
 import 'logs/user_activity_log_screen.dart'; // Corrected import path
+import 'lan_client_connection_screen.dart'; // Import LAN client connection screen
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
@@ -110,10 +112,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'medtech': [
-      // MedTech has same access as Admin based on flowcharts
-      'Registration', 'Maintenance', 'Search', 'Patient Laboratory Histories',
-      'Patient Queue', 'Appointment Schedule', 'Patient Analytics', 'Report',
-      'Payment', 'Billing', 'Help', 'About'
+      'Registration',
+      'Search',
+      'Patient Laboratory Histories',
+      'Patient Queue',
+      'Appointment Schedule',
+      'Patient Analytics',
+      'Report',
+      'Payment',
+      'Billing',
+      'Help',
+      'About'
     ],
     'doctor': [
       'Search',
@@ -128,10 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     // Default to a restricted view or handle as an error if role is unexpected
-    'patient': [
-      // Example: Patients might only see appointments and their profile
-      'Appointment Schedule', 'Help', 'About'
-    ]
+    'patient': ['Appointment Schedule', 'Help', 'About']
   };
 
   @override
@@ -515,21 +521,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text('Dashboard - ${widget.accessLevel}'),
         backgroundColor: Colors.teal[700],
         actions: [
-          IconButton(
-            icon: const Icon(Icons.history, color: Colors.white),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const UserActivityLogScreen()),
-              );
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.settings, color: Colors.white),
+            tooltip: 'Settings & Actions',
+            onSelected: (String result) {
+              switch (result) {
+                case 'activity_log':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const UserActivityLogScreen()),
+                  );
+                  break;
+                case 'lan_connection':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            const LanClientConnectionScreen()),
+                  );
+                  break;
+                case 'system_settings':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const SystemSettingsScreen()),
+                  );
+                  break;
+                case 'logout':
+                  _logout();
+                  break;
+              }
             },
-            tooltip: 'View Activity Logs',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _logout,
-            tooltip: 'Logout',
+            itemBuilder: (BuildContext context) {
+              List<PopupMenuEntry<String>> items = [];
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'activity_log',
+                  child: ListTile(
+                      leading: Icon(Icons.history),
+                      title: Text('Activity Log')),
+                ),
+              );
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'lan_connection',
+                  child: ListTile(
+                      leading: Icon(Icons.wifi), title: Text('LAN Connection')),
+                ),
+              );
+
+              // System Settings for all roles
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'system_settings',
+                  child: ListTile(
+                      leading: Icon(Icons.settings_applications),
+                      title: Text('System Settings')),
+                ),
+              );
+
+              items.add(const PopupMenuDivider());
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: ListTile(
+                      leading: Icon(Icons.logout), title: Text('Logout')),
+                ),
+              );
+              return items;
+            },
           ),
         ],
       ),
