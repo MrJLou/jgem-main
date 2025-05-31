@@ -67,6 +67,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'screen': UserManagementScreen(),
       'icon': Icons.manage_accounts
     },
+    'User Management': {
+      'screen': UserManagementScreen(),
+      'icon': Icons.manage_accounts
+    },
     'Maintenance': {
       'screen': MaintenanceHubScreen(),
       'icon': Icons.build_circle_outlined
@@ -104,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final Map<String, List<String>> _rolePermissions = {
     'admin': [
       'Registration',
+      'User Management',
       'User Management',
       'Maintenance',
       'Search',
