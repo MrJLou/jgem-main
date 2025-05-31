@@ -1,12 +1,13 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'database_helper.dart';
 import '../models/active_patient_queue_item.dart';
-import '../models/user.dart';
 import 'auth_service.dart';
+import 'dart:math';
+import 'dart:convert';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -19,7 +20,7 @@ class QueueService {
   /// Get current active queue items from the database.
   /// By default, fetches 'waiting' and 'in_consultation' statuses.
   Future<List<ActivePatientQueueItem>> getActiveQueueItems(
-      {List<String> statuses = const ['waiting', 'in_consultation']}) async {
+      {List<String>? statuses}) async {
     return await _dbHelper.getActiveQueue(statuses: statuses);
   }
 
@@ -29,7 +30,9 @@ class QueueService {
     final currentUserId = await _authService.getCurrentUserId();
     final now = DateTime.now();
     String queueEntryId = patientData['queueId']?.toString() ??
-        'qentry-${now.millisecondsSinceEpoch}';
+        'qentry-${now.millisecondsSinceEpoch}-${Random().nextInt(9999)}';
+
+    final nextQueueNumber = await _getNextQueueNumber();
 
     final newItem = ActivePatientQueueItem(
       queueEntryId: queueEntryId,
@@ -38,11 +41,12 @@ class QueueService {
       arrivalTime:
           DateTime.tryParse(patientData['arrivalTime']?.toString() ?? '') ??
               now,
+      queueNumber: nextQueueNumber,
       gender: patientData['gender'] as String?,
       age: patientData['age'] is int
           ? patientData['age']
           : (patientData['age'] is String
-              ? int.tryParse(patientData['age'])
+              ? int.tryParse(patientData['age']!)
               : null),
       conditionOrPurpose: patientData['condition'] as String?,
       status: patientData['status']?.toString() ?? 'waiting',
@@ -52,6 +56,26 @@ class QueueService {
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
+  }
+
+  /// Get the next queue number for today
+  Future<int> _getNextQueueNumber() async {
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59);
+
+    final todaysQueue =
+        await _dbHelper.getActiveQueueByDateRange(startOfDay, endOfDay);
+
+    if (todaysQueue.isEmpty) {
+      return 1;
+    }
+
+    final maxQueueNumber = todaysQueue
+        .map((item) => item.queueNumber ?? 0)
+        .reduce((a, b) => a > b ? a : b);
+
+    return maxQueueNumber + 1;
   }
 
   /// Remove patient from active queue (mark as 'removed').
@@ -90,17 +114,16 @@ class QueueService {
   /// Search patients in active queue by name or patient ID (partial matches).
   Future<List<ActivePatientQueueItem>> searchPatientsInQueue(
       String searchTerm) async {
-    final activeQueue = await getActiveQueueItems(
-        statuses: ['waiting', 'in_consultation', 'served', 'removed']);
+    final allQueueItems = await getActiveQueueItems(statuses: null);
     if (searchTerm.trim().isEmpty) {
-      return activeQueue
+      return allQueueItems
           .where((item) =>
               item.status == 'waiting' || item.status == 'in_consultation')
           .toList();
     }
     final lowerSearchTerm = searchTerm.toLowerCase().trim();
 
-    return activeQueue.where((item) {
+    return allQueueItems.where((item) {
       final nameMatches =
           item.patientName.toLowerCase().contains(lowerSearchTerm);
       final idMatches =
@@ -112,10 +135,19 @@ class QueueService {
   /// Mark patient as served in the active queue.
   Future<bool> markPatientAsServed(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null) return false;
+    if (item == null || item.status == 'removed') return false;
 
-    final updatedItem =
-        item.copyWith(status: 'served', servedAt: () => DateTime.now());
+    final now = DateTime.now();
+    ActivePatientQueueItem updatedItem;
+
+    if (item.consultationStartedAt == null) {
+      updatedItem = item.copyWith(
+          status: 'served',
+          servedAt: () => now,
+          consultationStartedAt: () => now);
+    } else {
+      updatedItem = item.copyWith(status: 'served', servedAt: () => now);
+    }
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
   }
@@ -123,223 +155,277 @@ class QueueService {
   /// Mark patient as 'in_consultation' in the active queue.
   Future<bool> markPatientAsInConsultation(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null) return false;
+    if (item == null || item.status == 'removed' || item.status == 'served')
+      return false;
 
     final updatedItem = item.copyWith(
-        status: 'in_consultation', consultationStartedAt: () => DateTime.now());
+        status: 'in_consultation',
+        consultationStartedAt: () => DateTime.now(),
+        servedAt: () => null);
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
   }
 
-  /// Generate daily queue report from the active queue data for today.
-  Future<Map<String, dynamic>> generateDailyReport() async {
-    final allTodayQueueItems = await _dbHelper.getActiveQueue(
-        statuses: ['waiting', 'in_consultation', 'served', 'removed']);
+  /// Update patient status in the active queue.
+  /// This is a more generic update method.
+  Future<bool> updatePatientStatus(
+      String queueEntryId, String newStatus) async {
+    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+    if (item == null) return false;
 
-    final totalPatients = allTodayQueueItems.length;
-    final servedPatientsCount =
-        allTodayQueueItems.where((p) => p.status == 'served').length;
-    final waitingPatientsCount =
-        allTodayQueueItems.where((p) => p.status == 'waiting').length;
-    final removedPatientsCount =
-        allTodayQueueItems.where((p) => p.status == 'removed').length;
-    final inConsultationPatientsCount =
-        allTodayQueueItems.where((p) => p.status == 'in_consultation').length;
+    ActivePatientQueueItem updatedItem;
+    final now = DateTime.now();
 
-    String averageWaitTime = await _calculateAverageWaitTime(allTodayQueueItems
-        .where((p) => p.status == 'served' && p.servedAt != null)
-        .toList());
-    String peakHour = _findPeakHour(allTodayQueueItems);
+    switch (newStatus.toLowerCase()) {
+      case 'waiting':
+        updatedItem = item.copyWith(
+            status: 'waiting',
+            consultationStartedAt: () => null,
+            servedAt: () => null,
+            removedAt: () => null);
+        break;
+      case 'in_consultation':
+        if (item.status == 'served' || item.status == 'removed') return false;
+        updatedItem = item.copyWith(
+            status: 'in_consultation',
+            consultationStartedAt: () => item.consultationStartedAt ?? now,
+            servedAt: () => null);
+        break;
+      case 'served':
+        if (item.status == 'removed') return false;
+        updatedItem = item.copyWith(
+            status: 'served',
+            servedAt: () => now,
+            consultationStartedAt: () => item.consultationStartedAt ?? now);
+        break;
+      case 'removed':
+        updatedItem = item.copyWith(status: 'removed', removedAt: () => now);
+        break;
+      default:
+        updatedItem = item.copyWith(status: newStatus);
+    }
 
-    final queueDataForReport =
-        allTodayQueueItems.map((item) => item.toJson()).toList();
-
-    return {
-      'reportDate': DateTime.now().toIso8601String().split('T')[0],
-      'totalPatients': totalPatients,
-      'patientsServed': servedPatientsCount,
-      'patientsWaiting': waitingPatientsCount,
-      'patientsInConsultation': inConsultationPatientsCount,
-      'patientsRemoved': removedPatientsCount,
-      'averageWaitTime': averageWaitTime,
-      'peakHour': peakHour,
-      'queueData': queueDataForReport,
-      'generatedAt': DateTime.now().toIso8601String(),
-    };
+    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+    return result > 0;
   }
 
-  /// Save daily report to database (this uses the patient_queue table for historical reports).
-  Future<String> saveDailyReportToDb({Map<String, dynamic>? reportData}) async {
-    final report = reportData ?? await generateDailyReport();
-    return await _dbHelper.saveDailyQueueReport(report);
+  /// Mark patient as ongoing (in consultation).
+  Future<bool> markPatientAsOngoing(String queueEntryId) async {
+    return await updatePatientStatus(queueEntryId, 'in_consultation');
   }
 
-  /// Clears the active patient queue. Typically done at the end of the day.
-  Future<int> clearTodaysActiveQueue() async {
-    return await _dbHelper.clearActiveQueue();
+  /// Mark patient as done.
+  Future<bool> markPatientAsDone(String queueEntryId) async {
+    return await updatePatientStatus(queueEntryId, 'done');
   }
 
-  // --- Helper methods for report generation (can be adapted) ---
+  /// Generate daily queue report from the active queue data for a specific date.
+  /// The report will reflect the state of the queue *at the time of generation* for that day.
+  Future<Map<String, dynamic>> generateDailyReport(
+      {DateTime? reportDate}) async {
+    final dateToReport = reportDate ?? DateTime.now();
+    final startOfDay =
+        DateTime(dateToReport.year, dateToReport.month, dateToReport.day);
+    final endOfDay = DateTime(dateToReport.year, dateToReport.month,
+        dateToReport.day, 23, 59, 59, 999);
 
-  Future<String> _calculateAverageWaitTime(
-      List<ActivePatientQueueItem> servedItemsWithTimestamp) async {
-    if (servedItemsWithTimestamp.isEmpty) return 'N/A';
+    List<ActivePatientQueueItem> reportItems;
+    // Always fetch from the DB for the specified date range to ensure accuracy for past dates
+    reportItems =
+        await _dbHelper.getActiveQueueByDateRange(startOfDay, endOfDay);
 
-    double totalWaitSeconds = 0;
+    final totalProcessed = reportItems.length;
+    final servedPatients =
+        reportItems.where((p) => p.status == 'served').toList();
+    final servedCount = servedPatients.length;
+    final removedCount = reportItems.where((p) => p.status == 'removed').length;
 
-    for (var item in servedItemsWithTimestamp) {
-      if (item.servedAt != null) {
-        totalWaitSeconds +=
-            item.servedAt!.difference(item.arrivalTime).inSeconds;
+    String averageWaitTimeDisplay = "N/A";
+    if (servedPatients.isNotEmpty) {
+      List<Duration> waitTimes = [];
+      for (var p in servedPatients) {
+        DateTime? effectiveStartTime = p.consultationStartedAt ?? p.servedAt;
+        if (p.arrivalTime != null && effectiveStartTime != null) {
+          if (effectiveStartTime.isAfter(p.arrivalTime)) {
+            waitTimes.add(effectiveStartTime.difference(p.arrivalTime));
+          }
+        }
+      }
+      if (waitTimes.isNotEmpty) {
+        Duration totalWait = waitTimes.reduce((a, b) => a + b);
+        Duration avgWait = Duration(
+            microseconds: totalWait.inMicroseconds ~/ waitTimes.length);
+        averageWaitTimeDisplay = _formatDuration(avgWait);
       }
     }
 
-    if (servedItemsWithTimestamp.isEmpty)
-      return 'N/A (No fully served patients with timestamps)';
+    String peakHour =
+        _findPeakHour(reportItems.map((item) => item.arrivalTime).toList());
 
-    final averageSeconds = totalWaitSeconds / servedItemsWithTimestamp.length;
-    final minutes = (averageSeconds / 60).floor();
-    final seconds = (averageSeconds % 60).round();
-    return '${minutes}m ${seconds}s';
+    final report = {
+      'reportDate': DateFormat('yyyy-MM-dd').format(dateToReport),
+      'totalPatientsInQueue': totalProcessed,
+      'patientsServed': servedCount,
+      'patientsRemoved': removedCount,
+      'averageWaitTimeMinutes': averageWaitTimeDisplay,
+      'peakHour': peakHour,
+      'queueData': reportItems.map((item) => item.toJson()).toList(),
+      'generatedAt': DateTime.now().toIso8601String(),
+    };
+    return report;
   }
 
-  String _findPeakHour(List<ActivePatientQueueItem> items) {
-    if (items.isEmpty) return 'N/A';
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    if (duration.inHours > 0) {
+      return "${duration.inHours}h ${twoDigitMinutes}m";
+    } else {
+      return "${twoDigitMinutes}m";
+    }
+  }
+
+  String _findPeakHour(List<DateTime> arrivalTimes) {
+    if (arrivalTimes.isEmpty) return "N/A";
     Map<int, int> hourCounts = {};
-    for (var item in items) {
-      final hour = item.arrivalTime.hour;
-      hourCounts[hour] = (hourCounts[hour] ?? 0) + 1;
+    for (var time in arrivalTimes) {
+      hourCounts.update(time.hour, (value) => value + 1, ifAbsent: () => 1);
     }
-    if (hourCounts.isEmpty) return 'N/A';
-    final peakHourEntry =
-        hourCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
-    final peakHour = peakHourEntry.key;
-    return '${peakHour.toString().padLeft(2, '0')}:00 - ${(peakHour + 1).toString().padLeft(2, '0')}:00 (${peakHourEntry.value} entries)';
+    if (hourCounts.isEmpty) return "N/A";
+    int peakHour =
+        hourCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+    String amPmPeak = DateFormat('ha').format(DateTime(2000, 1, 1, peakHour));
+    String amPmNext =
+        DateFormat('ha').format(DateTime(2000, 1, 1, peakHour + 1));
+    return "$amPmPeak - $amPmNext";
   }
 
-  String _formatDateTime(String? isoString) {
-    if (isoString == null || isoString.isEmpty) return 'N/A';
-    try {
-      final dt = DateTime.parse(isoString);
-      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return isoString;
-    }
+  /// Save daily report to database (this uses the patient_queue table for historical reports).
+  Future<String> saveDailyReportToDb(
+      {required Map<String, dynamic> reportData}) async {
+    return _dbHelper.saveDailyQueueReport(reportData);
+  }
+
+  /// Clears the active patient queue. Typically done at the end of the day.
+  /// IMPORTANT: This should be called with caution, usually as part of an end-of-day process.
+  Future<int> clearTodaysActiveQueue() async {
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    // No endOfDay needed, clear all for today based on arrivalTime being on this date
+    return await _dbHelper.deleteActiveQueueItemsByDate(startOfDay);
   }
 
   /// Export daily report as PDF. This part largely remains the same,
   /// but it will use the data from `generateDailyReport`.
-  Future<String> exportDailyReportToPdf(
-      Map<String, dynamic> reportDataToExport) async {
-    final report = reportDataToExport;
-
+  Future<File> exportDailyReportToPdf(Map<String, dynamic> reportData) async {
     final pdf = pw.Document();
 
-    List<Map<String, dynamic>> queueDetailsMap =
-        List<Map<String, dynamic>>.from(report['queueData'] ?? []);
+    // Define styles
+    final estiloTitulo = pw.TextStyle(
+        fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.teal700);
+    final estiloSubtitulo = pw.TextStyle(
+        fontSize: 16,
+        fontWeight: pw.FontWeight.bold,
+        color: PdfColors.blueGrey800);
+    final estiloTexto = pw.TextStyle(fontSize: 11, color: PdfColors.black);
+    final estiloValor = pw.TextStyle(
+        fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black);
+
+    final String reportTitle =
+        'Daily Queue Report - ${reportData['reportDate']}';
+    final DateTime generatedAtTime = DateTime.tryParse(
+            reportData['generatedAt'] ?? DateTime.now().toIso8601String()) ??
+        DateTime.now();
+    final String formattedGeneratedAt =
+        DateFormat('yyyy-MM-dd HH:mm').format(generatedAtTime);
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        build: (context) => [
-          pw.Header(
-            level: 0,
-            child: pw.Text(
-              'Daily Queue Report',
-              style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
-            ),
-          ),
-          pw.SizedBox(height: 20),
-          pw.Container(
-            padding: const pw.EdgeInsets.all(16),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(),
-              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Report Date: ${report['reportDate']}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                    'Generated At: ${_formatDateTime(report['generatedAt'])}'),
-                pw.SizedBox(height: 8),
-                pw.Text(
-                    'Total Patients in Queue Today: ${report['totalPatients']}'),
-                pw.Text('Patients Served: ${report['patientsServed']}'),
-                pw.Text(
-                    'Patients Currently Waiting: ${report['patientsWaiting']}'),
-                pw.Text(
-                    'Patients In Consultation: ${report['patientsInConsultation']}'),
-                pw.Text(
-                    'Patients Removed from Queue: ${report['patientsRemoved']}'),
-                pw.Text(
-                    'Average Wait Time (Served): ${report['averageWaitTime']}'),
-                pw.Text('Peak Hour: ${report['peakHour']}'),
-              ],
-            ),
-          ),
-          pw.SizedBox(height: 20),
-          pw.Text('Queue Entry Details:',
-              style:
-                  pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 10),
-          pw.TableHelper.fromTextArray(
-            headers: [
-              'Name',
-              'Patient ID',
-              'Arrival',
-              'Condition',
-              'Status',
-              'Added By',
-              'Served At'
-            ],
-            data: queueDetailsMap.map((item) {
-              return [
-                item['patientName'] ?? 'N/A',
-                item['patientId'] ?? 'N/A',
-                _formatDateTime(item['arrivalTime'] ?? ''),
-                item['conditionOrPurpose'] ?? 'N/A',
-                item['status'] ?? 'N/A',
-                item['addedByUserId'] ?? 'System',
-                _formatDateTime(item['servedAt']),
-              ];
-            }).toList(),
-            border: pw.TableBorder.all(),
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            cellAlignment: pw.Alignment.centerLeft,
-            cellStyle: const pw.TextStyle(fontSize: 9),
-            headerDecoration: pw.BoxDecoration(color: PdfColors.grey300),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(2.2),
-              1: const pw.FlexColumnWidth(1.3),
-              2: const pw.FlexColumnWidth(1.8),
-              3: const pw.FlexColumnWidth(2.2),
-              4: const pw.FlexColumnWidth(1.3),
-              5: const pw.FlexColumnWidth(1.3),
-              6: const pw.FlexColumnWidth(1.8),
-            },
-          ),
-        ],
+        build: (pw.Context context) {
+          List<pw.Widget> content = [
+            pw.Header(
+                level: 0, child: pw.Text(reportTitle, style: estiloTitulo)),
+            pw.SizedBox(height: 20),
+            pw.Text('Report Generation Time: $formattedGeneratedAt',
+                style: estiloTexto.copyWith(
+                    fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
+            pw.Divider(thickness: 0.5, color: PdfColors.grey400),
+            pw.SizedBox(height: 15),
+            pw.Text('Summary Statistics:', style: estiloSubtitulo),
+            pw.SizedBox(height: 10),
+            _buildPdfStatRow(
+                'Total Patients Processed:',
+                '${reportData['totalPatientsInQueue'] ?? reportData['totalPatients'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Patients Served:',
+                '${reportData['patientsServed'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Patients Removed from Queue:',
+                '${reportData['patientsRemoved'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Average Wait Time (Served):',
+                '${reportData['averageWaitTimeMinutes'] ?? reportData['averageWaitTime'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow('Peak Hour:', '${reportData['peakHour'] ?? 'N/A'}',
+                estiloTexto, estiloValor),
+            pw.SizedBox(height: 20),
+          ];
+          return content;
+        },
       ),
     );
 
-    final outputDir = await getApplicationDocumentsDirectory();
+    // Updated directory path
+    final String dirPath =
+        r'C:\Users\jesie\Documents\jgem-softeng\jgem-main\Daily Reports';
+    final Directory dailyReportDir = Directory(dirPath);
+
+    // Create the directory if it doesn't exist
+    if (!await dailyReportDir.exists()) {
+      await dailyReportDir.create(recursive: true);
+    }
+
+    final String fileName =
+        'daily_queue_report_${reportData['reportDate']}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final String filePath =
-        '${outputDir.path}/daily_queue_report_${report['reportDate']}.pdf';
+        '${dailyReportDir.path}${Platform.pathSeparator}$fileName';
+
     final file = File(filePath);
     await file.writeAsBytes(await pdf.save());
-
-    return filePath;
+    print('PDF Report saved to $filePath');
+    return file;
   }
 }
 
-// Example of how you might fetch User for addedBy display name (conceptual)
-// Future<String> _getUserFullName(String? userId) async {
-//   if (userId == null) return 'System/N/A';
-//   // Assuming you have a method in DatabaseHelper or AuthService to get user by ID
-//   final user = await DatabaseHelper().getUserById(userId); // Fictional method
-//   return user?.fullName ?? userId; // Fallback to ID if name not found
-// }
+// Helper to ensure ValueGetter<T?>? parameters in copyWith are handled.
+// Not directly used in the provided snippet but good for model classes.
+T? _copyWith<T>(T? value, T Function()? getter) {
+  if (getter != null) {
+    return getter();
+  }
+  return value;
+}
+
+// Helper for PDF stat rows, if not already present
+pw.Widget _buildPdfStatRow(String label, String value, pw.TextStyle labelStyle,
+    pw.TextStyle valueStyle) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
+    child: pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(label, style: labelStyle),
+        pw.Text(value, style: valueStyle),
+      ],
+    ),
+  );
+}

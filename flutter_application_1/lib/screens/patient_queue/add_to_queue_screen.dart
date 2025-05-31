@@ -213,168 +213,214 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         backgroundColor: Colors.teal[700],
         elevation: 4,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'Add Patient to Today\'s Queue',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal[800]),
-              ),
-              const SizedBox(height: 20),
-              Card(
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+      body: Padding(
+        // Added overall padding for the Row
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Left Pane: Input Form
+            Expanded(
+              flex: 1, // Adjust flex as needed, e.g., 1 for 50% or 2 for 66%
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(
+                    right: 8.0), // Add some space between panes
+                child: Form(
+                  key: _formKey,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text('Patient Details (Must be a Registered Patient)',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.teal[700])),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _patientNameController,
-                        decoration: const InputDecoration(
-                            labelText: 'Patient Name (Registered) *',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.person)),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Patient name is required'
-                            : null,
+                      Text(
+                        'Add Patient to Today\'s Queue',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal[800]),
                       ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _patientIdController,
-                        decoration: const InputDecoration(
-                            labelText: 'Patient ID (Registered - Optional)',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.badge),
-                            hintText: 'Enter patient ID if known'),
+                      const SizedBox(height: 20),
+                      Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  'Patient Details (Must be a Registered Patient)',
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.teal[700])),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _patientNameController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Patient Name (Registered) *',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.person)),
+                                validator: (value) =>
+                                    value == null || value.isEmpty
+                                        ? 'Patient name is required'
+                                        : null,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _patientIdController,
+                                decoration: const InputDecoration(
+                                    labelText:
+                                        'Patient ID (Registered - Optional)',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.badge),
+                                    hintText: 'Enter patient ID if known'),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _ageController,
+                                      keyboardType: TextInputType.number,
+                                      enabled:
+                                          false, // Age will be auto-filled or from manual override if no DB match
+                                      decoration: const InputDecoration(
+                                          labelText: 'Age (from DB)',
+                                          border: OutlineInputBorder(),
+                                          prefixIcon: Icon(Icons.cake)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _genderController,
+                                      enabled:
+                                          false, // Gender will be auto-filled or from manual override if no DB match
+                                      decoration: const InputDecoration(
+                                          labelText: 'Gender (from DB)',
+                                          border: OutlineInputBorder(),
+                                          prefixIcon:
+                                              Icon(Icons.person_outline)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _conditionController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Condition/Purpose of Visit',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.medical_services),
+                                    hintText:
+                                        'Enter medical condition or reason for visit'),
+                                maxLines: 2,
+                              ),
+                            ],
+                          ), // End child column
+                        ), // End Padding
+                      ), // End Card
+                      const SizedBox(height: 30),
+                      ElevatedButton.icon(
+                        icon: _isAddingToQueue
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ))
+                            : Icon(Icons.person_add_alt_1),
+                        label: Text(
+                            _isAddingToQueue
+                                ? 'Verifying & Adding...'
+                                : 'Verify & Add to Queue',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
+                        onPressed: _isAddingToQueue ? null : _addPatientToQueue,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 32, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _ageController,
-                              keyboardType: TextInputType.number,
-                              enabled:
-                                  false, // Age will be auto-filled or from manual override if no DB match
-                              decoration: const InputDecoration(
-                                  labelText: 'Age (from DB)',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.cake)),
+                      const SizedBox(height: 20),
+                      StreamBuilder<List<ActivePatientQueueItem>>(
+                        stream: Stream.periodic(const Duration(seconds: 5))
+                            .asyncMap((_) => widget.queueService
+                                .getActiveQueueItems(
+                                    statuses: ['waiting', 'in_consultation'])),
+                        initialData: [],
+                        builder: (context, snapshot) {
+                          int queueSize = 0;
+                          if (snapshot.hasData) {
+                            queueSize = snapshot.data!.length;
+                          }
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                                color: Colors.teal[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.teal[200]!)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.info_outline,
+                                    color: Colors.teal[700]),
+                                const SizedBox(width: 8),
+                                Text(
+                                    'Current Active Queue (Waiting/Consult): $queueSize patients',
+                                    style: TextStyle(
+                                        color: Colors.teal[700],
+                                        fontWeight: FontWeight.w500)),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _genderController,
-                              enabled:
-                                  false, // Gender will be auto-filled or from manual override if no DB match
-                              decoration: const InputDecoration(
-                                  labelText: 'Gender (from DB)',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.person_outline)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _conditionController,
-                        decoration: const InputDecoration(
-                            labelText: 'Condition/Purpose of Visit',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.medical_services),
-                            hintText:
-                                'Enter medical condition or reason for visit'),
-                        maxLines: 2,
+                          );
+                        },
                       ),
                     ],
-                  ), // End child column
-                ), // End Padding
-              ), // End Card
-              const SizedBox(height: 30),
-              ElevatedButton.icon(
-                icon: _isAddingToQueue
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ))
-                    : Icon(Icons.person_add_alt_1),
-                label: Text(
-                    _isAddingToQueue
-                        ? 'Verifying & Adding...'
-                        : 'Verify & Add to Queue',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white)),
-                onPressed: _isAddingToQueue ? null : _addPatientToQueue,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal[700],
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
-              StreamBuilder<List<ActivePatientQueueItem>>(
-                stream: Stream.periodic(const Duration(seconds: 5)).asyncMap(
-                    (_) => widget.queueService.getActiveQueueItems(
-                        statuses: ['waiting', 'in_consultation'])),
-                initialData: [],
-                builder: (context, snapshot) {
-                  int queueSize = 0;
-                  if (snapshot.hasData) {
-                    queueSize = snapshot.data!.length;
-                  }
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                        color: Colors.teal[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.teal[200]!)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.teal[700]),
-                        const SizedBox(width: 8),
-                        Text(
-                            'Current Active Queue (Waiting/Consult): $queueSize patients',
-                            style: TextStyle(
-                                color: Colors.teal[700],
-                                fontWeight: FontWeight.w500)),
-                      ],
+            ),
+
+            // Right Pane: Live Queue Table
+            Expanded(
+              flex: 1, // Adjust flex as needed
+              child: Padding(
+                padding: const EdgeInsets.only(
+                    left: 8.0), // Add some space between panes
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('Live Queue Status',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal[800])),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      // Make the table take available vertical space
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border:
+                              Border.all(color: Colors.teal[300]!, width: 1.5),
+                          borderRadius: BorderRadius.circular(12.0),
+                          color: Colors.white, // Background for the table area
+                        ),
+                        padding: const EdgeInsets.all(
+                            8.0), // Padding inside the border
+                        child: _buildQueueTable(),
+                      ),
                     ),
-                  );
-                },
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-              Text('Live Queue Status',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800])),
-              const SizedBox(height: 10),
-              _buildQueueTable(),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -403,14 +449,16 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         return Column(
           children: [
             _buildQueueTableHeader(),
-            ListView.builder(
-              shrinkWrap: true, // Important for ListView inside Column
-              physics:
-                  const NeverScrollableScrollPhysics(), // Disable scrolling for inner ListView
-              itemCount: queue.length,
-              itemBuilder: (context, index) {
-                return _buildQueueTableRow(queue[index]);
-              },
+            Expanded(
+              // Allow ListView to scroll within its parent Column/Container
+              child: ListView.builder(
+                // shrinkWrap: true, // Not needed if parent is Expanded
+                // physics: const NeverScrollableScrollPhysics(), // Not needed if parent is Expanded
+                itemCount: queue.length,
+                itemBuilder: (context, index) {
+                  return _buildQueueTableRow(queue[index]);
+                },
+              ),
             ),
           ],
         );
@@ -419,18 +467,19 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Widget _buildQueueTableHeader() {
-    final headers = ['Name', 'Patient ID', 'Arrival', 'Status'];
+    final headers = ['Queue No.', 'Name', 'Patient ID', 'Arrival', 'Status'];
     return Container(
-      color: Colors.teal[600],
+      color: Colors.teal[600], // Header background
+      // Apply rounded corners only to top-left and top-right if inside the bordered container
+      // Or remove this specific background if the outer container's border is enough.
+      // For simplicity, keeping it as is, but for perfect clipping, might need ClipRRect.
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Row(
         children: headers.map((text) {
           return Expanded(
-            flex: (text == 'Name' || text == 'Patient ID')
-                ? 2
-                : 1, // Give more space to Name/ID
+            flex: (text == 'Name') ? 2 : (text == 'Patient ID' ? 2 : 1),
             child: Text(text,
-                style: TextStyle(
+                style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 14),
@@ -445,29 +494,42 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      margin: const EdgeInsets.symmetric(vertical: 1), // Reduced margin
+      padding: const EdgeInsets.symmetric(
+          vertical: 8, horizontal: 8), // Reduced padding
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+        color: Colors.white, // Row background
+        border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200)), // Lighter border
       ),
       child: Row(
         children: [
           Expanded(
-              flex: 2,
-              child: Text(item.patientName, textAlign: TextAlign.center)),
+              flex: 1,
+              child: Text(item.queueNumber.toString(),
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 13))),
           Expanded(
               flex: 2,
-              child:
-                  Text(item.patientId ?? 'N/A', textAlign: TextAlign.center)),
+              child: Text(
+                item.patientName,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+              )),
+          Expanded(
+              flex: 2,
+              child: Text(item.patientId ?? 'N/A',
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 13))),
           Expanded(
               flex: 1,
-              child: Text(arrivalDisplayTime, textAlign: TextAlign.center)),
+              child: Text(arrivalDisplayTime,
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 13))),
           Expanded(
               flex: 1,
-              child: Text(item.status,
+              child: Text(_getDisplayStatus(item.status),
                   textAlign: TextAlign.center,
                   style: TextStyle(
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: _getStatusColor(item.status)))),
         ],
@@ -487,6 +549,22 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         return Colors.red.shade700;
       default:
         return Colors.grey.shade700;
+    }
+  }
+
+  // Helper to get display-friendly status string
+  static String _getDisplayStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'waiting':
+        return 'Waiting';
+      case 'in_consultation':
+        return 'In Consultation'; // Changed
+      case 'served':
+        return 'Served';
+      case 'removed':
+        return 'Removed';
+      default:
+        return status; // Fallback to the original status if unknown
     }
   }
 

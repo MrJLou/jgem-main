@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../services/api_service.dart';
+import '../../models/patient.dart';
+import '../../models/medical_record.dart';
 
 class PatientSearchScreen extends StatefulWidget {
   @override
@@ -10,14 +14,17 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   final TextEditingController _surnameController = TextEditingController();
   bool _hasSearched = false;
   bool _isLoading = false;
+  Patient? _foundPatient;
   Map<String, dynamic>? _patientData;
+  List<MedicalRecord> _medicalRecords = [];
+  String? _errorMessage;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Patient Search',
           style: TextStyle(
             color: Colors.white,
@@ -44,7 +51,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           ),
         ),
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               Card(
@@ -53,7 +60,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Container(
-                  padding: EdgeInsets.all(25),
+                  padding: const EdgeInsets.all(25),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(15),
                     gradient: LinearGradient(
@@ -68,7 +75,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            padding: EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Colors.teal[100],
                               shape: BoxShape.circle,
@@ -79,7 +86,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                               color: Colors.teal[700],
                             ),
                           ),
-                          SizedBox(height: 15),
+                          const SizedBox(height: 15),
                           Text(
                             'Find Patient Record',
                             style: TextStyle(
@@ -88,7 +95,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                               color: Colors.teal[800],
                             ),
                           ),
-                          SizedBox(height: 5),
+                          const SizedBox(height: 5),
                           Text(
                             'Search by ID or surname to access patient information',
                             style: TextStyle(
@@ -99,7 +106,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 30),
+                      const SizedBox(height: 30),
                       _buildInputField(
                         controller: _patientIdController,
                         label: 'Patient ID',
@@ -107,13 +114,14 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                         keyboardType: TextInputType.number,
                         hintText: 'Enter patient ID number',
                       ),
-                      SizedBox(height: 20),
+                      const SizedBox(height: 20),
                       Row(
                         children: [
                           Expanded(child: Divider(color: Colors.grey[300])),
                           Container(
-                            margin: EdgeInsets.symmetric(horizontal: 15),
-                            padding: EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                            margin: const EdgeInsets.symmetric(horizontal: 15),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 15, vertical: 5),
                             decoration: BoxDecoration(
                               color: Colors.teal[50],
                               borderRadius: BorderRadius.circular(20),
@@ -129,21 +137,21 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                           Expanded(child: Divider(color: Colors.grey[300])),
                         ],
                       ),
-                      SizedBox(height: 20),
+                      const SizedBox(height: 20),
                       _buildInputField(
                         controller: _surnameController,
                         label: 'Patient Surname',
                         icon: Icons.person_outline,
                         hintText: 'Enter patient last name',
                       ),
-                      SizedBox(height: 25),
+                      const SizedBox(height: 25),
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton.icon(
                           icon: Icon(_isLoading ? null : Icons.search),
                           label: _isLoading
-                              ? SizedBox(
+                              ? const SizedBox(
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
@@ -151,7 +159,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : Text(
+                              : const Text(
                                   'SEARCH PATIENT',
                                   style: TextStyle(
                                     fontSize: 16,
@@ -175,8 +183,8 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                 ),
               ),
               if (_hasSearched) ...[
-                SizedBox(height: 30),
-                if (_patientData != null)
+                const SizedBox(height: 30),
+                if (_foundPatient != null)
                   _buildPatientDetails()
                 else
                   Card(
@@ -185,7 +193,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                       borderRadius: BorderRadius.circular(15),
                     ),
                     child: Container(
-                      padding: EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(15),
                         gradient: LinearGradient(
@@ -197,7 +205,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: Colors.orange[100],
                               shape: BoxShape.circle,
@@ -208,7 +216,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                               size: 24,
                             ),
                           ),
-                          SizedBox(width: 15),
+                          const SizedBox(width: 15),
                           Expanded(
                             child: Text(
                               'No patient found with the provided details',
@@ -245,14 +253,14 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           BoxShadow(
             color: Colors.teal.withOpacity(0.1),
             blurRadius: 10,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
-        style: TextStyle(fontSize: 16),
+        style: const TextStyle(fontSize: 16),
         decoration: InputDecoration(
           labelText: label,
           hintText: hintText,
@@ -273,7 +281,8 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );
@@ -286,7 +295,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         borderRadius: BorderRadius.circular(15),
       ),
       child: Container(
-        padding: EdgeInsets.all(25),
+        padding: const EdgeInsets.all(25),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(15),
           gradient: LinearGradient(
@@ -304,14 +313,15 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                 Row(
                   children: [
                     Container(
-                      padding: EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: Colors.teal[100],
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.person, color: Colors.teal[700], size: 24),
+                      child:
+                          Icon(Icons.person, color: Colors.teal[700], size: 24),
                     ),
-                    SizedBox(width: 15),
+                    const SizedBox(width: 15),
                     Text(
                       'PATIENT DETAILS',
                       style: TextStyle(
@@ -331,83 +341,113 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
               ],
             ),
             Divider(color: Colors.grey[300], height: 30),
-            
             _buildInfoSection(
               'Personal Information',
               Icons.person_outline,
               [
-                _buildDetailRow('Full Name', '${_patientData!['firstName']} ${_patientData!['lastName']}'),
+                _buildDetailRow('Patient ID', _foundPatient?.id ?? 'Unknown'),
+                _buildDetailRow('Full Name', _patientData!['fullName']),
                 _buildDetailRow('Date of Birth', _patientData!['dob']),
                 _buildDetailRow('Gender', _patientData!['gender']),
                 _buildDetailRow('Contact', _patientData!['contactNumber']),
                 _buildDetailRow('Address', _patientData!['address']),
+                _buildDetailRow('Blood Type', _patientData!['bloodType']),
+                _buildDetailRow('Allergies', _patientData!['allergies']),
               ],
             ),
-            
-            SizedBox(height: 25),
+            const SizedBox(height: 25),
             _buildInfoSection(
-              'Medical Information',
-              Icons.medical_services_outlined,
+              'Medical Records & Lab Results',
+              Icons.science_outlined,
               [
-                Container(
-                  margin: EdgeInsets.only(top: 10),
-                  padding: EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.teal[100]!),
-                  ),
-                  child: Text(
-                    _patientData!['medicalOverview'] ?? 'No medical history recorded',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey[800],
-                      height: 1.5,
+                if (_patientData!['hasLabResults'] == true &&
+                    (_patientData!['labResults'] as List).isNotEmpty) ...[
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle,
+                            color: Colors.green[600], size: 20),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${(_patientData!['labResults'] as List).length} medical record(s) found',
+                          style: TextStyle(
+                            color: Colors.teal[700],
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  const SizedBox(height: 15),
+                  ...(_patientData!['labResults'] as List)
+                      .map((result) => _buildLabResultCard(result))
+                      .toList(),
+                ] else ...[
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.orange[600], size: 24),
+                        const SizedBox(width: 15),
+                        const Expanded(
+                          child: Text(
+                            'No Tests Found Yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
-            
-            if (_patientData!['hasLabResults'] == true) ...[
-              SizedBox(height: 25),
-              _buildInfoSection(
-                'Laboratory Results',
-                Icons.science_outlined,
-                _patientData!['labResults'].map<Widget>((result) =>
-                  _buildLabResultCard(result)
-                ).toList(),
-              ),
-            ],
-            
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    icon: Icon(Icons.history),
-                    label: Text('VIEW FULL HISTORY'),
+                    icon: const Icon(Icons.history),
+                    label: const Text('VIEW FULL HISTORY'),
                     onPressed: () {},
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal[700],
                       side: BorderSide(color: Colors.teal[700]!),
-                      padding: EdgeInsets.symmetric(vertical: 15),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
                 ),
-                SizedBox(width: 15),
+                const SizedBox(width: 15),
                 Expanded(
                   child: ElevatedButton.icon(
-                    icon: Icon(Icons.add),
-                    label: Text('NEW APPOINTMENT'),
+                    icon: const Icon(Icons.add),
+                    label: const Text('NEW APPOINTMENT'),
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal[700],
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: 15),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
                       elevation: 2,
                       shadowColor: Colors.teal.withOpacity(0.4),
                       shape: RoundedRectangleBorder(
@@ -431,7 +471,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         Row(
           children: [
             Icon(icon, color: Colors.teal[700], size: 20),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Text(
               title,
               style: TextStyle(
@@ -442,7 +482,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
             ),
           ],
         ),
-        SizedBox(height: 15),
+        const SizedBox(height: 15),
         ...children,
       ],
     );
@@ -450,7 +490,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -464,7 +504,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
               ),
             ),
           ),
-          SizedBox(width: 15),
+          const SizedBox(width: 15),
           Expanded(
             child: Text(
               value,
@@ -481,8 +521,8 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
   Widget _buildLabResultCard(Map<String, dynamic> result) {
     return Container(
-      margin: EdgeInsets.only(top: 10),
-      padding: EdgeInsets.all(15),
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -491,7 +531,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           BoxShadow(
             color: Colors.teal.withOpacity(0.1),
             blurRadius: 5,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -501,36 +541,73 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                result['testName'],
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal[800],
+              Expanded(
+                child: Text(
+                  result['testName'] ?? 'Unknown Test',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[800],
+                    fontSize: 16,
+                  ),
                 ),
               ),
-              Text(
-                result['date'],
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 13,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.teal[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.teal[200]!),
+                ),
+                child: Text(
+                  result['date'] ?? 'No date',
+                  style: TextStyle(
+                    color: Colors.teal[700],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 10),
-          Text(
-            result['result'],
-            style: TextStyle(fontSize: 14),
-          ),
-          if (result['notes'] != null) ...[
-            SizedBox(height: 8),
-            Text(
-              result['notes'],
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
-              ),
+          const SizedBox(height: 12),
+          if (result['diagnosis'] != null &&
+              result['diagnosis'] != 'No diagnosis') ...[
+            _buildResultDetailRow('Diagnosis:', result['diagnosis']),
+            const SizedBox(height: 8),
+          ],
+          if (result['result'] != null &&
+              result['result'] != 'No results available') ...[
+            _buildResultDetailRow('Lab Results:', result['result']),
+            const SizedBox(height: 8),
+          ],
+          if (result['treatment'] != null &&
+              result['treatment'] != 'No treatment recorded') ...[
+            _buildResultDetailRow('Treatment:', result['treatment']),
+            const SizedBox(height: 8),
+          ],
+          if (result['notes'] != null && result['notes'] != 'No notes') ...[
+            _buildResultDetailRow('Notes:', result['notes']),
+          ],
+          if ((result['diagnosis'] == null ||
+                  result['diagnosis'] == 'No diagnosis') &&
+              (result['result'] == null ||
+                  result['result'] == 'No results available') &&
+              (result['treatment'] == null ||
+                  result['treatment'] == 'No treatment recorded') &&
+              (result['notes'] == null || result['notes'] == 'No notes')) ...[
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange[600], size: 16),
+                const SizedBox(width: 8),
+                const Text(
+                  'No detailed information available',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -538,11 +615,40 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     );
   }
 
-  void _searchPatient() {
+  Widget _buildResultDetailRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+              fontSize: 14,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _searchPatient() async {
     if (_patientIdController.text.isEmpty && _surnameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.white),
               SizedBox(width: 10),
@@ -554,7 +660,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
-          margin: EdgeInsets.all(10),
+          margin: const EdgeInsets.all(10),
         ),
       );
       return;
@@ -563,45 +669,104 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     setState(() {
       _isLoading = true;
       _hasSearched = true;
+      _foundPatient = null;
+      _medicalRecords = [];
+      _errorMessage = null;
     });
 
-    // Simulated API call
-    Future.delayed(Duration(seconds: 1), () {
+    try {
+      List<Patient> patients = [];
+
+      if (_patientIdController.text.isNotEmpty) {
+        // Search by patient ID
+        try {
+          final patient =
+              await ApiService.getPatientById(_patientIdController.text.trim());
+          patients = [patient];
+        } catch (e) {
+          // Patient not found by ID, try searching in the list
+          patients =
+              await ApiService.searchPatients(_patientIdController.text.trim());
+        }
+      } else {
+        // Search by surname
+        patients =
+            await ApiService.searchPatients(_surnameController.text.trim());
+      }
+      if (patients.isNotEmpty) {
+        final patient = patients.first;
+        final medicalRecords =
+            await ApiService.getPatientMedicalRecords(patient.id);
+
+        // Split fullName into first and last name for display
+        final nameParts = patient.fullName.split(' ');
+        final firstName = nameParts.isNotEmpty ? nameParts.first : '';
+        final lastName =
+            nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+
+        setState(() {
+          _foundPatient = patient;
+          _medicalRecords = medicalRecords;
+          _patientData = {
+            'firstName': firstName,
+            'lastName': lastName,
+            'fullName': patient.fullName,
+            'dob': DateFormat('dd/MM/yyyy').format(patient.birthDate),
+            'gender': patient.gender,
+            'contactNumber': patient.contactNumber ?? 'Not provided',
+            'address': patient.address ?? 'Not provided',
+            'bloodType': patient.bloodType ?? 'Not specified',
+            'allergies': patient.allergies ?? 'None recorded',
+            'hasLabResults': _medicalRecords.isNotEmpty,
+            'labResults': _medicalRecords
+                .map((record) => {
+                      'testName': record.recordType,
+                      'date':
+                          DateFormat('dd/MM/yyyy').format(record.recordDate),
+                      'result': record.labResults ?? 'No results available',
+                      'notes': record.notes ?? 'No notes',
+                      'diagnosis': record.diagnosis ?? 'No diagnosis',
+                      'treatment': record.treatment ?? 'No treatment recorded',
+                    })
+                .toList(),
+          };
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _foundPatient = null;
+          _medicalRecords = [];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
       setState(() {
+        _foundPatient = null;
+        _medicalRecords = [];
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isLoading = false;
-        _patientData = {
-          'firstName': 'John',
-          'lastName': 'Doe',
-          'dob': '15/03/1985',
-          'gender': 'Male',
-          'contactNumber': '07123456789',
-          'address': '123 Main St, London, UK',
-          'medicalOverview':
-              'Hypertension, Type 2 Diabetes. Allergic to penicillin. Current medications: Metformin 500mg twice daily, Lisinopril 10mg daily.',
-          'hasLabResults': true,
-          'labResults': [
-            {
-              'testName': 'Complete Blood Count',
-              'date': '10/05/2023',
-              'result': 'Normal (WBC slightly elevated at 11.2)',
-              'notes': 'Follow up recommended in 3 months'
-            },
-            {
-              'testName': 'HbA1c',
-              'date': '10/05/2023',
-              'result': '7.2%',
-              'notes': 'Improved from last reading of 7.8%'
-            },
-            {
-              'testName': 'Lipid Panel',
-              'date': '10/05/2023',
-              'result': 'Cholesterol: 180 mg/dL, Triglycerides: 150 mg/dL',
-              'notes': 'Continue current statin therapy'
-            }
-          ]
-        };
       });
-    });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Error searching for patient: ${_errorMessage}'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red[700],
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.all(10),
+        ),
+      );
+    }
   }
 
   void _resetSearch() {
@@ -609,7 +774,10 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
       _patientIdController.clear();
       _surnameController.clear();
       _hasSearched = false;
+      _foundPatient = null;
       _patientData = null;
+      _medicalRecords = [];
+      _errorMessage = null;
     });
   }
 }

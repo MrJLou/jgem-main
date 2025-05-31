@@ -64,22 +64,17 @@ class PatientRecordManagementApp extends StatelessWidget {
 class _AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: AuthService
-          .isLoggedIn(), // Use a method that specifically checks login status
-      builder: (context, snapshot) {
-        // Show loading indicator while checking auth state
+    return FutureBuilder<bool>(
+      future: AuthService.isLoggedIn(),
+      builder: (context, AsyncSnapshot<bool> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
 
-        // If logged in, go to the dashboard
         if (snapshot.hasData && snapshot.data == true) {
           return DashboardOverviewScreen();
         }
-
-        // Otherwise show login screen
         return const LoginScreen();
       },
     );

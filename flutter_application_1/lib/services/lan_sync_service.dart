@@ -12,6 +12,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 class LanSyncService {
   static const String _syncIntervalKey = 'sync_interval_minutes';
   static const String _lanServerEnabledKey = 'lan_server_enabled';
+  static const String _syncEnabledKey = 'sync_enabled'; // Add this line
   static const String _serverPortKey = 'server_port';
   static const String _accessCodeKey = 'lan_access_code';
   static const int _defaultPort = 8080;
@@ -180,20 +181,37 @@ class LanSyncService {
     } catch (e) {
       debugPrint('Error copying database to shared location: $e');
     }
-  }
+  } // Start periodic synchronization
 
-  // Start periodic synchronization
   static void _startPeriodicSync(int intervalMinutes) {
     // Cancel existing timer if any
     _syncTimer?.cancel();
 
     _syncTimer = Timer.periodic(Duration(minutes: intervalMinutes), (_) async {
       try {
+        // Check if sync is enabled
+        final prefs = await SharedPreferences.getInstance();
+        final syncEnabled = prefs.getBool(_syncEnabledKey) ?? false;
+
+        if (!syncEnabled) {
+          debugPrint('Sync is disabled in settings - skipping');
+          return;
+        }
+
         debugPrint('Running scheduled database sync...');
-        final success = await _dbHelper!.syncWithServer();
+
+        // Add timeout wrapper for the entire sync operation
+        final success = await _dbHelper!
+            .syncWithServer()
+            .timeout(Duration(seconds: 30), onTimeout: () {
+          debugPrint('Sync operation timed out after 30 seconds');
+          return false;
+        });
+
         debugPrint('Sync completed with ${success ? "success" : "failure"}');
       } catch (e) {
         debugPrint('Scheduled sync error: $e');
+        // Don't rethrow - just log and continue
       }
     });
 
@@ -208,6 +226,26 @@ class LanSyncService {
     await prefs.setInt(_syncIntervalKey, minutes);
 
     _startPeriodicSync(minutes);
+  }
+
+  // Enable or disable sync
+  static Future<void> setSyncEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_syncEnabledKey, enabled);
+
+    if (enabled) {
+      final syncInterval = prefs.getInt(_syncIntervalKey) ?? 5;
+      _startPeriodicSync(syncInterval);
+    } else {
+      _syncTimer?.cancel();
+      debugPrint('Sync disabled');
+    }
+  }
+
+  // Check if sync is enabled
+  static Future<bool> isSyncEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_syncEnabledKey) ?? false;
   }
 
   // Force manual sync now

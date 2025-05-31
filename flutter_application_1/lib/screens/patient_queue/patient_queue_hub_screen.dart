@@ -36,12 +36,12 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                 color: Colors.teal[800],
               ),
             ),
-            SizedBox(height: 5),
+            const SizedBox(height: 5),
             Text(
               'Manage patient queue and generate daily reports',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
             Expanded(
               child: ListView(
                 children: [
@@ -58,7 +58,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       ),
                     ).then((_) => setState(() {})),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   _QueueCard(
                     icon: Icons.person_remove,
                     title: 'Remove from Queue',
@@ -72,7 +72,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       ),
                     ).then((_) => setState(() {})),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   _QueueCard(
                     icon: Icons.list,
                     title: 'View Queue',
@@ -86,7 +86,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       ),
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   _QueueCard(
                     icon: Icons.analytics,
                     title: 'Queue Reports',
@@ -95,7 +95,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => QueueReportsScreen(),
+                        builder: (context) => const QueueReportsScreen(),
                       ),
                     ),
                   ),
@@ -140,14 +140,14 @@ class _QueueCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(15),
+                padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 28, color: color),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +160,7 @@ class _QueueCard extends StatelessWidget {
                         color: Colors.teal[900],
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
                       subtitle,
                       style: TextStyle(

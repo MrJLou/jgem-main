@@ -96,6 +96,22 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
     }
   }
 
+  // Helper to get display-friendly status string
+  static String _getDisplayStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'waiting':
+        return 'Waiting';
+      case 'in_consultation':
+        return 'In Consultation'; // Changed
+      case 'served':
+        return 'Served';
+      case 'removed':
+        return 'Removed';
+      default:
+        return status; // Fallback to the original status if unknown
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -158,7 +174,7 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
                         child: ListTile(
                           title: Text(patient.patientName),
                           subtitle: Text(
-                              'ID: ${patient.patientId ?? 'N/A'} - Arrived: ${TimeOfDay.fromDateTime(patient.arrivalTime).format(context)} - Status: ${patient.status}'),
+                              'Queue No.: ${patient.queueNumber} - ID: ${patient.patientId ?? 'N/A'} - Arrived: ${TimeOfDay.fromDateTime(patient.arrivalTime).format(context)} - Status: ${_getDisplayStatus(patient.status)}'),
                           trailing: (patient.status == 'waiting' ||
                                   patient.status == 'in_consultation')
                               ? IconButton(

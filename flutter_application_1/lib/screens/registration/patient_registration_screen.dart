@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../services/api_service.dart';
+import '../../models/patient.dart';
 
 class PatientRegistrationScreen extends StatefulWidget {
   @override
-  _PatientRegistrationScreenState createState() => _PatientRegistrationScreenState();
+  _PatientRegistrationScreenState createState() =>
+      _PatientRegistrationScreenState();
 }
 
 class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
@@ -14,18 +17,28 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   final TextEditingController _contactController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  final TextEditingController _emergencyContactController = TextEditingController();
-  final TextEditingController _emergencyContactNameController = TextEditingController();
+  final TextEditingController _emergencyContactController =
+      TextEditingController();
+  final TextEditingController _emergencyContactNameController =
+      TextEditingController();
   final TextEditingController _medicalInfoController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
-  final TextEditingController _currentMedicationsController = TextEditingController();
-
+  final TextEditingController _currentMedicationsController =
+      TextEditingController();
   String _gender = 'Male';
   String _bloodType = 'A+';
   String? _generatedPatientId;
-  bool _showMedicalInfo = false;
 
-  final List<String> _bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  final List<String> _bloodTypes = [
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-'
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -33,14 +46,14 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.teal[700],
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Patient Registration',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -51,7 +64,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           ),
         ),
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
             child: Column(
@@ -68,7 +81,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           color: Colors.teal[800],
                         ),
                       ),
-                      SizedBox(height: 5),
+                      const SizedBox(height: 5),
                       Text(
                         'Enter patient details to create a new medical record',
                         textAlign: TextAlign.center,
@@ -80,7 +93,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 30),
+                const SizedBox(height: 30),
 
                 // Personal Information Card
                 _buildSectionCard(
@@ -103,7 +116,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                               },
                             ),
                           ),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _buildInputField(
                               controller: _lastNameController,
@@ -119,7 +132,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -129,7 +142,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                               icon: Icons.calendar_today,
                             ),
                           ),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _buildDropdownField(
                               value: _gender,
@@ -148,7 +161,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Contact Information Card
                 _buildSectionCard(
@@ -175,7 +188,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                               },
                             ),
                           ),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _buildInputField(
                               controller: _emailController,
@@ -184,7 +197,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                               keyboardType: TextInputType.emailAddress,
                               validator: (value) {
                                 if (value != null && value.isNotEmpty) {
-                                  if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                  if (!RegExp(
+                                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                                      .hasMatch(value)) {
                                     return 'Invalid email';
                                   }
                                 }
@@ -194,7 +209,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _addressController,
                         label: 'Address',
@@ -210,7 +225,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Emergency Contact Card
                 _buildSectionCard(
@@ -229,7 +244,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           return null;
                         },
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _emergencyContactController,
                         label: 'Emergency Contact Number',
@@ -248,7 +263,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Medical Information Card
                 _buildSectionCard(
@@ -273,7 +288,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _allergiesController,
                         label: 'Allergies (if any)',
@@ -281,7 +296,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         maxLines: 2,
                         validator: null,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _currentMedicationsController,
                         label: 'Current Medications (if any)',
@@ -289,7 +304,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         maxLines: 2,
                         validator: null,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _medicalInfoController,
                         label: 'Additional Medical Information',
@@ -300,7 +315,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 30),
+                const SizedBox(height: 30),
 
                 // Submit Button
                 SizedBox(
@@ -315,7 +330,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       'Register Patient',
                       style: TextStyle(
                         fontSize: 18,
@@ -326,7 +341,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                 ),
 
                 if (_generatedPatientId != null) ...[
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   _buildSuccessMessage(),
                 ],
               ],
@@ -351,7 +366,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
             Row(
               children: [
                 Icon(icon, color: Colors.teal[700], size: 24),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Text(
                   title,
                   style: TextStyle(
@@ -362,7 +377,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             content,
           ],
         ),
@@ -505,8 +520,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.green),
-            SizedBox(width: 16),
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,7 +533,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                       color: Colors.green[800],
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
                     'Patient ID: $_generatedPatientId',
                     style: TextStyle(color: Colors.green[800]),
@@ -532,35 +547,130 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     );
   }
 
-  void _submitForm() {
+  void _submitForm() async {
     if (_formKey.currentState!.validate()) {
-      // Generate a unique patient ID
-      setState(() {
-        _generatedPatientId = 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
-      });
+      try {
+        // Show loading indicator
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 10),
+                Text('Registering patient...'),
+              ],
+            ),
+            backgroundColor: Colors.blue[600],
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration:
+                const Duration(seconds: 30), // Long duration for processing
+          ),
+        ); // Parse birth date
+        DateTime birthDate;
+        try {
+          birthDate = DateFormat('MMM d, yyyy').parse(_dobController.text);
+        } catch (e) {
+          throw Exception(
+              'Invalid date format. Please select a date from the date picker.');
+        }
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle_outline, color: Colors.white),
-              SizedBox(width: 10),
-              Text('Patient registered successfully'),
-            ],
+        // Create patient object
+        final now = DateTime.now();
+        final patientId =
+            'PT-${now.millisecondsSinceEpoch.toString().substring(6)}';
+
+        final patient = Patient(
+          id: patientId,
+          fullName:
+              '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
+          birthDate: birthDate,
+          gender: _gender,
+          contactNumber: _contactController.text.trim().isNotEmpty
+              ? _contactController.text.trim()
+              : null,
+          address: _addressController.text.trim().isNotEmpty
+              ? _addressController.text.trim()
+              : null,
+          bloodType: _bloodType,
+          allergies: _allergiesController.text.trim().isNotEmpty
+              ? _allergiesController.text.trim()
+              : null,
+          createdAt: now,
+          updatedAt: now,
+        );
+
+        // Save to database via ApiService
+        final savedPatientId = await ApiService.createPatient(patient);
+
+        // Update state with generated patient ID
+        setState(() {
+          _generatedPatientId = savedPatientId;
+        });
+
+        // Clear the loading snackbar
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_outline, color: Colors.white),
+                SizedBox(width: 10),
+                Text('Patient registered successfully'),
+              ],
+            ),
+            backgroundColor: Colors.green[600],
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-          backgroundColor: Colors.green[600],
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+        );
+
+        // Optionally clear the form after successful registration
+        // _clearForm();
+      } catch (e) {
+        // Clear any existing snackbars
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        // Show error message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text('Failed to register patient: ${e.toString()}')),
+              ],
+            ),
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 5),
           ),
-        ),
-      );
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.white),
               SizedBox(width: 10),
@@ -569,7 +679,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           ),
           backgroundColor: Colors.red[400],
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(10),
+          margin: const EdgeInsets.all(10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

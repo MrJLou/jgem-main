@@ -6,6 +6,8 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../models/appointment.dart';
 import '../services/api_service.dart';
+import '../services/queue_service.dart'; // Added import
+import '../models/active_patient_queue_item.dart'; // Added import
 import 'user_management_screen.dart';
 import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
@@ -20,6 +22,7 @@ import 'help/help_screen.dart';
 import 'about_screen.dart'; // Assuming an AboutScreen exists or will be created
 import 'logs/user_activity_log_screen.dart'; // Corrected import path
 import 'lan_client_connection_screen.dart'; // Import LAN client connection screen
+import 'patient_queue/view_queue_screen.dart'; // For TableCellWidget
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
@@ -38,6 +41,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>(); // May not be needed
 
   final _appointmentFormKey = GlobalKey<FormState>();
+  late QueueService _queueService; // Added QueueService instance
 
   // Form controllers
   final TextEditingController _patientNameController = TextEditingController();
@@ -57,6 +61,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Define all possible menu items with their screens and icons
   final Map<String, Map<String, dynamic>> _allMenuItems = {
+    'Live Queue': {
+      'screen': LiveQueueDashboardView(
+          queueService: QueueService()), // Pass initialized service
+      'icon': Icons.people_outline // Example Icon
+    },
     'Registration': {
       'screen': RegistrationHubScreen(),
       'icon': Icons.app_registration
@@ -98,6 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Define which menu items each role can access
   final Map<String, List<String>> _rolePermissions = {
     'admin': [
+      'Live Queue',
       'Registration',
       'Maintenance',
       'Search',
@@ -112,6 +122,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'medtech': [
+      'Live Queue',
       'Registration',
       'Search',
       'Patient Laboratory Histories',
@@ -125,6 +136,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'doctor': [
+      'Live Queue',
       'Search',
       'Patient Laboratory Histories',
       'Patient Queue',
@@ -143,6 +155,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _queueService = QueueService(); // Initialize QueueService
     _configureMenuForRole();
     _loadInitialData(); // For appointment module
   }
@@ -155,7 +168,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     List<Widget> tempScreens = [];
     List<IconData> tempIcons = [];
 
+    // Ensure 'Live Queue' is first for medtech and doctor if they have access
+    if ((widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor') &&
+        _allMenuItems.containsKey('Live Queue') &&
+        allowedMenuKeys.contains('Live Queue')) {
+      tempTitles.add('Live Queue');
+      tempScreens.add(_allMenuItems['Live Queue']!['screen'] as Widget);
+      tempIcons.add(_allMenuItems['Live Queue']!['icon'] as IconData);
+    }
+
     for (String key in _allMenuItems.keys) {
+      if (key == 'Live Queue' &&
+          (widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor')) {
+        continue; // Already added or will be handled
+      }
       if (allowedMenuKeys.contains(key)) {
         tempTitles.add(key);
         Widget screenToShow = _allMenuItems[key]!['screen'] as Widget;
@@ -1051,6 +1077,325 @@ class AppointmentDetailDialog extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+// Define LiveQueueDashboardView widget here
+class LiveQueueDashboardView extends StatefulWidget {
+  final QueueService queueService;
+
+  const LiveQueueDashboardView({super.key, required this.queueService});
+
+  @override
+  _LiveQueueDashboardViewState createState() => _LiveQueueDashboardViewState();
+}
+
+class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
+  late Future<List<ActivePatientQueueItem>> _queueFuture;
+  final TextStyle cellStyle =
+      const TextStyle(fontSize: 14, color: Colors.black87);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQueue();
+  }
+
+  void _loadQueue() {
+    setState(() {
+      _queueFuture = widget.queueService.getActiveQueueItems(
+          statuses: ['waiting', 'in_consultation']); // Focus on active patients
+    });
+  }
+
+  void _refreshQueue() {
+    _loadQueue();
+  }
+
+  Future<void> _nextPatient() async {
+    try {
+      final queue = await _queueFuture;
+      final waitingPatients =
+          queue.where((p) => p.status == 'waiting').toList();
+
+      if (waitingPatients.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No patients currently waiting.'),
+            backgroundColor: Colors.amber,
+          ),
+        );
+        return;
+      }
+
+      waitingPatients.sort((a, b) => a.queueNumber.compareTo(b.queueNumber));
+      final nextPatient = waitingPatients.first;
+
+      bool success = await widget.queueService
+          .markPatientAsInConsultation(nextPatient.queueEntryId);
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${nextPatient.patientName} is now In Consultation.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _refreshQueue();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to move ${nextPatient.patientName} to In Consultation.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error processing next patient: $e'),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  static String _getDisplayStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'waiting':
+        return 'Waiting';
+      case 'in_consultation':
+        return 'In Consultation';
+      case 'served':
+        return 'Served';
+      case 'removed':
+        return 'Removed';
+      default:
+        return status;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'waiting':
+        return Colors.orange.shade700;
+      case 'in_consultation':
+        return Colors.blue.shade700;
+      case 'served':
+        return Colors.green.shade700;
+      case 'removed':
+        return Colors.red.shade700;
+      default:
+        return Colors.grey.shade700;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      // Changed to Row for side-by-side layout
+      children: [
+        // Live Queue Section (Left Half)
+        Expanded(
+          flex: 1, // Takes half of the screen
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Live Patient Queue',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[700]), // Changed color to teal
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _refreshQueue,
+                      tooltip: 'Refresh Queue',
+                      color: Colors.teal[700], // Changed color to teal
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildTableHeader(),
+                Expanded(
+                  child: FutureBuilder<List<ActivePatientQueueItem>>(
+                    future: _queueFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) {
+                        return Center(
+                            child:
+                                Text('Error loading queue: ${snapshot.error}'));
+                      }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Text(
+                              'No patients waiting or in consultation.',
+                              style:
+                                  TextStyle(fontSize: 16, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final queue = snapshot.data!;
+                      return ListView.builder(
+                        itemCount: queue.length,
+                        itemBuilder: (context, index) {
+                          final item = queue[index];
+                          return _buildTableRow(item);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16), // Space before the button
+                Center(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.next_plan_outlined),
+                    label: const Text('Next Patient'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[600], // Keep teal color
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _nextPatient,
+                  ),
+                ),
+                const SizedBox(height: 16), // Space after the button
+              ],
+            ),
+          ),
+        ),
+        const VerticalDivider(width: 1, thickness: 1), // Separator
+        // Analytics Section (Right Half)
+        Expanded(
+          flex: 1, // Takes the other half of the screen
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(Icons.analytics_outlined,
+                    size: 80, color: Colors.grey[400]),
+                const SizedBox(height: 20),
+                Text(
+                  'Monthly Analytics Report',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[700]), // Changed color to teal
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Detailed analytics will be available in a future version.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey[600]),
+                ),
+                // You can add more placeholder UI for analytics here if needed
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader() {
+    final headers = ['No.', 'Name', 'Arrival', 'Condition', 'Status'];
+    return Container(
+      color: Colors.teal[600], // Changed color to teal
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: headers.map((text) {
+          return Expanded(
+              flex: (text == 'Name' || text == 'Condition') ? 2 : 1,
+              child: TableCellWidget(
+                text: text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ));
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildTableRow(ActivePatientQueueItem item) {
+    final arrivalDisplayTime =
+        '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
+
+    final dataCells = [
+      item.queueNumber.toString(),
+      item.patientName,
+      arrivalDisplayTime,
+      item.conditionOrPurpose ?? 'N/A',
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Row(
+        children: [
+          ...dataCells.asMap().entries.map((entry) {
+            int idx = entry.key;
+            String text = entry.value.toString();
+            int flex = (idx == 1 || idx == 3) ? 2 : 1;
+
+            if (idx == 0) {
+              return Expanded(
+                  flex: 1,
+                  child: Center(
+                      child: Text(text,
+                          style: cellStyle.copyWith(
+                              fontWeight: FontWeight.bold))));
+            }
+            return Expanded(
+                flex: flex,
+                child: TableCellWidget(
+                  text: text,
+                  style: cellStyle,
+                ));
+          }).toList(),
+          Expanded(
+            flex: 1,
+            child: TableCellWidget(
+                child: Text(
+              _getDisplayStatus(item.status),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: _getStatusColor(item.status),
+                  fontSize: cellStyle.fontSize),
+              textAlign: TextAlign.center,
+            )),
+          ),
+        ],
+      ),
     );
   }
 }
