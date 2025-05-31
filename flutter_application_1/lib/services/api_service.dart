@@ -7,8 +7,10 @@ import '../models/appointment.dart';
 import '../models/user.dart';
 import '../models/patient.dart';
 import '../models/medical_record.dart';
+import '../models/active_patient_queue_item.dart';
 import '../services/auth_service.dart';
 import '../services/lan_sync_service.dart';
+import '../models/clinic_service.dart';
 
 class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -18,7 +20,8 @@ class ApiService {
   static Future<Map<String, dynamic>> login(
       String username, String password) async {
     try {
-      final auth = await _dbHelper.authenticateUser(username, password);      if (auth != null &&
+      final auth = await _dbHelper.authenticateUser(username, password);
+      if (auth != null &&
           auth['user'] != null &&
           auth['user']['role'] != null) {
         _currentUserRole = auth['user']['role'];
@@ -97,6 +100,7 @@ class ApiService {
       throw Exception('Failed to retrieve user security information.');
     }
   }
+
   static Future<void> logout() async {
     _currentUserRole = null;
     await AuthService.clearCredentials();
@@ -217,6 +221,182 @@ class ApiService {
       return await _dbHelper.updateMedicalRecord(record.toJson());
     } catch (e) {
       throw Exception('Failed to update medical record: $e');
+    }
+  }
+
+  // Active Patient Queue Methods
+  static Future<ActivePatientQueueItem?> getActiveQueueItem(
+      String queueEntryId) async {
+    try {
+      // _dbHelper.getActiveQueueItem already returns ActivePatientQueueItem? or throws an error
+      return await _dbHelper.getActiveQueueItem(queueEntryId);
+    } catch (e) {
+      print('ApiService: Failed to get active queue item: $e');
+      // Rethrow or handle as specific exception type if necessary
+      throw Exception('Failed to load active queue item: $e');
+    }
+  }
+
+  static Future<void> updateActivePatientStatus(
+      String queueEntryId, String newStatus) async {
+    try {
+      final originalItem = await _dbHelper.getActiveQueueItem(queueEntryId);
+
+      if (originalItem == null) {
+        throw Exception(
+            'Active queue item not found with ID: $queueEntryId to update status.');
+      }
+
+      // No need for fromJson here, originalItem is already the correct type
+      ActivePatientQueueItem updatedItem;
+      final now = DateTime.now();
+
+      switch (newStatus.toLowerCase()) {
+        case 'waiting':
+          updatedItem = originalItem.copyWith(
+              status: 'waiting',
+              consultationStartedAt: () => null,
+              servedAt: () => null,
+              removedAt: () => null);
+          break;
+        case 'in_consultation':
+          if (originalItem.status == 'served' ||
+              originalItem.status == 'removed') {
+            throw Exception(
+                'Cannot change status to in_consultation for a patient already served or removed.');
+          }
+          updatedItem = originalItem.copyWith(
+              status: 'in_consultation',
+              consultationStartedAt: () =>
+                  originalItem.consultationStartedAt ?? now,
+              servedAt: () => null);
+          break;
+        case 'served':
+          if (originalItem.status == 'removed') {
+            throw Exception(
+                'Cannot change status to served for a patient already removed.');
+          }
+          updatedItem = originalItem.copyWith(
+              status: 'served',
+              servedAt: () => now,
+              consultationStartedAt: () =>
+                  originalItem.consultationStartedAt ?? now);
+          break;
+        case 'removed':
+          updatedItem =
+              originalItem.copyWith(status: 'removed', removedAt: () => now);
+          break;
+        default:
+          updatedItem = originalItem.copyWith(status: newStatus);
+      }
+
+      await _dbHelper.updateActiveQueueItem(updatedItem);
+    } catch (e) {
+      print('ApiService: Failed to update active patient status: $e');
+      // Rethrow or handle as specific exception type if necessary
+      throw Exception('Failed to update active patient status: $e');
+    }
+  }
+
+  static Future<List<ActivePatientQueueItem>> searchPatientsInActiveQueue(
+      String searchTerm) async {
+    try {
+      final List<Map<String, dynamic>> resultsData =
+          await _dbHelper.searchActiveQueuePatients(searchTerm);
+      return resultsData
+          .map((data) => ActivePatientQueueItem.fromJson(data))
+          .toList();
+    } catch (e) {
+      print('ApiService: Failed to search patients in active queue: $e');
+      throw Exception('Failed to search patients in active queue: $e');
+    }
+  }
+
+  // Clinic Service Methods - New Section
+  static Future<List<ClinicService>> searchServicesByCategory(
+      String category) async {
+    try {
+      final servicesData = await _dbHelper.searchServicesByCategory(category);
+      return servicesData.map((data) => ClinicService.fromJson(data)).toList();
+    } catch (e) {
+      print('ApiService: Failed to search services by category: $e');
+      throw Exception('Failed to search services by category: $e');
+    }
+  }
+
+  static Future<List<ClinicService>> searchServicesByName(
+      String serviceName) async {
+    try {
+      final servicesData = await _dbHelper.searchServicesByName(serviceName);
+      return servicesData.map((data) => ClinicService.fromJson(data)).toList();
+    } catch (e) {
+      print('ApiService: Failed to search services by name: $e');
+      throw Exception('Failed to search services by name: $e');
+    }
+  }
+
+  static Future<ClinicService?> getClinicServiceById(String id) async {
+    try {
+      final serviceData = await _dbHelper.getClinicServiceById(id);
+      if (serviceData != null) {
+        return ClinicService.fromJson(serviceData);
+      }
+      return null;
+    } catch (e) {
+      print('ApiService: Failed to get service by ID: $e');
+      throw Exception('Failed to get service by ID: $e');
+    }
+  }
+
+  static Future<ClinicService?> getClinicServiceByName(String name) async {
+    try {
+      final serviceData = await _dbHelper.getClinicServiceByName(name);
+      if (serviceData != null) {
+        return ClinicService.fromJson(serviceData);
+      }
+      return null;
+    } catch (e) {
+      print('ApiService: Failed to get service by name: $e');
+      throw Exception('Failed to get service by name: $e');
+    }
+  }
+
+  static Future<ClinicService> saveClinicService(ClinicService service) async {
+    try {
+      // Check if the service already exists by ID (for updates)
+      // A more robust way for new services might be to not assign an ID client-side initially,
+      // or use a temporary ID format that the backend/DB replaces.
+      // For now, if ID looks like a placeholder, we might assume it's new.
+      // Or, try to fetch by ID. If it exists, update. Else, insert.
+
+      final existingServiceById =
+          await _dbHelper.getClinicServiceById(service.id);
+
+      if (existingServiceById != null) {
+        // Update existing service
+        await _dbHelper.updateClinicService(service.toJson());
+        return service; // Return the updated service
+      } else {
+        // Insert new service
+        // If service.id was a placeholder, _dbHelper.insertClinicService will generate one if not provided in toJson()
+        // Or, ensure service.id is a new unique ID before this point.
+        // The current _dbHelper.insertClinicService creates an ID if not present.
+        String newId = await _dbHelper.insertClinicService(service.toJson());
+        return service.copyWith(
+            id: newId); // Return service with the new ID from DB
+      }
+    } catch (e) {
+      print('ApiService: Failed to save clinic service: $e');
+      throw Exception('Failed to save clinic service: $e');
+    }
+  }
+
+  static Future<int> deleteClinicService(String id) async {
+    try {
+      return await _dbHelper.deleteClinicService(id);
+    } catch (e) {
+      print('ApiService: Failed to delete clinic service: $e');
+      throw Exception('Failed to delete clinic service: $e');
     }
   }
 
@@ -409,6 +589,38 @@ class ApiService {
       return result;
     } catch (e) {
       throw Exception('Failed to delete user: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> searchPayments({
+    required String reference,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? paymentType,
+  }) async {
+    try {
+      return await _dbHelper.searchPayments(
+        reference: reference,
+        startDate: startDate,
+        endDate: endDate,
+        paymentType: paymentType,
+      );
+    } catch (e) {
+      throw Exception('Failed to search payments: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> searchServices({
+    required String searchTerm,
+    required String category,
+  }) async {
+    try {
+      return await _dbHelper.searchServices(
+        searchTerm: searchTerm,
+        category: category == 'All Categories' ? null : category,
+      );
+    } catch (e) {
+      throw Exception('Failed to search services: $e');
     }
   }
 }

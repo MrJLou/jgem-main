@@ -1889,4 +1889,199 @@ To view live changes in DB Browser:
         'DATABASE_HELPER: Deleted $count items from $tableActivePatientQueue for date ${DateFormat('yyyy-MM-dd').format(date)}');
     return count;
   }
+
+  Future<List<Map<String, dynamic>>> searchPayments({
+    required String reference,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? paymentType,
+  }) async {
+    final db = await database;
+
+    String query = '''
+      SELECT p.*, pb.id as bill_id, pt.fullName as patient_name, cs.serviceName as service_name
+      FROM $tablePayments p
+      LEFT JOIN $tablePatientBills pb ON p.billId = pb.id
+      LEFT JOIN $tablePatients pt ON p.patientId = pt.id
+      LEFT JOIN $tableClinicServices cs ON pb.serviceId = cs.id -- This join might be problematic if bill is not directly linked to a single service
+      WHERE p.id LIKE ? OR p.billId LIKE ? OR pt.fullName LIKE ? -- Search by payment ID, bill ID, or patient name
+    '''; // Added OR billId LIKE ? OR pt.fullName LIKE ?
+
+    List<dynamic> arguments = [
+      '%$reference%',
+      '%$reference%',
+      '%$reference%'
+    ]; // Added arguments for new search terms
+
+    if (startDate != null) {
+      query += ' AND p.paymentDate >= ?';
+      arguments.add(DateFormat('yyyy-MM-dd').format(startDate));
+    }
+
+    if (endDate != null) {
+      query += ' AND p.paymentDate <= ?';
+      arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
+    }
+
+    if (paymentType != null && paymentType != 'all' && paymentType.isNotEmpty) {
+      // Added isNotEmpty check
+      query += ' AND p.paymentMethod = ?';
+      arguments.add(paymentType);
+    }
+
+    query += ' ORDER BY p.paymentDate DESC';
+
+    final results = await db.rawQuery(query, arguments);
+    return results;
+  }
+
+  Future<List<Map<String, dynamic>>> searchServices({
+    required String searchTerm,
+    String? category,
+  }) async {
+    final db = await database;
+
+    String query = '''
+      SELECT * FROM $tableClinicServices
+      WHERE (serviceName LIKE ? OR id LIKE ? OR description LIKE ?)
+    '''; // Added OR description LIKE ?
+
+    List<dynamic> arguments = [
+      '%$searchTerm%',
+      '%$searchTerm%',
+      '%$searchTerm%'
+    ]; // Added argument for description search
+
+    if (category != null &&
+        category != 'All Categories' &&
+        category.isNotEmpty) {
+      // Added isNotEmpty check
+      query += ' AND category = ?';
+      arguments.add(category);
+    }
+
+    query += ' ORDER BY serviceName ASC';
+
+    final results = await db.rawQuery(query, arguments);
+    return results;
+  }
+
+  Future<int> getActiveQueueCount() async {
+    final db = await database;
+    final result = await db.rawQuery(
+        'SELECT COUNT(*) FROM $tableActivePatientQueue WHERE status = \'waiting\' OR status = \'in_consultation\'');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  // Search for patients in the active queue by name (LIKE) or patient ID (exact)
+  Future<List<Map<String, dynamic>>> searchActiveQueuePatients(
+      String searchTerm) async {
+    final db = await database;
+    final String likeSearchTerm = '%$searchTerm%';
+    // Query for today's active items matching the search term
+    final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final List<Map<String, dynamic>> result = await db.query(
+      tableActivePatientQueue,
+      where: '(patientName LIKE ? OR patientId = ?) AND DATE(arrivalTime) = ?',
+      whereArgs: [likeSearchTerm, searchTerm, todayDate],
+    );
+    return result;
+  }
+
+  // Method to search services by category (case-insensitive, partial match)
+  Future<List<Map<String, dynamic>>> searchServicesByCategory(
+      String category) async {
+    final db = await database;
+    final String likeCategory = '%$category%';
+    return await db.query(
+      tableClinicServices,
+      where: 'category LIKE ?',
+      whereArgs: [likeCategory],
+      orderBy: 'serviceName ASC',
+    );
+  }
+
+  // Method to search services by name (case-insensitive, partial match)
+  Future<List<Map<String, dynamic>>> searchServicesByName(
+      String serviceName) async {
+    final db = await database;
+    final String likeName = '%$serviceName%';
+    return await db.query(
+      tableClinicServices,
+      where: 'serviceName LIKE ?',
+      whereArgs: [likeName],
+      orderBy: 'serviceName ASC',
+    );
+  }
+
+  // Method to get a single clinic service by its exact name (case-insensitive)
+  Future<Map<String, dynamic>?> getClinicServiceByName(
+      String serviceName) async {
+    final db = await database;
+    final List<Map<String, dynamic>> results = await db.query(
+      tableClinicServices,
+      where: 'LOWER(serviceName) = LOWER(?)',
+      whereArgs: [serviceName],
+      limit: 1,
+    );
+    if (results.isNotEmpty) {
+      return results.first;
+    }
+    return null;
+  }
+
+  // Method to get a single clinic service by its ID
+  Future<Map<String, dynamic>?> getClinicServiceById(String id) async {
+    final db = await database;
+    final List<Map<String, dynamic>> results = await db.query(
+      tableClinicServices,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (results.isNotEmpty) {
+      return results.first;
+    }
+    return null;
+  }
+
+  Future<String> insertClinicService(Map<String, dynamic> service) async {
+    final db = await database;
+    // Ensure ID is present or generate one if not
+    String id =
+        service['id'] ?? 'service-${DateTime.now().millisecondsSinceEpoch}';
+    Map<String, dynamic> serviceToInsert = {...service, 'id': id};
+
+    await db.insert(
+      tableClinicServices,
+      serviceToInsert,
+      conflictAlgorithm:
+          ConflictAlgorithm.replace, // Or .fail if ID must be unique on insert
+    );
+    return id; // Return the ID of the inserted service
+  }
+
+  Future<int> updateClinicService(Map<String, dynamic> service) async {
+    final db = await database;
+    return await db.update(
+      tableClinicServices,
+      service,
+      where: 'id = ?',
+      whereArgs: [service['id']],
+    );
+  }
+
+  Future<int> deleteClinicService(String id) async {
+    final db = await database;
+    final result = await db.delete(
+      tableClinicServices,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (result > 0) {
+      await _logChange(tableClinicServices, id, 'delete');
+    }
+    return result;
+  }
 }

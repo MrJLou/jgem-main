@@ -33,42 +33,39 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 0; // Default to Registration (first item)
+  int _selectedIndex = 0;
+  bool _isHovered = false;
+  Map<int, bool> _hoveredItems = {};
+
   DateTime _selectedDate = DateTime.now();
   List<Appointment> _appointments = [];
   bool _isAddingAppointment = false;
   bool _isLoading = false;
-  // final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>(); // May not be needed
-
   final _appointmentFormKey = GlobalKey<FormState>();
-  late QueueService _queueService; // Added QueueService instance
+  late QueueService _queueService;
 
-  // Form controllers
   final TextEditingController _patientNameController = TextEditingController();
   final TextEditingController _patientIdController = TextEditingController();
   final TextEditingController _doctorController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   TimeOfDay _selectedTime = TimeOfDay.now();
 
-  // Generate unique patient ID
-  String _generatePatientId() {
-    return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
-  }
+  late List<String> _menuTitles;
+  late List<Widget> _screens;
+  late List<IconData> _menuIcons;
 
-  late List<String> _menuTitles; // Made non-final
-  late List<Widget> _screens; // Made non-final
-  late List<IconData> _menuIcons; // Made non-final
-
-  // Define all possible menu items with their screens and icons
   final Map<String, Map<String, dynamic>> _allMenuItems = {
-    'Live Queue': {
-      'screen': LiveQueueDashboardView(
-          queueService: QueueService()), // Pass initialized service
-      'icon': Icons.people_outline // Example Icon
+    'Live Queue & Analytics': {
+      'screen': const SizedBox.shrink(),
+      'icon': Icons.ssid_chart_outlined
     },
     'Registration': {
       'screen': RegistrationHubScreen(),
       'icon': Icons.app_registration
+    },
+    'User Management': {
+      'screen': UserManagementScreen(),
+      'icon': Icons.manage_accounts
     },
     'Maintenance': {
       'screen': MaintenanceHubScreen(),
@@ -84,7 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.groups_outlined
     },
     'Appointment Schedule': {
-      'screen': const Text("Placeholder"),
+      'screen': const SizedBox.shrink(),
       'icon': Icons.calendar_month_outlined
     },
     'Patient Analytics': {
@@ -104,11 +101,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'About': {'screen': const AboutScreen(), 'icon': Icons.info_outline},
   };
 
-  // Define which menu items each role can access
   final Map<String, List<String>> _rolePermissions = {
     'admin': [
-      'Live Queue',
       'Registration',
+      'User Management',
       'Maintenance',
       'Search',
       'Patient Laboratory Histories',
@@ -122,7 +118,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'medtech': [
-      'Live Queue',
+      'Live Queue & Analytics',
       'Registration',
       'Search',
       'Patient Laboratory Histories',
@@ -136,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'doctor': [
-      'Live Queue',
+      'Live Queue & Analytics',
       'Search',
       'Patient Laboratory Histories',
       'Patient Queue',
@@ -148,62 +144,64 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'Help',
       'About'
     ],
-    // Default to a restricted view or handle as an error if role is unexpected
     'patient': ['Appointment Schedule', 'Help', 'About']
   };
 
   @override
   void initState() {
     super.initState();
-    _queueService = QueueService(); // Initialize QueueService
+    _queueService = QueueService();
     _configureMenuForRole();
-    _loadInitialData(); // For appointment module
+    _loadInitialData();
   }
 
   void _configureMenuForRole() {
-    List<String> allowedMenuKeys = _rolePermissions[widget.accessLevel] ??
-        _rolePermissions['patient']!; // Default to patient or a minimal set
+    List<String> allowedMenuKeys =
+        _rolePermissions[widget.accessLevel] ?? _rolePermissions['patient']!;
 
     List<String> tempTitles = [];
     List<Widget> tempScreens = [];
     List<IconData> tempIcons = [];
 
-    // Ensure 'Live Queue' is first for medtech and doctor if they have access
-    if ((widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor') &&
-        _allMenuItems.containsKey('Live Queue') &&
-        allowedMenuKeys.contains('Live Queue')) {
-      tempTitles.add('Live Queue');
-      tempScreens.add(_allMenuItems['Live Queue']!['screen'] as Widget);
-      tempIcons.add(_allMenuItems['Live Queue']!['icon'] as IconData);
+    String liveQueueAnalyticsKey = 'Live Queue & Analytics';
+    if (_allMenuItems.containsKey(liveQueueAnalyticsKey) &&
+        allowedMenuKeys.contains(liveQueueAnalyticsKey)) {
+      bool prioritize =
+          (widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor');
+      if (!prioritize) {
+        if (allowedMenuKeys.isNotEmpty &&
+            allowedMenuKeys.first == liveQueueAnalyticsKey) {
+          prioritize = true;
+        }
+      }
+
+      if (prioritize && !tempTitles.contains(liveQueueAnalyticsKey)) {
+        tempTitles.add(liveQueueAnalyticsKey);
+        tempScreens.add(LiveQueueDashboardView(queueService: _queueService));
+        tempIcons
+            .add(_allMenuItems[liveQueueAnalyticsKey]!['icon'] as IconData);
+      }
     }
 
     for (String key in _allMenuItems.keys) {
-      if (key == 'Live Queue' &&
-          (widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor')) {
-        continue; // Already added or will be handled
+      if (tempTitles.contains(key)) {
+        continue;
       }
+
       if (allowedMenuKeys.contains(key)) {
         tempTitles.add(key);
-        Widget screenToShow = _allMenuItems[key]!['screen'] as Widget;
+        Widget screenToShow;
 
-        if (key == 'Appointment Schedule') {
+        if (key == liveQueueAnalyticsKey) {
+          screenToShow = LiveQueueDashboardView(queueService: _queueService);
+        } else if (key == 'Appointment Schedule') {
           screenToShow = _buildAppointmentModule();
         } else if (key == 'Registration') {
-          if (widget.accessLevel == 'admin') {
-            screenToShow = UserManagementScreen(); // Admin sees User Management
-          } else if (widget.accessLevel == 'medtech') {
-            // Medtech sees Patient Registration. If RegistrationHubScreen is desired for Medtechs
-            // to choose patient/service, then keep _allMenuItems[key]!['screen']
-            // For now, direct to PatientRegistrationScreen for Medtech
-            screenToShow = PatientRegistrationScreen();
-          } else {
-            // For other roles (e.g. doctor), Registration might not be shown or lead to a default/error view
-            // Currently, doctors don't have 'Registration' in _rolePermissions
-            // If they did, this else would be relevant.
-            // Defaulting to the original hub if role is not admin/medtech but has Registration permission.
-            screenToShow = _allMenuItems[key]!['screen'] as Widget;
-          }
+          screenToShow = _allMenuItems[key]!['screen'] as Widget;
+        } else {
+          screenToShow = _allMenuItems[key]!['screen'] as Widget;
         }
+
         tempScreens.add(screenToShow);
         tempIcons.add(_allMenuItems[key]!['icon'] as IconData);
       }
@@ -214,26 +212,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _screens = tempScreens;
       _menuIcons = tempIcons;
 
-      // Ensure _selectedIndex is valid for the filtered list
       if (_selectedIndex >= _menuTitles.length) {
         _selectedIndex = 0;
       }
     });
   }
 
+  String _generatePatientId() {
+    return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
+  }
+
   Future<void> _loadAppointments() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // Try to get appointments from API
-      try {
-        final apiAppointments = await ApiService.getAppointments(_selectedDate);
-        if (apiAppointments.isNotEmpty) {
-          setState(() => _appointments = apiAppointments);
-        }
-      } catch (e) {
-        // Silently fail and keep existing appointments
-        print('Failed to load appointments from API: $e');
+      final apiAppointments = await ApiService.getAppointments(_selectedDate);
+      if (mounted) {
+        setState(() => _appointments = apiAppointments);
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Failed to load appointments: $e (local data shown)')),
+        );
+      }
+      print('Failed to load appointments from API, using local/mock: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -242,104 +247,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _loadInitialData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    try {
-      // Mock data - will be replaced by actual API call later
-      _appointments = [
-        Appointment(
+    _appointments = [
+      Appointment(
           id: '1',
           patientId: 'PT-1001',
           date: DateTime.now(),
           time: const TimeOfDay(hour: 9, minute: 0),
           doctorId: 'dr_smith_id',
           status: 'Confirmed',
-          notes: 'Regular checkup',
-        ),
-        Appointment(
+          notes: 'Regular checkup'),
+      Appointment(
           id: '2',
           patientId: 'PT-1002',
           date: DateTime.now(),
           time: const TimeOfDay(hour: 11, minute: 30),
           doctorId: 'dr_johnson_id',
           status: 'Pending',
-          notes: 'New patient consultation',
-        ),
-        Appointment(
-          id: '3',
-          patientId: 'PT-1003',
-          date: DateTime.now().add(const Duration(days: 1)),
-          time: const TimeOfDay(hour: 14, minute: 0),
-          doctorId: 'dr_smith_id',
-          status: 'Confirmed',
-          notes: 'Follow-up appointment',
-        ),
-        Appointment(
-          id: '4',
-          patientId: 'PT-1004',
-          date: DateTime.now(),
-          time: const TimeOfDay(hour: 15, minute: 30),
-          doctorId: 'dr_wilson_id',
-          status: 'Cancelled',
-          notes: 'Annual physical examination',
-        ),
-        Appointment(
-          id: '5',
-          patientId: 'PT-1005',
-          date: DateTime.now().add(const Duration(days: 2)),
-          time: const TimeOfDay(hour: 10, minute: 0),
-          doctorId: 'dr_johnson_id',
-          status: 'Pending',
-          notes: 'Follow-up on lab results',
-        ),
-      ];
-
-      // Try to get appointments from API (can fail silently for now)
-      if (_menuTitles.contains('Appointment Schedule')) {
-        // Only load if module is accessible
-        try {
-          final apiAppointments =
-              await ApiService.getAppointments(_selectedDate);
-          if (apiAppointments.isNotEmpty) {
-            _appointments = apiAppointments;
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text('Error loading appointments: ${e.toString()}')),
-            );
-          }
-          print('Error loading appointments: $e');
-        }
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          // _currentScreen = _buildAppointmentModule(); // This will be managed by NavigationRail
-        });
-      }
+          notes: 'New patient consultation'),
+    ];
+    await _loadAppointments();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _saveAppointment() async {
     if (_appointmentFormKey.currentState!.validate()) {
+      if (!mounted) return;
       setState(() => _isLoading = true);
       try {
         String newId;
-
         if (_patientIdController.text.isEmpty) {
           _patientIdController.text = _generatePatientId();
-          newId = DateTime.now().millisecondsSinceEpoch.toString();
-        } else {
-          try {
-            newId = _appointments
-                .firstWhere((a) => a.patientId == _patientIdController.text)
-                .id;
-          } catch (e) {
-            newId = DateTime.now().millisecondsSinceEpoch.toString();
-          }
         }
+        newId = _patientIdController.text +
+            DateTime.now().millisecondsSinceEpoch.toString();
 
         final newAppointment = Appointment(
           id: newId,
@@ -351,85 +297,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
           notes: _notesController.text,
         );
 
-        try {
-          await ApiService.saveAppointment(newAppointment);
+        await ApiService.saveAppointment(newAppointment);
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Appointment saved successfully'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } catch (e) {
-          setState(() {
-            _appointments.add(newAppointment);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Saved locally. Sync when connection is restored.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
+                content: Text('Appointment saved successfully'),
+                backgroundColor: Colors.green),
           );
         }
-
         await _loadAppointments();
-        setState(() => _isAddingAppointment = false);
+        if (mounted) {
+          setState(() => _isAddingAppointment = false);
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to save appointment. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to save appointment: $e')),
+          );
+        }
       } finally {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
 
   Future<void> _updateAppointmentStatus(String id, String newStatus) async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final index = _appointments.indexWhere((appt) => appt.id == id);
-      if (index != -1) {
-        try {
-          await ApiService.updateAppointmentStatus(id, newStatus);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+      await ApiService.updateAppointmentStatus(id, newStatus);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
               content: Text('Status updated successfully'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } catch (e) {
-          setState(() {
-            _appointments[index] =
-                _appointments[index].copyWith(status: newStatus);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content:
-                  Text('Updated locally. Sync when connection is restored.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        // Reload appointments to reflect changes from API if successful
-        await _loadAppointments();
+              backgroundColor: Colors.green),
+        );
       }
+      await _loadAppointments();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to update status. Please try again.'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e')),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -516,29 +432,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
   }
 
-  // Method to handle logout
   void _logout() async {
-    await AuthService.logout(); // Assuming AuthService has a logout method
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (Route<dynamic> route) => false,
+    await AuthService.logout();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) => false,
+      );
+    }
+  }
+
+  Widget _buildNavigationItem(int index) {
+    bool isSelected = index == _selectedIndex;
+    bool isItemHovered = _hoveredItems[index] ?? false;
+    bool shouldShowLabel = _isHovered || isSelected || isItemHovered;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hoveredItems[index] = true),
+      onExit: (_) => setState(() => _hoveredItems[index] = false),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _selectedIndex = index;
+                if (_menuTitles[index] !=
+                    'Appointment Schedule H Hypothetical') {}
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.teal.withOpacity(0.15)
+                    : isItemHovered
+                        ? Colors.teal.withOpacity(0.08)
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _menuIcons[index],
+                    color: isSelected || isItemHovered
+                        ? Theme.of(context).primaryColor
+                        : Colors.grey[600],
+                    size: 24,
+                  ),
+                  if (shouldShowLabel)
+                    Expanded(
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: shouldShowLabel ? 1.0 : 0.0,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 16),
+                          child: Text(
+                            _menuTitles[index],
+                            style: TextStyle(
+                              color: isSelected || isItemHovered
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.grey[600],
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_menuTitles.isEmpty && widget.accessLevel != 'patient') {
-      // Handle case where role might not have menus (e.g. during init)
-      // This might happen if _configureMenuForRole hasn't completed or an unknown role is passed.
-      // Provide a loading state or a restricted view.
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_menuTitles == null ||
+        (_menuTitles.isEmpty && widget.accessLevel != 'patient')) {
+      return Scaffold(
+          appBar: AppBar(
+              title: Text('Dashboard - ${widget.accessLevel}'),
+              backgroundColor: Colors.teal[700]),
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (_menuTitles.isEmpty && widget.accessLevel == 'patient') {
       return Scaffold(
-        appBar: AppBar(title: const Text("Patient Dashboard")),
-        body: const Center(
-            child: Text(
-                "Welcome Patient! Limited view.")), // Or specific patient view
+        appBar: AppBar(
+            title: const Text("Patient Dashboard"),
+            backgroundColor: Colors.teal[700]),
+        body: const Center(child: Text("Welcome Patient! Limited view.")),
       );
     }
 
@@ -554,25 +548,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
               switch (result) {
                 case 'activity_log':
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const UserActivityLogScreen()),
-                  );
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const UserActivityLogScreen()));
                   break;
                 case 'lan_connection':
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) =>
-                            const LanClientConnectionScreen()),
-                  );
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              const LanClientConnectionScreen()));
                   break;
                 case 'system_settings':
                   Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const SystemSettingsScreen()),
-                  );
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SystemSettingsScreen()));
                   break;
                 case 'logout':
                   _logout();
@@ -596,8 +587,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       leading: Icon(Icons.wifi), title: Text('LAN Connection')),
                 ),
               );
-
-              // System Settings for all roles
               items.add(
                 const PopupMenuItem<String>(
                   value: 'system_settings',
@@ -606,7 +595,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       title: Text('System Settings')),
                 ),
               );
-
               items.add(const PopupMenuDivider());
               items.add(
                 const PopupMenuItem<String>(
@@ -622,47 +610,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Row(
         children: <Widget>[
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) {
-              setState(() {
-                _selectedIndex = index;
-                // If the selected screen is not the appointment module,
-                // reset appointment specific state if necessary
-                if (_menuTitles[index] != 'Appointment Schedule') {
-                  _isAddingAppointment = false;
-                }
-              });
-            },
-            labelType: NavigationRailLabelType.all,
-            selectedLabelTextStyle: TextStyle(color: Colors.teal[700]),
-            unselectedLabelTextStyle: const TextStyle(color: Colors.grey),
-            destinations: List.generate(_menuTitles.length, (index) {
-              return NavigationRailDestination(
-                icon: Icon(_menuIcons[index]),
-                selectedIcon: Icon(_menuIcons[index],
-                    color: Theme.of(context).primaryColor),
-                label: SizedBox
-                    .shrink(), // Further simplified: remove Text label entirely for now
-              );
-            }),
-            minExtendedWidth: 180,
-            minWidth: 100,
-            extended: false,
-            groupAlignment: -0.85,
-            backgroundColor: Colors.grey[100],
-            elevation: 4,
+          MouseRegion(
+            onEnter: (_) => setState(() => _isHovered = true),
+            onExit: (_) => setState(() => _isHovered = false),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              width: _isHovered ? 200 : 72,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.05), blurRadius: 2)
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: List.generate(
+                    _menuTitles.length,
+                    (index) => _buildNavigationItem(index),
+                  ),
+                ),
+              ),
+            ),
           ),
           const VerticalDivider(thickness: 1, width: 1),
-          // This is the main content.
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              // child: _currentScreen, // Old way
-              child: _screens[
-                  _selectedIndex], // New way: display screen from the list
+              child: (_selectedIndex < _screens.length)
+                  ? _screens[_selectedIndex]
+                  : const Center(child: Text("Screen not available")),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -740,24 +722,15 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   },
                 ),
               ),
-              // validator: (value) { // Optional: Add validation if ID is manually entered
-              //   if (value != null && value.isNotEmpty && !value.startsWith('PT-')) {
-              //     return 'Patient ID should start with PT-';
-              //   }
-              //   return null;
-              // },
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: widget.patientNameController,
               decoration: const InputDecoration(
-                labelText: 'Patient Name',
-                border: OutlineInputBorder(),
-              ),
+                  labelText: 'Patient Name', border: OutlineInputBorder()),
               validator: (value) {
-                if (value == null || value.isEmpty) {
+                if (value == null || value.isEmpty)
                   return 'Please enter patient name';
-                }
                 return null;
               },
             ),
@@ -765,13 +738,10 @@ class _AppointmentFormState extends State<AppointmentForm> {
             TextFormField(
               controller: widget.doctorController,
               decoration: const InputDecoration(
-                labelText: 'Doctor',
-                border: OutlineInputBorder(),
-              ),
+                  labelText: 'Doctor', border: OutlineInputBorder()),
               validator: (value) {
-                if (value == null || value.isEmpty) {
+                if (value == null || value.isEmpty)
                   return 'Please enter doctor name';
-                }
                 return null;
               },
             ),
@@ -790,9 +760,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
             TextFormField(
               controller: widget.notesController,
               decoration: const InputDecoration(
-                labelText: 'Notes (Optional)',
-                border: OutlineInputBorder(),
-              ),
+                  labelText: 'Notes (Optional)', border: OutlineInputBorder()),
               maxLines: 3,
             ),
             const SizedBox(height: 20),
@@ -800,9 +768,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: widget.onCancel,
-                  child: const Text('CANCEL'),
-                ),
+                    onPressed: widget.onCancel, child: const Text('CANCEL')),
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: widget.onSave,
@@ -852,7 +818,7 @@ Widget _buildAppointmentCard(Appointment appointment,
       statusColor = Colors.red;
       statusIcon = Icons.cancel_outlined;
       break;
-    case 'Completed': // Added completed status
+    case 'Completed':
       statusColor = Colors.blue;
       statusIcon = Icons.done_all_outlined;
       break;
@@ -863,10 +829,8 @@ Widget _buildAppointmentCard(Appointment appointment,
     elevation: 2,
     child: ListTile(
       leading: Icon(statusIcon, color: statusColor, size: 30),
-      title: Text(
-        'Patient ID: ${appointment.patientId}',
-        style: const TextStyle(fontWeight: FontWeight.bold),
-      ),
+      title: Text('Patient ID: ${appointment.patientId}',
+          style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -877,19 +841,14 @@ Widget _buildAppointmentCard(Appointment appointment,
         ],
       ),
       trailing: _buildStatusDropdown(appointment.status, (newStatus) {
-        if (newStatus != null) {
-          onUpdateStatus(appointment.id, newStatus);
-        }
+        if (newStatus != null) onUpdateStatus(appointment.id, newStatus);
       }),
-      isThreeLine: true, // Adjust if notes make it longer
+      isThreeLine: true,
       onTap: () {
-        // Optional: Show details or edit options on tap
         showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AppointmentDetailDialog(appointment: appointment);
-          },
-        );
+            context: context,
+            builder: (BuildContext context) =>
+                AppointmentDetailDialog(appointment: appointment));
       },
     ),
   );
@@ -897,20 +856,14 @@ Widget _buildAppointmentCard(Appointment appointment,
 
 Widget _buildStatusDropdown(String currentStatus, Function(String?) onChanged) {
   List<String> statuses = ['Pending', 'Confirmed', 'Cancelled', 'Completed'];
-  // Ensure currentStatus is always in the list to avoid DropdownButton error
-  if (!statuses.contains(currentStatus)) {
-    statuses.add(currentStatus);
-  }
+  if (!statuses.contains(currentStatus)) statuses.add(currentStatus);
   return DropdownButton<String>(
     value: currentStatus,
     items: statuses.map((String value) {
-      return DropdownMenuItem<String>(
-        value: value,
-        child: Text(value),
-      );
+      return DropdownMenuItem<String>(value: value, child: Text(value));
     }).toList(),
     onChanged: onChanged,
-    underline: Container(), // Remove underline for a cleaner look
+    underline: Container(),
     style: TextStyle(color: Colors.teal[700], fontWeight: FontWeight.normal),
     iconEnabledColor: Colors.teal[700],
   );
@@ -919,24 +872,21 @@ Widget _buildStatusDropdown(String currentStatus, Function(String?) onChanged) {
 class AppointmentList extends StatelessWidget {
   final List<Appointment> appointments;
   final Function(String, String) onUpdateStatus;
-  final Function(Appointment) onEditAppointment; // Add this callback
+  final Function(Appointment) onEditAppointment;
 
   const AppointmentList({
     super.key,
     required this.appointments,
     required this.onUpdateStatus,
-    required this.onEditAppointment, // Add this
+    required this.onEditAppointment,
   });
 
   @override
   Widget build(BuildContext context) {
     if (appointments.isEmpty) {
       return const Center(
-        child: Text(
-          'No appointments scheduled for this day.',
-          style: TextStyle(fontSize: 16, color: Colors.grey),
-        ),
-      );
+          child: Text('No appointments scheduled for this day.',
+              style: TextStyle(fontSize: 16, color: Colors.grey)));
     }
     return ListView.builder(
       itemCount: appointments.length,
@@ -944,8 +894,7 @@ class AppointmentList extends StatelessWidget {
         return AppointmentCard(
           appointment: appointments[index],
           onUpdateStatus: onUpdateStatus,
-          onEdit: () =>
-              onEditAppointment(appointments[index]), // Pass the callback
+          onEdit: () => onEditAppointment(appointments[index]),
         );
       },
     );
@@ -955,13 +904,13 @@ class AppointmentList extends StatelessWidget {
 class AppointmentCard extends StatelessWidget {
   final Appointment appointment;
   final Function(String, String) onUpdateStatus;
-  final VoidCallback onEdit; // Add this
+  final VoidCallback onEdit;
 
   const AppointmentCard({
     super.key,
     required this.appointment,
     required this.onUpdateStatus,
-    required this.onEdit, // Add this
+    required this.onEdit,
   });
 
   @override
@@ -993,7 +942,7 @@ class AppointmentCard extends StatelessWidget {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: onEdit, // Call onEdit when card is tapped
+        onTap: onEdit,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -1003,11 +952,9 @@ class AppointmentCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Patient ID: ${appointment.patientId}',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                  Text('Patient ID: ${appointment.patientId}',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   Chip(
                     avatar: Icon(statusIcon, color: Colors.white, size: 16),
                     label: Text(appointment.status,
@@ -1033,9 +980,8 @@ class AppointmentCard extends StatelessWidget {
                 children: [
                   const Text('Change Status: '),
                   _buildStatusDropdown(appointment.status, (newStatus) {
-                    if (newStatus != null) {
+                    if (newStatus != null)
                       onUpdateStatus(appointment.id, newStatus);
-                    }
                   }),
                 ],
               ),
@@ -1049,7 +995,6 @@ class AppointmentCard extends StatelessWidget {
 
 class AppointmentDetailDialog extends StatelessWidget {
   final Appointment appointment;
-
   const AppointmentDetailDialog({super.key, required this.appointment});
 
   @override
@@ -1071,20 +1016,15 @@ class AppointmentDetailDialog extends StatelessWidget {
       ),
       actions: <Widget>[
         TextButton(
-          child: const Text('Close'),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
+            child: const Text('Close'),
+            onPressed: () => Navigator.of(context).pop()),
       ],
     );
   }
 }
 
-// Define LiveQueueDashboardView widget here
 class LiveQueueDashboardView extends StatefulWidget {
   final QueueService queueService;
-
   const LiveQueueDashboardView({super.key, required this.queueService});
 
   @override
@@ -1104,60 +1044,45 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
 
   void _loadQueue() {
     setState(() {
-      _queueFuture = widget.queueService.getActiveQueueItems(
-          statuses: ['waiting', 'in_consultation']); // Focus on active patients
+      _queueFuture = widget.queueService
+          .getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
     });
   }
 
-  void _refreshQueue() {
-    _loadQueue();
-  }
+  void _refreshQueue() => _loadQueue();
 
   Future<void> _nextPatient() async {
+    if (!mounted) return;
     try {
       final queue = await _queueFuture;
       final waitingPatients =
           queue.where((p) => p.status == 'waiting').toList();
-
       if (waitingPatients.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('No patients currently waiting.'),
-            backgroundColor: Colors.amber,
-          ),
-        );
+            backgroundColor: Colors.amber));
         return;
       }
-
-      waitingPatients.sort((a, b) => a.queueNumber.compareTo(b.queueNumber));
+      waitingPatients.sort((a, b) => (a.queueNumber).compareTo(b.queueNumber));
       final nextPatient = waitingPatients.first;
-
       bool success = await widget.queueService
           .markPatientAsInConsultation(nextPatient.queueEntryId);
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${nextPatient.patientName} is now In Consultation.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _refreshQueue();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Failed to move ${nextPatient.patientName} to In Consultation.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Error processing next patient: $e'),
-            backgroundColor: Colors.red),
+          content: Text(success
+              ? '${nextPatient.patientName} is now In Consultation.'
+              : 'Failed to move ${nextPatient.patientName}.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
       );
+      if (success) _refreshQueue();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error processing next patient: $e'),
+          backgroundColor: Colors.red));
     }
   }
 
@@ -1194,11 +1119,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   @override
   Widget build(BuildContext context) {
     return Row(
-      // Changed to Row for side-by-side layout
       children: [
-        // Live Queue Section (Left Half)
         Expanded(
-          flex: 1, // Takes half of the screen
+          flex: 1,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -1207,19 +1130,16 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Live Patient Queue',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal[700]), // Changed color to teal
-                    ),
+                    Text('Live Patient Queue',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal[700])),
                     IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _refreshQueue,
-                      tooltip: 'Refresh Queue',
-                      color: Colors.teal[700], // Changed color to teal
-                    ),
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _refreshQueue,
+                        tooltip: 'Refresh Queue',
+                        color: Colors.teal[700]),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -1238,54 +1158,47 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                       }
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
                         return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Text(
-                              'No patients waiting or in consultation.',
-                              style:
-                                  TextStyle(fontSize: 16, color: Colors.grey),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
+                            child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: Text(
+                                    'No patients waiting or in consultation.',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.grey),
+                                    textAlign: TextAlign.center)));
                       }
 
                       final queue = snapshot.data!;
                       return ListView.builder(
                         itemCount: queue.length,
-                        itemBuilder: (context, index) {
-                          final item = queue[index];
-                          return _buildTableRow(item);
-                        },
+                        itemBuilder: (context, index) =>
+                            _buildTableRow(queue[index]),
                       );
                     },
                   ),
                 ),
-                const SizedBox(height: 16), // Space before the button
+                const SizedBox(height: 16),
                 Center(
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.next_plan_outlined),
                     label: const Text('Next Patient'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[600], // Keep teal color
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      textStyle: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                        backgroundColor: Colors.teal[600],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        textStyle: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
                     onPressed: _nextPatient,
                   ),
                 ),
-                const SizedBox(height: 16), // Space after the button
+                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
-        const VerticalDivider(width: 1, thickness: 1), // Separator
-        // Analytics Section (Right Half)
+        const VerticalDivider(width: 1, thickness: 1),
         Expanded(
-          flex: 1, // Takes the other half of the screen
+          flex: 1,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -1300,7 +1213,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.teal[700]), // Changed color to teal
+                      color: Colors.teal[700]),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -1311,7 +1224,6 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                       fontStyle: FontStyle.italic,
                       color: Colors.grey[600]),
                 ),
-                // You can add more placeholder UI for analytics here if needed
               ],
             ),
           ),
@@ -1323,20 +1235,18 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   Widget _buildTableHeader() {
     final headers = ['No.', 'Name', 'Arrival', 'Condition', 'Status'];
     return Container(
-      color: Colors.teal[600], // Changed color to teal
+      color: Colors.teal[600],
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: headers.map((text) {
           return Expanded(
               flex: (text == 'Name' || text == 'Condition') ? 2 : 1,
               child: TableCellWidget(
-                text: text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ));
+                  text: text,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)));
         }).toList(),
       ),
     );
@@ -1345,9 +1255,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   Widget _buildTableRow(ActivePatientQueueItem item) {
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
-
     final dataCells = [
-      item.queueNumber.toString(),
+      (item.queueNumber).toString(),
       item.patientName,
       arrivalDisplayTime,
       item.conditionOrPurpose ?? 'N/A',
@@ -1357,42 +1266,31 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-      ),
+          color: Colors.white,
+          border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
       child: Row(
         children: [
           ...dataCells.asMap().entries.map((entry) {
             int idx = entry.key;
-            String text = entry.value.toString();
+            String text = entry.value;
             int flex = (idx == 1 || idx == 3) ? 2 : 1;
-
-            if (idx == 0) {
-              return Expanded(
-                  flex: 1,
-                  child: Center(
-                      child: Text(text,
-                          style: cellStyle.copyWith(
-                              fontWeight: FontWeight.bold))));
-            }
             return Expanded(
                 flex: flex,
                 child: TableCellWidget(
-                  text: text,
-                  style: cellStyle,
-                ));
+                    text: text,
+                    style: cellStyle.copyWith(
+                        fontWeight:
+                            idx == 0 ? FontWeight.bold : FontWeight.normal)));
           }).toList(),
           Expanded(
             flex: 1,
             child: TableCellWidget(
-                child: Text(
-              _getDisplayStatus(item.status),
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: _getStatusColor(item.status),
-                  fontSize: cellStyle.fontSize),
-              textAlign: TextAlign.center,
-            )),
+                child: Text(_getDisplayStatus(item.status),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(item.status),
+                        fontSize: cellStyle.fontSize),
+                    textAlign: TextAlign.center)),
           ),
         ],
       ),
