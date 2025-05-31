@@ -56,59 +56,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final Map<String, Map<String, dynamic>> _allMenuItems = {
     'Live Queue & Analytics': {
-      'screen': const SizedBox.shrink(),
+      'screen': (String accessLevel) => const SizedBox.shrink(),
       'icon': Icons.ssid_chart_outlined
     },
     'Registration': {
-      'screen': RegistrationHubScreen(),
+      'screen': (String accessLevel) =>
+          RegistrationHubScreen(accessLevel: accessLevel),
       'icon': Icons.app_registration
     },
     'User Management': {
-      'screen': UserManagementScreen(),
-      'icon': Icons.manage_accounts
-    },
-    'User Management': {
-      'screen': UserManagementScreen(),
+      'screen': (String accessLevel) => UserManagementScreen(),
       'icon': Icons.manage_accounts
     },
     'Maintenance': {
-      'screen': MaintenanceHubScreen(),
+      'screen': (String accessLevel) =>
+          MaintenanceHubScreen(accessLevel: accessLevel),
       'icon': Icons.build_circle_outlined
     },
-    'Search': {'screen': SearchHubScreen(), 'icon': Icons.search_outlined},
+    'Search': {
+      'screen': (String accessLevel) =>
+          SearchHubScreen(accessLevel: accessLevel),
+      'icon': Icons.search_outlined
+    },
     'Patient Laboratory Histories': {
-      'screen': LaboratoryHubScreen(),
+      'screen': (String accessLevel) =>
+          LaboratoryHubScreen(accessLevel: accessLevel),
       'icon': Icons.science_outlined
     },
     'Patient Queue': {
-      'screen': PatientQueueHubScreen(),
+      'screen': (String accessLevel) =>
+          PatientQueueHubScreen(accessLevel: accessLevel),
       'icon': Icons.groups_outlined
     },
     'Appointment Schedule': {
-      'screen': const SizedBox.shrink(),
+      'screen': (String accessLevel) => const SizedBox.shrink(),
       'icon': Icons.calendar_month_outlined
     },
     'Patient Analytics': {
-      'screen': PatientAnalyticsScreen(),
+      'screen': (String accessLevel) => PatientAnalyticsScreen(),
       'icon': Icons.analytics_outlined
     },
     'Report': {
-      'screen': ReportHubScreen(),
+      'screen': (String accessLevel) =>
+          ReportHubScreen(accessLevel: accessLevel),
       'icon': Icons.receipt_long_outlined
     },
-    'Payment': {'screen': PaymentHubScreen(), 'icon': Icons.payment_outlined},
+    'Payment': {
+      'screen': (String accessLevel) =>
+          PaymentHubScreen(accessLevel: accessLevel),
+      'icon': Icons.payment_outlined
+    },
     'Billing': {
-      'screen': BillingHubScreen(),
+      'screen': (String accessLevel) =>
+          BillingHubScreen(accessLevel: accessLevel),
       'icon': Icons.request_quote_outlined
     },
-    'Help': {'screen': HelpScreen(), 'icon': Icons.help_outline},
-    'About': {'screen': const AboutScreen(), 'icon': Icons.info_outline},
+    'Help': {
+      'screen': (String accessLevel) => HelpScreen(),
+      'icon': Icons.help_outline
+    },
+    'About': {
+      'screen': (String accessLevel) => const AboutScreen(),
+      'icon': Icons.info_outline
+    },
   };
 
   final Map<String, List<String>> _rolePermissions = {
     'admin': [
       'Registration',
-      'User Management',
       'User Management',
       'Maintenance',
       'Search',
@@ -196,15 +211,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (allowedMenuKeys.contains(key)) {
         tempTitles.add(key);
         Widget screenToShow;
+        Function? screenBuilder = _allMenuItems[key]!['screen'] as Function?;
 
         if (key == liveQueueAnalyticsKey) {
           screenToShow = LiveQueueDashboardView(queueService: _queueService);
         } else if (key == 'Appointment Schedule') {
           screenToShow = _buildAppointmentModule();
         } else if (key == 'Registration') {
-          screenToShow = _allMenuItems[key]!['screen'] as Widget;
+          if (widget.accessLevel == 'medtech') {
+            screenToShow = PatientRegistrationScreen();
+          } else {
+            if (screenBuilder != null) {
+              screenToShow = screenBuilder(widget.accessLevel);
+            } else {
+              screenToShow =
+                  const Center(child: Text("Error: Screen not configured"));
+            }
+          }
+        } else if (key == 'Patient Laboratory Histories') {
+          screenToShow = LaboratoryHubScreen(accessLevel: widget.accessLevel);
         } else {
-          screenToShow = _allMenuItems[key]!['screen'] as Widget;
+          if (screenBuilder != null) {
+            screenToShow = screenBuilder(widget.accessLevel);
+          } else {
+            screenToShow =
+                const Center(child: Text("Error: Screen not configured"));
+          }
         }
 
         tempScreens.add(screenToShow);

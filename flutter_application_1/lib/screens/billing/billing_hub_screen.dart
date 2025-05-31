@@ -1,124 +1,194 @@
 import 'package:flutter/material.dart';
+// Import specific screens if they exist, e.g.:
+// import 'create_invoice_screen.dart';
+// import 'billing_history_screen.dart';
+// import 'pending_bills_screen.dart';
+// import 'billing_settings_screen.dart';
 
 class BillingHubScreen extends StatelessWidget {
+  final String accessLevel;
+  const BillingHubScreen({super.key, required this.accessLevel});
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.teal[50]!, Colors.white],
-        ),
+    // Placeholder onTap actions - replace with actual navigation
+    VoidCallback placeholderOnTap = () {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Navigation to be implemented.')),
+      );
+    };
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Billing Hub', // Changed Title
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.teal[700],
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading: !(accessLevel == 'admin'),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Billing',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            SizedBox(height: 5),
-            Text(
-              'Manage patient billing and invoices',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 30),
-            Expanded(
-              child: ListView(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal[50]!, Colors.white],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  _buildBillingCard(
-                    icon: Icons.receipt,
-                    title: 'Create Invoice',
-                    subtitle: 'Generate new patient invoices',
-                    color: Colors.teal[700]!,
+                  Icon(
+                    Icons.request_quote_outlined, // Changed Icon
+                    size: 32,
+                    color: Colors.teal[800],
                   ),
-                  SizedBox(height: 20),
-                  _buildBillingCard(
-                    icon: Icons.history,
-                    title: 'Billing History',
-                    subtitle: 'View past billing records',
-                    color: Colors.teal[600]!,
-                  ),
-                  SizedBox(height: 20),
-                  _buildBillingCard(
-                    icon: Icons.pending_actions,
-                    title: 'Pending Bills',
-                    subtitle: 'View unpaid invoices',
-                    color: Colors.teal[500]!,
-                  ),
-                  SizedBox(height: 20),
-                  _buildBillingCard(
-                    icon: Icons.settings,
-                    title: 'Billing Settings',
-                    subtitle: 'Configure billing preferences',
-                    color: Colors.teal[400]!,
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Billing', // Title is okay
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Manage patient billing and invoices', // Subtitle is okay
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons.receipt_long_outlined, // More specific icon
+                      title: 'Create Invoice',
+                      subtitle: 'Generate new patient invoices',
+                      color: Colors.teal[700]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons
+                          .history_toggle_off_outlined, // More specific icon
+                      title: 'Billing History',
+                      subtitle: 'View past billing records',
+                      color: Colors.teal[600]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon:
+                          Icons.pending_actions_outlined, // More specific icon
+                      title: 'Pending Bills',
+                      subtitle: 'View unpaid invoices',
+                      color: Colors.teal[500]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon:
+                          Icons.settings_suggest_outlined, // More specific icon
+                      title: 'Billing Settings',
+                      subtitle: 'Configure billing preferences',
+                      color: Colors.teal[400]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBillingCard({
+  // Copied from MaintenanceHubScreen and renamed _buildBillingCard to _buildFeatureCard
+  Widget _buildFeatureCard(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
     required Color color,
+    required VoidCallback onTap,
   }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: color.withOpacity(0.2),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  size: 32,
+                  color: color,
+                ),
               ),
-              child: Icon(icon, size: 28, color: color),
-            ),
-            SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[900],
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 5),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right, color: color),
-          ],
+              Icon(
+                Icons.chevron_right,
+                color: Colors.grey[400],
+              ),
+            ],
+          ),
         ),
       ),
     );

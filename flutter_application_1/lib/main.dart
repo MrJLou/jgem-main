@@ -51,8 +51,8 @@ class PatientRecordManagementApp extends StatelessWidget {
         '/dashboard': (context) => const DashboardScreen(
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
-        '/laboratory-hub': (context) =>
-            LaboratoryHubScreen(), // Add route for LaboratoryHubScreen
+        '/laboratory-hub': (context) => const LaboratoryHubScreen(
+            accessLevel: 'admin'), // Provide default accessLevel
         '/lan-connection': (context) => const LanConnectionScreen(),
         '/lan-client': (context) => const LanClientConnectionScreen(),
       },
@@ -73,7 +73,7 @@ class _AuthWrapper extends StatelessWidget {
         }
 
         if (snapshot.hasData && snapshot.data == true) {
-          return DashboardOverviewScreen();
+          return const DashboardOverviewScreen();
         }
         return const LoginScreen();
       },
