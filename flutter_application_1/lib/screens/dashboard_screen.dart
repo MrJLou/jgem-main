@@ -60,17 +60,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.ssid_chart_outlined
     },
     'Registration': {
-      'screen': (String accessLevel) =>
-          RegistrationHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const RegistrationHubScreen(),
       'icon': Icons.app_registration
     },
     'User Management': {
-      'screen': (String accessLevel) => UserManagementScreen(),
+      'screen': (String accessLevel) => const UserManagementScreen(),
       'icon': Icons.manage_accounts
     },
     'Maintenance': {
-      'screen': (String accessLevel) =>
-          MaintenanceHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const MaintenanceHubScreen(),
       'icon': Icons.build_circle_outlined
     },
     'Search': {
@@ -79,8 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.search_outlined
     },
     'Patient Laboratory Histories': {
-      'screen': (String accessLevel) =>
-          LaboratoryHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const LaboratoryHubScreen(),
       'icon': Icons.science_outlined
     },
     'Patient Queue': {
@@ -97,18 +94,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.analytics_outlined
     },
     'Report': {
-      'screen': (String accessLevel) =>
-          ReportHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const ReportHubScreen(),
       'icon': Icons.receipt_long_outlined
     },
     'Payment': {
-      'screen': (String accessLevel) =>
-          PaymentHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const PaymentHubScreen(),
       'icon': Icons.payment_outlined
     },
     'Billing': {
-      'screen': (String accessLevel) =>
-          BillingHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const BillingHubScreen(),
       'icon': Icons.request_quote_outlined
     },
     'Help': {
@@ -229,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
           }
         } else if (key == 'Patient Laboratory Histories') {
-          screenToShow = LaboratoryHubScreen(accessLevel: widget.accessLevel);
+          screenToShow = const LaboratoryHubScreen();
         } else {
           if (screenBuilder != null) {
             screenToShow = screenBuilder(widget.accessLevel);
@@ -556,8 +550,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_menuTitles == null ||
-        (_menuTitles.isEmpty && widget.accessLevel != 'patient')) {
+    if (_menuTitles.isEmpty && widget.accessLevel != 'patient') {
       return Scaffold(
           appBar: AppBar(
               title: Text('Dashboard - ${widget.accessLevel}'),

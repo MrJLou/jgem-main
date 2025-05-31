@@ -4,8 +4,7 @@ import 'backup_screen.dart';
 import 'update_screen.dart';
 
 class MaintenanceHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const MaintenanceHubScreen({super.key, required this.accessLevel});
+  const MaintenanceHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,6 +15,7 @@ class MaintenanceHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(

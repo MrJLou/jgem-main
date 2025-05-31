@@ -51,8 +51,8 @@ class PatientRecordManagementApp extends StatelessWidget {
         '/dashboard': (context) => const DashboardScreen(
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
-        '/laboratory-hub': (context) => const LaboratoryHubScreen(
-            accessLevel: 'admin'), // Provide default accessLevel
+        '/laboratory-hub': (context) =>
+            const LaboratoryHubScreen(), // Provide default accessLevel
         '/lan-connection': (context) => const LanConnectionScreen(),
         '/lan-client': (context) => const LanClientConnectionScreen(),
       },

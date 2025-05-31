@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ReportHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const ReportHubScreen({super.key, required this.accessLevel});
+  const ReportHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +19,7 @@ class ReportHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: !(accessLevel == 'admin'),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(

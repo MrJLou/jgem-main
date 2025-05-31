@@ -4,8 +4,7 @@ import 'previous_diagnoses_treatments_screen.dart';
 import 'previous_laboratory_results_screen.dart';
 
 class LaboratoryHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const LaboratoryHubScreen({super.key, required this.accessLevel});
+  const LaboratoryHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +15,7 @@ class LaboratoryHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: !(accessLevel == 'admin'),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(

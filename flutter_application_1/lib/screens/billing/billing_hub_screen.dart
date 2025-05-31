@@ -6,8 +6,7 @@ import 'package:flutter/material.dart';
 // import 'billing_settings_screen.dart';
 
 class BillingHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const BillingHubScreen({super.key, required this.accessLevel});
+  const BillingHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +24,7 @@ class BillingHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: !(accessLevel == 'admin'),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(

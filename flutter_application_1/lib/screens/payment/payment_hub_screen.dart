@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 // import 'payment_settings_screen.dart';
 
 class PaymentHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const PaymentHubScreen({super.key, required this.accessLevel});
+  // final String accessLevel; // Removed accessLevel
+  const PaymentHubScreen({super.key}); // Removed required this.accessLevel
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +25,7 @@ class PaymentHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: !(accessLevel == 'admin'),
+        automaticallyImplyLeading: false, // Set to false
       ),
       body: Container(
         decoration: BoxDecoration(

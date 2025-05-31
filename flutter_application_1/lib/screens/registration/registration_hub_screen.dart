@@ -4,8 +4,7 @@ import 'patient_registration_screen.dart';
 import 'service_registration_screen.dart';
 
 class RegistrationHubScreen extends StatelessWidget {
-  final String accessLevel;
-  const RegistrationHubScreen({super.key, required this.accessLevel});
+  const RegistrationHubScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +15,7 @@ class RegistrationHubScreen extends StatelessWidget {
         backgroundColor: Colors.teal[700],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        automaticallyImplyLeading: !(accessLevel == 'admin'),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(
