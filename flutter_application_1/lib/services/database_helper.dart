@@ -95,7 +95,7 @@ class DatabaseHelper {
     // Check if running on Windows and apply custom path
     if (!kIsWeb && Platform.isWindows) {
       path =
-          'C:\\Users\\jesie\\Documents\\jgem-softeng\\jgem-main\\$_databaseName';
+          'C:\\Users\\Louie Eydrian\\OneDrive\\Desktop\\jgem-main\\$_databaseName';
       print('DATABASE_HELPER: Using custom Windows path: $path');
     } else {
       // Existing logic for other platforms (Android, iOS, macOS, Linux)
@@ -1888,5 +1888,69 @@ To view live changes in DB Browser:
     print(
         'DATABASE_HELPER: Deleted $count items from $tableActivePatientQueue for date ${DateFormat('yyyy-MM-dd').format(date)}');
     return count;
+  }
+
+  Future<List<Map<String, dynamic>>> searchPayments({
+    required String reference,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? paymentType,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT p.*, pb.id as bill_id, pt.fullName as patient_name, cs.serviceName as service_name
+      FROM $tablePayments p
+      LEFT JOIN $tablePatientBills pb ON p.billId = pb.id
+      LEFT JOIN $tablePatients pt ON p.patientId = pt.id
+      LEFT JOIN $tableClinicServices cs ON pb.serviceId = cs.id
+      WHERE p.id LIKE ?
+    ''';
+    
+    List<dynamic> arguments = ['%$reference%'];
+    
+    if (startDate != null) {
+      query += ' AND p.paymentDate >= ?';
+      arguments.add(DateFormat('yyyy-MM-dd').format(startDate));
+    }
+    
+    if (endDate != null) {
+      query += ' AND p.paymentDate <= ?';
+      arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
+    }
+    
+    if (paymentType != null && paymentType != 'all') {
+      query += ' AND p.paymentMethod = ?';
+      arguments.add(paymentType);
+    }
+    
+    query += ' ORDER BY p.paymentDate DESC';
+    
+    final results = await db.rawQuery(query, arguments);
+    return results;
+  }
+
+  Future<List<Map<String, dynamic>>> searchServices({
+    required String searchTerm,
+    String? category,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT * FROM $tableClinicServices
+      WHERE (serviceName LIKE ? OR id LIKE ?)
+    ''';
+    
+    List<dynamic> arguments = ['%$searchTerm%', '%$searchTerm%'];
+    
+    if (category != null && category != 'All Categories') {
+      query += ' AND category = ?';
+      arguments.add(category);
+    }
+    
+    query += ' ORDER BY serviceName ASC';
+    
+    final results = await db.rawQuery(query, arguments);
+    return results;
   }
 }

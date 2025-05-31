@@ -411,4 +411,36 @@ class ApiService {
       throw Exception('Failed to delete user: $e');
     }
   }
+
+  static Future<List<Map<String, dynamic>>> searchPayments({
+    required String reference,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? paymentType,
+  }) async {
+    try {
+      return await _dbHelper.searchPayments(
+        reference: reference,
+        startDate: startDate,
+        endDate: endDate,
+        paymentType: paymentType,
+      );
+    } catch (e) {
+      throw Exception('Failed to search payments: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> searchServices({
+    required String searchTerm,
+    required String category,
+  }) async {
+    try {
+      return await _dbHelper.searchServices(
+        searchTerm: searchTerm,
+        category: category == 'All Categories' ? null : category,
+      );
+    } catch (e) {
+      throw Exception('Failed to search services: $e');
+    }
+  }
 }
