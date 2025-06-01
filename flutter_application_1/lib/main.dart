@@ -1,35 +1,60 @@
 import 'package:flutter/material.dart';
-import 'services/auth_service.dart'; // Add this import
+import 'package:flutter_application_1/services/api_service.dart';
+import 'services/auth_service.dart';
+import 'services/real_time_sync_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
-import 'screens/dashboard_screen.dart'; // Add this import
-import 'screens/dashboard_overview_screen.dart'; // Import the new screen
-import 'screens/laboratory/laboratory_hub_screen.dart'; // Import the LaboratoryHubScreen
+import 'screens/dashboard_screen.dart';
+import 'screens/dashboard_overview_screen.dart';
+import 'screens/laboratory/laboratory_hub_screen.dart';
+import 'screens/lan_client_connection_screen.dart';
+import 'services/lan_connection_screen.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:flutter/foundation.dart';
 
-void main() {
-  runApp(PatientRecordManagementApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize appropriate database factory based on platform
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.macOS)) {
+    // Initialize FFI for desktop platforms
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
+  await ApiService.initializeDatabaseForLan();
+
+  // Initialize real-time sync service for persistent connection
+  await RealTimeSyncService.initialize();
+
+  runApp(const PatientRecordManagementApp());
 }
 
 class PatientRecordManagementApp extends StatelessWidget {
-  @override
+  const PatientRecordManagementApp({super.key});
+
+  @override // Added missing override annotation
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Patient Record Management',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: _AuthWrapper(), // Changed to auth wrapper
       routes: {
-        '/login': (context) => LoginScreen(),
-        '/signup': (context) => SignUpScreen(),
-        '/dashboard':
-            (context) => DashboardScreen(
+        '/login': (context) => const LoginScreen(),
+        '/signup': (context) => const SignUpScreen(),
+        '/dashboard': (context) => const DashboardScreen(
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
-        '/laboratory-hub':
-            (context) =>
-                LaboratoryHubScreen(), // Add route for LaboratoryHubScreen
+        '/laboratory-hub': (context) =>
+            const LaboratoryHubScreen(), // Provide default accessLevel
+        '/lan-connection': (context) => const LanConnectionScreen(),
+        '/lan-client': (context) => const LanClientConnectionScreen(),
       },
       debugShowCheckedModeBanner: false,
     );
@@ -39,21 +64,18 @@ class PatientRecordManagementApp extends StatelessWidget {
 class _AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: AuthService.getSavedCredentials(),
-      builder: (context, snapshot) {
-        // Show loading indicator while checking auth state
+    return FutureBuilder<bool>(
+      future: AuthService.isLoggedIn(),
+      builder: (context, AsyncSnapshot<bool> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
 
-        // If credentials exist, go to the new DashboardOverviewScreen
-        if (snapshot.hasData && snapshot.data != null) {
-          return DashboardOverviewScreen();
+        if (snapshot.hasData && snapshot.data == true) {
+          return const DashboardOverviewScreen();
         }
-
-        // Otherwise show login screen
-        return LoginScreen();
+        return const LoginScreen();
       },
     );
   }

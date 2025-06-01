@@ -4,23 +4,18 @@ import 'patient_registration_screen.dart';
 import 'service_registration_screen.dart';
 
 class RegistrationHubScreen extends StatelessWidget {
+  const RegistrationHubScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
-          'Registration Portal',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
-        ),
+        title: const Text('Registration Hub',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.teal[700],
-        elevation: 4,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading: false,
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -35,25 +30,44 @@ class RegistrationHubScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Registration Options',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal[800],
-                ),
+              Row(
+                children: [
+                  Icon(
+                    Icons.app_registration,
+                    size: 32,
+                    color: Colors.teal[800],
+                  ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Registration',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Select registration type',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              SizedBox(height: 5),
-              Text(
-                'Select the type of registration below',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              SizedBox(height: 30),
+              const SizedBox(height: 30),
               Expanded(
                 child: ListView(
                   children: [
-                    _RegistrationCard(
-                      icon: Icons.person_add,
+                    _buildFeatureCard(
+                      context,
+                      icon: Icons.person_add_alt_1,
                       title: 'User Registration',
                       subtitle: 'Register new staff and administrators',
                       color: Colors.teal[700]!,
@@ -64,9 +78,10 @@ class RegistrationHubScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    SizedBox(height: 20),
-                    _RegistrationCard(
-                      icon: Icons.accessible,
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      context,
+                      icon: Icons.accessible_forward,
                       title: 'Patient Registration',
                       subtitle: 'Register new patients',
                       color: Colors.teal[600]!,
@@ -77,9 +92,10 @@ class RegistrationHubScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    SizedBox(height: 20),
-                    _RegistrationCard(
-                      icon: Icons.medical_services,
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      context,
+                      icon: Icons.medical_services_outlined,
                       title: 'Service Registration',
                       subtitle: 'Register medical services',
                       color: Colors.teal[500]!,
@@ -99,71 +115,66 @@ class RegistrationHubScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class _RegistrationCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _RegistrationCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildFeatureCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: color.withOpacity(0.2),
       child: InkWell(
-        borderRadius: BorderRadius.circular(15),
         onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(15),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 28, color: color),
+                child: Icon(
+                  icon,
+                  size: 32,
+                  color: color,
+                ),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.teal[900],
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 14,
                         color: Colors.grey[600],
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: color),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.grey[400],
+              ),
             ],
           ),
         ),

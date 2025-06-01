@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 
 class ServiceRegistrationScreen extends StatefulWidget {
   @override
-  _ServiceRegistrationScreenState createState() =>
-      _ServiceRegistrationScreenState();
+  _ServiceRegistrationScreenState createState() => _ServiceRegistrationScreenState();
 }
 
-class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
-    with SingleTickerProviderStateMixin {
+class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
   String _serviceType = 'Consultation';
-
-  late TabController _tabController;
+  
+  TabController? _tabController;
 
   @override
   void initState() {
@@ -24,7 +23,11 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _priceController.dispose();
+    _durationController.dispose();
     super.dispose();
   }
 
@@ -32,6 +35,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
+      floatingActionButton: null,
       appBar: AppBar(
         title: Text(
           'Service Registration',
@@ -58,18 +62,55 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildExistingServicesTab(),
+          _buildExistingServicesView(),
           _buildNewServiceForm(),
         ],
       ),
     );
   }
 
-  Widget _buildExistingServicesTab() {
-    final List<Map<String, String>> existingServices = [
-      {'name': 'General Consultation', 'type': 'Consultation', 'price': '\$50'},
-      {'name': 'Blood Test', 'type': 'Test', 'price': '\$30'},
-      {'name': 'Physical Therapy', 'type': 'Therapy', 'price': '\$75'},
+  Widget _buildExistingServicesView() {
+    final List<Map<String, dynamic>> existingServices = [
+      {
+        'name': 'General Consultation',
+        'type': 'Consultation',
+        'price': '\$50',
+        'duration': '30 min',
+        'color': Colors.blue[100],
+        'icon': Icons.medical_services,
+      },
+      {
+        'name': 'Blood Test',
+        'type': 'Laboratory',
+        'price': '\$30',
+        'duration': '15 min',
+        'color': Colors.red[100],
+        'icon': Icons.science,
+      },
+      {
+        'name': 'Physical Therapy',
+        'type': 'Therapy',
+        'price': '\$75',
+        'duration': '60 min',
+        'color': Colors.green[100],
+        'icon': Icons.accessibility_new,
+      },
+      {
+        'name': 'Dental Cleaning',
+        'type': 'Dental',
+        'price': '\$100',
+        'duration': '45 min',
+        'color': Colors.orange[100],
+        'icon': Icons.cleaning_services,
+      },
+      {
+        'name': 'X-Ray',
+        'type': 'Radiology',
+        'price': '\$120',
+        'duration': '20 min',
+        'color': Colors.purple[100],
+        'icon': Icons.radio,
+      },
     ];
 
     return ListView.builder(
@@ -83,58 +124,104 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
             borderRadius: BorderRadius.circular(12),
           ),
           elevation: 3,
-          child: ListTile(
+          child: ExpansionTile(
             leading: Container(
               padding: EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.teal[100],
+                color: service['color'],
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.medical_services, color: Colors.teal[800]),
+              child: Icon(service['icon'], color: Colors.teal[800]),
             ),
             title: Text(
               service['name']!,
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 4),
-                Row(
+            subtitle: Text(service['type']!),
+            children: [
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
                   children: [
-                    Icon(Icons.category, size: 14, color: Colors.grey),
-                    SizedBox(width: 4),
-                    Text(service['type']!, style: TextStyle(fontSize: 12)),
-                  ],
-                ),
-                SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.attach_money, size: 14, color: Colors.grey),
-                    SizedBox(width: 4),
-                    Text(service['price']!, style: TextStyle(fontSize: 12)),
-                  ],
-                ),
-              ],
-            ),
-            trailing: IconButton(
-              icon: Icon(Icons.add, color: Colors.teal[800]),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${service['name']} added to patient'),
-                    backgroundColor: Colors.teal,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildServiceDetail(
+                          Icons.attach_money,
+                          'Price',
+                          service['price']!,
+                        ),
+                        _buildServiceDetail(
+                          Icons.timer,
+                          'Duration',
+                          service['duration']!,
+                        ),
+                      ],
                     ),
-                  ),
-                );
-              },
-            ),
+                    SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          icon: Icon(Icons.edit, color: Colors.teal[700]),
+                          label: Text('Edit', style: TextStyle(color: Colors.teal[700])),
+                          onPressed: () {
+                            // Handle edit
+                          },
+                        ),
+                        SizedBox(width: 16),
+                        ElevatedButton.icon(
+                          icon: Icon(Icons.add),
+                          label: Text('Add to Patient'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal[700],
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${service['name']} added to patient'),
+                                backgroundColor: Colors.teal,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildServiceDetail(IconData icon, String label, String value) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.teal[600]),
+        SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 12,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.teal[800],
+          ),
+        ),
+      ],
     );
   }
 
@@ -168,7 +255,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
             SizedBox(height: 20),
             _buildDropdownField(
               value: _serviceType,
-              items: ['Consultation', 'Procedure', 'Test', 'Therapy'],
+              items: ['Consultation', 'Laboratory', 'Therapy', 'Dental', 'Radiology'],
               label: 'Service Type',
               icon: Icons.category,
               onChanged: (value) {
@@ -178,18 +265,33 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
               },
             ),
             SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildInputField(
+                    controller: _priceController,
+                    label: 'Price (\$)',
+                    icon: Icons.attach_money,
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                SizedBox(width: 20),
+                Expanded(
+                  child: _buildInputField(
+                    controller: _durationController,
+                    label: 'Duration (min)',
+                    icon: Icons.timer,
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
             _buildInputField(
               controller: _descriptionController,
               label: 'Description',
               icon: Icons.description,
               maxLines: 3,
-            ),
-            SizedBox(height: 20),
-            _buildInputField(
-              controller: _priceController,
-              label: 'Price (\$)',
-              icon: Icons.attach_money,
-              keyboardType: TextInputType.number,
             ),
             SizedBox(height: 30),
             ElevatedButton(
@@ -305,7 +407,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen>
           ),
         ),
       );
-      Navigator.pop(context);
+      _tabController?.animateTo(0); // Switch back to existing services tab
     }
   }
 }

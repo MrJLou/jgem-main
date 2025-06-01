@@ -1,146 +1,191 @@
 import 'package:flutter/material.dart';
-import 'invoice_screen.dart';
-import 'transaction_history_screen.dart';
+// Import specific screens if they exist, e.g.:
+// import 'create_invoice_screen.dart';
+// import 'billing_history_screen.dart';
+// import 'pending_bills_screen.dart';
+// import 'billing_settings_screen.dart';
 
 class BillingHubScreen extends StatelessWidget {
+  const BillingHubScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
+    // Placeholder onTap actions - replace with actual navigation
+    VoidCallback placeholderOnTap = () {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Navigation to be implemented.')),
+      );
+    };
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
-          'Billing',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
+        title: const Text('Billing Hub', // Changed Title
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.teal[700],
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading: false,
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal[50]!, Colors.white],
           ),
         ),
-        backgroundColor: Colors.teal[700],
-        elevation: 4,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Billing Options',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            SizedBox(height: 5),
-            Text(
-              'Select an option to manage billing',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 30),
-            Expanded(
-              child: ListView(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  _BillingCard(
-                    icon: Icons.receipt_long,
-                    title: 'Invoice',
-                    subtitle: 'View and generate patient invoices',
-                    color: Colors.teal[700]!,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => InvoiceScreen(),
-                      ),
-                    ),
+                  Icon(
+                    Icons.request_quote_outlined, // Changed Icon
+                    size: 32,
+                    color: Colors.teal[800],
                   ),
-                  SizedBox(height: 20),
-                  _BillingCard(
-                    icon: Icons.history,
-                    title: 'Transaction History',
-                    subtitle: 'View patient transaction history',
-                    color: Colors.teal[600]!,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TransactionHistoryScreen(),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Billing', // Title is okay
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Manage patient billing and invoices', // Subtitle is okay
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons.receipt_long_outlined, // More specific icon
+                      title: 'Create Invoice',
+                      subtitle: 'Generate new patient invoices',
+                      color: Colors.teal[700]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons
+                          .history_toggle_off_outlined, // More specific icon
+                      title: 'Billing History',
+                      subtitle: 'View past billing records',
+                      color: Colors.teal[600]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon:
+                          Icons.pending_actions_outlined, // More specific icon
+                      title: 'Pending Bills',
+                      subtitle: 'View unpaid invoices',
+                      color: Colors.teal[500]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon:
+                          Icons.settings_suggest_outlined, // More specific icon
+                      title: 'Billing Settings',
+                      subtitle: 'Configure billing preferences',
+                      color: Colors.teal[400]!,
+                      onTap: placeholderOnTap, // Replace with actual navigation
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _BillingCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _BillingCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  // Copied from MaintenanceHubScreen and renamed _buildBillingCard to _buildFeatureCard
+  Widget _buildFeatureCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: color.withOpacity(0.2),
       child: InkWell(
-        borderRadius: BorderRadius.circular(15),
         onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(15),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 28, color: color),
+                child: Icon(
+                  icon,
+                  size: 32,
+                  color: color,
+                ),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.teal[900],
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 14,
                         color: Colors.grey[600],
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: color),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.grey[400],
+              ),
             ],
           ),
         ),

@@ -4,148 +4,180 @@ import 'payment_search_screen.dart';
 import 'service_search_screen.dart';
 
 class SearchHubScreen extends StatelessWidget {
+  final String accessLevel;
+  const SearchHubScreen({super.key, required this.accessLevel});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text('Search Portal',
-            style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 22)),
+        title: const Text('Search Hub',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.teal[700],
         elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
+        automaticallyImplyLeading:
+            !(accessLevel == 'admin'), // Hide back button for admin
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Search Options',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            SizedBox(height: 5),
-            Text(
-              'Select the type of record you want to search',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            SizedBox(height: 30),
-            Expanded(
-              child: ListView(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal[50]!, Colors.white],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  _SearchCard(
-                    icon: Icons.person_search,
-                    title: 'Patient Search',
-                    subtitle: 'Find patient medical records and history',
-                    color: Colors.teal[700]!,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => PatientSearchScreen()),
-                    ),
+                  Icon(
+                    Icons.search_outlined, // Changed Icon
+                    size: 32,
+                    color: Colors.teal[800],
                   ),
-                  SizedBox(height: 20),
-                  _SearchCard(
-                    icon: Icons.payment,
-                    title: 'Payment Search',
-                    subtitle: 'View payment transactions and invoices',
-                    color: Colors.teal[600]!,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => PaymentSearchScreen()),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  _SearchCard(
-                    icon: Icons.medical_services,
-                    title: 'Service Search',
-                    subtitle: 'Explore available medical services',
-                    color: Colors.teal[500]!,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => ServiceSearchScreen()),
-                    ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Search', // Changed Title
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Find patients, records, and more', // Changed Subtitle
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 30),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons.person_search,
+                      title: 'Patient Search',
+                      subtitle: 'Find patient medical records and history',
+                      color: Colors.teal[700]!,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => PatientSearchScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons.payment,
+                      title: 'Payment Search',
+                      subtitle: 'View payment transactions and invoices',
+                      color: Colors.teal[600]!,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => PaymentSearchScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildFeatureCard(
+                      // Changed to _buildFeatureCard
+                      context,
+                      icon: Icons.medical_services,
+                      title: 'Service Search',
+                      subtitle: 'Explore available medical services',
+                      color: Colors.teal[500]!,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => ServiceSearchScreen()),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _SearchCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SearchCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  // Copied from MaintenanceHubScreen and renamed _SearchCard to _buildFeatureCard
+  Widget _buildFeatureCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      elevation: 2,
+      elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: color.withOpacity(0.2),
       child: InkWell(
-        borderRadius: BorderRadius.circular(15),
         onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20),
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(15),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 28, color: color),
+                child: Icon(
+                  icon,
+                  size: 32,
+                  color: color,
+                ),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.teal[900],
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 14,
                         color: Colors.grey[600],
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: color),
+              Icon(
+                Icons.chevron_right,
+                color: Colors.grey[400],
+              ),
             ],
           ),
         ),

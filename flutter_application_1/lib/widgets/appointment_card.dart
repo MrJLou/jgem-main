@@ -16,13 +16,13 @@ class AppointmentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        leading: CircleAvatar(child: Icon(Icons.person)),
-        title: Text(appointment.patientName),
+        leading: const CircleAvatar(child: Icon(Icons.person)),
+        title: Text('Patient ID: ${appointment.patientId}'),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ID: ${appointment.patientId}'),
-            Text('Time: ${appointment.time.format(context)} with ${appointment.doctor}'),
+            Text(
+                'Time: ${appointment.time.format(context)} with Dr. ID: ${appointment.doctorId}'),
             Text('Status: ${appointment.status}'),
           ],
         ),
@@ -30,11 +30,11 @@ class AppointmentCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: Icon(Icons.edit, color: Colors.blue),
+              icon: const Icon(Icons.edit, color: Colors.blue),
               onPressed: onEdit,
             ),
             IconButton(
-              icon: Icon(Icons.delete, color: Colors.red),
+              icon: const Icon(Icons.delete, color: Colors.red),
               onPressed: onDelete,
             ),
           ],

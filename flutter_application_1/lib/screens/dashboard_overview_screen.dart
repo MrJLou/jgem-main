@@ -2,75 +2,117 @@ import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 
 class DashboardOverviewScreen extends StatelessWidget {
+  const DashboardOverviewScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dashboard Overview', style: TextStyle(color: Colors.white)),
+        title: const Text('Dashboard Overview',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.teal[700],
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Patient Statistics',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 16),
-            Card(
-              elevation: 4,
-              child: ListTile(
-                leading: Icon(Icons.people, color: Colors.teal),
-                title: Text('Total Patients'),
-                trailing: Text('120', style: TextStyle(fontWeight: FontWeight.bold)),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Patient Statistics',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-            ),
-            SizedBox(height: 8),
-            Card(
-              elevation: 4,
-              child: ListTile(
-                leading: Icon(Icons.check_circle, color: Colors.green),
-                title: Text('Confirmed Appointments'),
-                trailing: Text('45', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              _buildStatisticCard(
+                icon: Icons.people,
+                iconColor: Colors.teal,
+                title: 'Total Patients',
+                value: '120',
               ),
-            ),
-            SizedBox(height: 8),
-            Card(
-              elevation: 4,
-              child: ListTile(
-                leading: Icon(Icons.cancel, color: Colors.red),
-                title: Text('Cancelled Appointments'),
-                trailing: Text('10', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _buildStatisticCard(
+                icon: Icons.check_circle,
+                iconColor: Colors.green,
+                title: 'Confirmed Appointments',
+                value: '45',
               ),
-            ),
-            SizedBox(height: 8),
-            Card(
-              elevation: 4,
-              child: ListTile(
-                leading: Icon(Icons.done_all, color: Colors.blue),
-                title: Text('Completed Appointments'),
-                trailing: Text('65', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _buildStatisticCard(
+                icon: Icons.cancel,
+                iconColor: Colors.red,
+                title: 'Cancelled Appointments',
+                value: '10',
               ),
-            ),
-            SizedBox(height: 16),
-            Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => DashboardScreen(accessLevel: 'admin')),
-                  );
-                },
-                child: Text('Go to Appointment Module'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 254, 254, 254),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              const SizedBox(height: 8),
+              _buildStatisticCard(
+                icon: Icons.done_all,
+                iconColor: Colors.blue,
+                title: 'Completed Appointments',
+                value: '65',
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              const DashboardScreen(accessLevel: 'admin')),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Go to Appointment Module',
+                    style: TextStyle(
+                      color: Colors.teal,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatisticCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String value,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: Icon(icon, color: iconColor, size: 28),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        trailing: Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
       ),
     );
