@@ -250,14 +250,13 @@ class ApiService {
       // No need for fromJson here, originalItem is already the correct type
       ActivePatientQueueItem updatedItem;
       final now = DateTime.now();
-
       switch (newStatus.toLowerCase()) {
         case 'waiting':
           updatedItem = originalItem.copyWith(
               status: 'waiting',
-              consultationStartedAt: () => null,
-              servedAt: () => null,
-              removedAt: () => null);
+              consultationStartedAt: null,
+              servedAt: null,
+              removedAt: null);
           break;
         case 'in_consultation':
           if (originalItem.status == 'served' ||
@@ -267,9 +266,8 @@ class ApiService {
           }
           updatedItem = originalItem.copyWith(
               status: 'in_consultation',
-              consultationStartedAt: () =>
-                  originalItem.consultationStartedAt ?? now,
-              servedAt: () => null);
+              consultationStartedAt: originalItem.consultationStartedAt ?? now,
+              servedAt: null);
           break;
         case 'served':
           if (originalItem.status == 'removed') {
@@ -278,13 +276,12 @@ class ApiService {
           }
           updatedItem = originalItem.copyWith(
               status: 'served',
-              servedAt: () => now,
-              consultationStartedAt: () =>
-                  originalItem.consultationStartedAt ?? now);
+              servedAt: now,
+              consultationStartedAt: originalItem.consultationStartedAt ?? now);
           break;
         case 'removed':
           updatedItem =
-              originalItem.copyWith(status: 'removed', removedAt: () => now);
+              originalItem.copyWith(status: 'removed', removedAt: now);
           break;
         default:
           updatedItem = originalItem.copyWith(status: newStatus);

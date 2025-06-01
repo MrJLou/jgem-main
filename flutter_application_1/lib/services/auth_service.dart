@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
+import '../models/user.dart'; // Import the User model
 
 class AuthService {
   static const bool isDevMode = false; // Set to false for production
@@ -317,13 +318,35 @@ class AuthService {
     return await _secureStorage.read(key: _usernameKey);
   }
 
-  // Get current logged-in user ID
-  Future<String?> getCurrentUserId() async {
-    final username = await getCurrentUsername();
-    if (username == null) return null;
+  // Method to get the current logged-in user's details from DB
+  Future<User?> getCurrentUser() async {
+    final savedCreds = await getSavedCredentials();
+    if (savedCreds != null && savedCreds['username'] != null) {
+      final db = DatabaseHelper();
+      try {
+        return await db.getUserByUsername(savedCreds['username']!);
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error fetching current user from DB: $e');
+        }
+        return null;
+      }
+    }
+    return null;
+  }
 
-    final dbHelper = DatabaseHelper();
-    final user = await dbHelper.getUserByUsername(username);
+  // Method to get the current logged-in user's ID
+  Future<String?> getCurrentUserId() async {
+    final user = await getCurrentUser();
     return user?.id;
+  }
+
+  // Method to get the current user's access level
+  Future<String?> getCurrentUserAccessLevel() async {
+    final savedCreds = await getSavedCredentials();
+    if (savedCreds != null && savedCreds['accessLevel'] != null) {
+      return savedCreds['accessLevel'];
+    }
+    return null;
   }
 }

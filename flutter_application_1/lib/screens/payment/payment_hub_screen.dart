@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 // import 'payment_history_screen.dart';
 // import 'receipts_screen.dart';
 // import 'payment_settings_screen.dart';
+import 'payment_screen.dart'; // Added import for PaymentScreen
 
 class PaymentHubScreen extends StatelessWidget {
   // final String accessLevel; // Removed accessLevel
@@ -82,7 +83,14 @@ class PaymentHubScreen extends StatelessWidget {
                       title: 'Process Payment',
                       subtitle: 'Process new patient payments',
                       color: Colors.teal[700]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        // Changed from placeholderOnTap
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => PaymentScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(

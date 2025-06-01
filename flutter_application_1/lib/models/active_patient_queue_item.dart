@@ -1,3 +1,4 @@
+import 'dart:convert'; // Added for jsonEncode and jsonDecode
 import 'package:flutter/foundation.dart';
 
 @immutable
@@ -10,7 +11,10 @@ class ActivePatientQueueItem {
   final int queueNumber; // Sequential number for the day (e.g., 1, 2, 3...)
   final String? gender;
   final int? age;
-  final String? conditionOrPurpose;
+  final String? conditionOrPurpose; // Summary string from AddToQueueScreen
+  final List<Map<String, dynamic>>?
+      selectedServices; // New: To store structured service data
+  final double? totalPrice; // New: To store calculated total price
   final String status; // e.g., 'waiting', 'ongoing', 'done', 'removed'
   final DateTime createdAt; // Timestamp when this queue entry was created
   final String? addedByUserId; // User ID of staff who added the patient
@@ -28,6 +32,8 @@ class ActivePatientQueueItem {
     this.gender,
     this.age,
     this.conditionOrPurpose,
+    this.selectedServices, // Added
+    this.totalPrice, // Added
     required this.status,
     required this.createdAt,
     this.addedByUserId,
@@ -36,6 +42,36 @@ class ActivePatientQueueItem {
     this.consultationStartedAt,
   });
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>>? services;
+    if (json['selectedServices'] != null) {
+      if (json['selectedServices'] is String) {
+        try {
+          var decoded = jsonDecode(json['selectedServices'] as String);
+          if (decoded is List) {
+            services = List<Map<String, dynamic>>.from(
+                decoded.map((item) => Map<String, dynamic>.from(item as Map)));
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print("Error decoding selectedServices from JSON string: $e");
+          }
+          services = null;
+        }
+      } else if (json['selectedServices'] is List) {
+        // If it's already a List (e.g. from direct map creation not from DB)
+        try {
+          services = List<Map<String, dynamic>>.from(
+              (json['selectedServices'] as List)
+                  .map((item) => Map<String, dynamic>.from(item as Map)));
+        } catch (e) {
+          if (kDebugMode) {
+            print("Error casting selectedServices from List: $e");
+          }
+          services = null;
+        }
+      }
+    }
+
     return ActivePatientQueueItem(
       queueEntryId: json['queueEntryId'] as String,
       patientId: json['patientId'] as String?,
@@ -45,6 +81,8 @@ class ActivePatientQueueItem {
       gender: json['gender'] as String?,
       age: json['age'] as int?,
       conditionOrPurpose: json['conditionOrPurpose'] as String?,
+      selectedServices: services, // Updated
+      totalPrice: (json['totalPrice'] as num?)?.toDouble(), // Updated
       status: json['status'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       addedByUserId: json['addedByUserId'] as String?,
@@ -69,6 +107,10 @@ class ActivePatientQueueItem {
       'gender': gender,
       'age': age,
       'conditionOrPurpose': conditionOrPurpose,
+      'selectedServices': selectedServices != null
+          ? jsonEncode(selectedServices)
+          : null, // Encode to JSON string
+      'totalPrice': totalPrice,
       'status': status,
       'createdAt': createdAt.toIso8601String(),
       'addedByUserId': addedByUserId,
@@ -80,40 +122,40 @@ class ActivePatientQueueItem {
 
   ActivePatientQueueItem copyWith({
     String? queueEntryId,
-    ValueGetter<String?>? patientId,
+    String? patientId,
     String? patientName,
     DateTime? arrivalTime,
     int? queueNumber,
-    ValueGetter<String?>? gender,
-    ValueGetter<int?>? age,
-    ValueGetter<String?>? conditionOrPurpose,
+    String? gender,
+    int? age,
+    String? conditionOrPurpose,
+    List<Map<String, dynamic>>? selectedServices, // Added
+    double? totalPrice, // Added
     String? status,
     DateTime? createdAt,
-    ValueGetter<String?>? addedByUserId,
-    ValueGetter<DateTime?>? servedAt,
-    ValueGetter<DateTime?>? removedAt,
-    ValueGetter<DateTime?>? consultationStartedAt,
+    String? addedByUserId,
+    DateTime? servedAt,
+    DateTime? removedAt,
+    DateTime? consultationStartedAt,
   }) {
     return ActivePatientQueueItem(
       queueEntryId: queueEntryId ?? this.queueEntryId,
-      patientId: patientId != null ? patientId() : this.patientId,
+      patientId: patientId ?? this.patientId,
       patientName: patientName ?? this.patientName,
       arrivalTime: arrivalTime ?? this.arrivalTime,
       queueNumber: queueNumber ?? this.queueNumber,
-      gender: gender != null ? gender() : this.gender,
-      age: age != null ? age() : this.age,
-      conditionOrPurpose: conditionOrPurpose != null
-          ? conditionOrPurpose()
-          : this.conditionOrPurpose,
+      gender: gender ?? this.gender,
+      age: age ?? this.age,
+      conditionOrPurpose: conditionOrPurpose ?? this.conditionOrPurpose,
+      selectedServices: selectedServices ?? this.selectedServices, // Updated
+      totalPrice: totalPrice ?? this.totalPrice, // Updated
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
-      addedByUserId:
-          addedByUserId != null ? addedByUserId() : this.addedByUserId,
-      servedAt: servedAt != null ? servedAt() : this.servedAt,
-      removedAt: removedAt != null ? removedAt() : this.removedAt,
-      consultationStartedAt: consultationStartedAt != null
-          ? consultationStartedAt()
-          : this.consultationStartedAt,
+      addedByUserId: addedByUserId ?? this.addedByUserId,
+      servedAt: servedAt ?? this.servedAt,
+      removedAt: removedAt ?? this.removedAt,
+      consultationStartedAt:
+          consultationStartedAt ?? this.consultationStartedAt,
     );
   }
 }

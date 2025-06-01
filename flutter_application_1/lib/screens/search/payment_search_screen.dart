@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
+import '../../services/database_helper.dart';
+import '../../models/payment.dart';
 
 class PaymentSearchScreen extends StatefulWidget {
   const PaymentSearchScreen({super.key});
@@ -13,15 +15,16 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
   final TextEditingController _referenceController = TextEditingController();
   bool _hasSearched = false;
   bool _isLoading = false;
-  List<Map<String, dynamic>> _paymentData = [];
+  List<Map<String, dynamic>> _paymentResults = [];
   DateTime? _startDate;
   DateTime? _endDate;
   String _selectedPaymentType = 'all';
   final List<Map<String, String>> _paymentTypes = [
     {'value': 'all', 'label': 'All Payment Types'},
-    {'value': 'card', 'label': 'Card Payment'},
-    {'value': 'cash', 'label': 'Cash Payment'},
+    {'value': 'Cash', 'label': 'Cash Payment'},
   ];
+
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +50,10 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
             _buildSearchCard(),
             if (_hasSearched) ...[
               const SizedBox(height: 24),
-              if (_paymentData.isNotEmpty)
-                _buildPaymentDetails()
+              if (_isLoading)
+                Center(child: CircularProgressIndicator())
+              else if (_paymentResults.isNotEmpty)
+                _buildPaymentResultsList()
               else
                 _buildNoResultsCard(),
             ],
@@ -101,7 +106,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 maxWidth: 400,
               ),
               child: Text(
-                'Search and manage payment transactions',
+                'Search and manage payment transactions by Reference Number',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.9),
@@ -141,7 +146,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
               controller: _referenceController,
               decoration: InputDecoration(
                 labelText: 'Reference Number',
-                hintText: 'Enter payment reference',
+                hintText: 'Enter payment reference (e.g., PAY-XXXXXX)',
                 prefixIcon: Icon(Icons.receipt, color: Colors.teal[700]),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -155,7 +160,8 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(color: Colors.teal[700]!, width: 2),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
                 labelStyle: TextStyle(color: Colors.grey[600]),
               ),
             ),
@@ -165,11 +171,18 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 Expanded(
                   child: TextFormField(
                     decoration: InputDecoration(
-                      labelText: 'Start Date',
-                      prefixIcon: Icon(Icons.calendar_today, color: Colors.teal[700]),
+                      labelText: 'Start Date (Optional)',
+                      prefixIcon:
+                          Icon(Icons.calendar_today, color: Colors.teal[700]),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
+                      suffixIcon: _startDate != null
+                          ? IconButton(
+                              icon: Icon(Icons.clear),
+                              onPressed: () =>
+                                  setState(() => _startDate = null))
+                          : null,
                     ),
                     readOnly: true,
                     controller: TextEditingController(
@@ -194,11 +207,17 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 Expanded(
                   child: TextFormField(
                     decoration: InputDecoration(
-                      labelText: 'End Date',
-                      prefixIcon: Icon(Icons.calendar_today, color: Colors.teal[700]),
+                      labelText: 'End Date (Optional)',
+                      prefixIcon:
+                          Icon(Icons.calendar_today, color: Colors.teal[700]),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
+                      suffixIcon: _endDate != null
+                          ? IconButton(
+                              icon: Icon(Icons.clear),
+                              onPressed: () => setState(() => _endDate = null))
+                          : null,
                     ),
                     readOnly: true,
                     controller: TextEditingController(
@@ -210,7 +229,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                       final date = await showDatePicker(
                         context: context,
                         initialDate: _endDate ?? DateTime.now(),
-                        firstDate: DateTime(2000),
+                        firstDate: _startDate ?? DateTime(2000),
                         lastDate: DateTime.now(),
                       );
                       if (date != null) {
@@ -227,7 +246,8 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 Expanded(
                   flex: 2,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[400]!),
                       borderRadius: BorderRadius.circular(10),
@@ -238,7 +258,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                         isExpanded: true,
                         items: _paymentTypes.map((type) {
                           return DropdownMenuItem(
-                            value: type['value'],
+                            value: type['value']!,
                             child: Text(type['label']!),
                           );
                         }).toList(),
@@ -251,21 +271,6 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // Show advanced filters
-                    },
-                    icon: const Icon(Icons.tune),
-                    label: const Text('More'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[200],
-                      foregroundColor: Colors.grey[800],
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 20),
@@ -273,8 +278,8 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _searchPayment,
-                icon: _isLoading 
+                onPressed: _isLoading ? null : _searchPayments,
+                icon: _isLoading
                     ? const SizedBox(
                         width: 20,
                         height: 20,
@@ -294,6 +299,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal[700],
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -307,164 +313,78 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
     );
   }
 
-  Widget _buildPaymentDetails() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildPaymentResultsList() {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      itemCount: _paymentResults.length,
+      itemBuilder: (context, index) {
+        final payment = _paymentResults[index];
+        DateTime paymentDate =
+            DateTime.tryParse(payment['paymentDate'] ?? '') ?? DateTime.now();
+
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 8.0),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'PAYMENT DETAILS',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal[800],
-                    letterSpacing: 0.5,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Ref: ${payment['referenceNumber'] ?? 'N/A'}',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800]),
+                    ),
+                    Text(
+                      DateFormat('dd MMM yyyy, hh:mm a').format(paymentDate),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: Icon(Icons.print, color: Colors.teal[700]),
-                  onPressed: () {},
-                  tooltip: 'Print Receipt',
-                ),
+                Divider(height: 15),
+                _buildDetailRow(
+                    'Patient Name:', payment['patient_name'] ?? 'N/A'),
+                _buildDetailRow('Amount Paid:',
+                    '₱${(payment['amountPaid'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+                _buildDetailRow(
+                    'Payment Method:', payment['paymentMethod'] ?? 'N/A'),
+                _buildDetailRow(
+                    'Received By:',
+                    payment['received_by_user_name'] ??
+                        payment['receivedByUserId'] ??
+                        'N/A'),
+                if (payment['notes'] != null && payment['notes'].isNotEmpty)
+                  _buildDetailRow('Notes:', payment['notes']),
               ],
             ),
-            Divider(color: Colors.grey[300]),
-            const SizedBox(height: 15),
-            
-            _buildDetailRow('Reference Number', _paymentData[0]['reference']),
-            _buildDetailRow('Date & Time', _paymentData[0]['date']),
-            _buildDetailRow('Patient Name', _paymentData[0]['patientName']),
-            _buildDetailRow('Service Provided', _paymentData[0]['service']),
-            const SizedBox(height: 15),
-            Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: Colors.teal[50],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Amount Paid',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800],
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    '£${_paymentData[0]['amount']}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800],
-                      fontSize: 18,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 15),
-            _buildDetailRow('Payment Method', _paymentData[0]['method']),
-            _buildDetailRow('Payment Status', _paymentData[0]['status']),
-            
-            if (_paymentData[0]['notes'] != null && _paymentData[0]['notes'].isNotEmpty) ...[
-              const SizedBox(height: 20),
-              Text(
-                'Notes',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal[700],
-                ),
-              ),
-              Divider(color: Colors.grey[300]),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Text(
-                  _paymentData[0]['notes'],
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ),
-            ],
-            
-            const SizedBox(height: 25),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {},
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      side: BorderSide(color: Colors.teal[700]!),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: Text(
-                      'EMAIL RECEIPT',
-                      style: TextStyle(
-                        color: Colors.teal[700],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[700],
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text(
-                      'CREATE NEW PAYMENT',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 150,
+            width: 140,
             child: Text(
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
+                fontSize: 14,
               ),
             ),
           ),
@@ -472,7 +392,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 15),
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ),
         ],
@@ -480,109 +400,41 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
     );
   }
 
-  Future<void> _searchPayment() async {
-    if (_referenceController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter a reference number to search'),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-      return;
-    }
-
+  Future<void> _searchPayments() async {
     setState(() {
       _isLoading = true;
       _hasSearched = true;
+      _paymentResults = [];
     });
 
     try {
-      // Create dummy payment data for testing
-      _paymentData = [
-        {
-          'reference': 'PAY001',
-          'date': '15/03/2024 14:30',
-          'patientName': 'John Smith',
-          'service': 'General Consultation',
-          'amount': '75.00',
-          'method': 'Card Payment',
-          'status': 'Completed',
-          'notes': 'Payment received successfully',
-        },
-        {
-          'reference': 'PAY002',
-          'date': '15/03/2024 15:45',
-          'patientName': 'Mary Johnson',
-          'service': 'Complete Blood Count',
-          'amount': '45.00',
-          'method': 'Cash Payment',
-          'status': 'Completed',
-          'notes': '',
-        },
-        {
-          'reference': 'PAY003',
-          'date': '15/03/2024 16:15',
-          'patientName': 'David Wilson',
-          'service': 'X-Ray Chest',
-          'amount': '120.00',
-          'method': 'Card Payment',
-          'status': 'Pending',
-          'notes': 'Awaiting authorization',
-        }
-      ];
-
-      // Filter by reference number
-      if (_referenceController.text.isNotEmpty) {
-        final searchTerm = _referenceController.text.toLowerCase();
-        _paymentData = _paymentData.where((payment) =>
-          payment['reference'].toString().toLowerCase().contains(searchTerm)
-        ).toList();
-      }
-
-      // Filter by date range
-      if (_startDate != null) {
-        _paymentData = _paymentData.where((payment) {
-          final paymentDate = DateFormat('dd/MM/yyyy HH:mm').parse(payment['date']);
-          return paymentDate.isAfter(_startDate!) || paymentDate.isAtSameMomentAs(_startDate!);
-        }).toList();
-      }
-
-      if (_endDate != null) {
-        _paymentData = _paymentData.where((payment) {
-          final paymentDate = DateFormat('dd/MM/yyyy HH:mm').parse(payment['date']);
-          return paymentDate.isBefore(_endDate!) || paymentDate.isAtSameMomentAs(_endDate!);
-        }).toList();
-      }
-
-      // Filter by payment type
-      if (_selectedPaymentType != 'all') {
-        _paymentData = _paymentData.where((payment) =>
-          payment['method'] == (_selectedPaymentType == 'card' ? 'Card Payment' : 'Cash Payment')
-        ).toList();
-      }
+      final results = await _dbHelper.searchPayments(
+        reference: _referenceController.text.trim(),
+        startDate: _startDate,
+        endDate: _endDate,
+        paymentType:
+            _selectedPaymentType == 'all' ? null : _selectedPaymentType,
+      );
 
       setState(() {
+        _paymentResults = results;
         _isLoading = false;
       });
-
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _paymentData = [];
+        _paymentResults = [];
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error searching for payment: ${e.toString()}'),
+          content: Text('Error searching payments: ${e.toString()}'),
           backgroundColor: Colors.red[700],
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
+          margin: const EdgeInsets.all(10),
         ),
       );
     }
@@ -597,15 +449,18 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
               Icons.search_off_outlined,
               size: 48,
-              color: Colors.orange[300],
+              color: Colors.orange[400],
             ),
             const SizedBox(height: 16),
             Text(
               'No Payment Records Found',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -614,10 +469,11 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Try adjusting your search criteria or date range',
+              'No payments match your search criteria.\nPlease check the Reference Number or adjust filters and try again.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey[600],
-                fontSize: 16,
+                fontSize: 15,
               ),
             ),
             const SizedBox(height: 20),
@@ -626,10 +482,11 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 setState(() {
                   _referenceController.clear();
                   _hasSearched = false;
-                  _paymentData = [];
+                  _paymentResults = [];
                   _startDate = null;
                   _endDate = null;
                   _selectedPaymentType = 'all';
+                  _isLoading = false;
                 });
               },
               icon: const Icon(Icons.refresh),
@@ -637,7 +494,10 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.teal[700],
                 side: BorderSide(color: Colors.teal[700]!),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
             ),
           ],

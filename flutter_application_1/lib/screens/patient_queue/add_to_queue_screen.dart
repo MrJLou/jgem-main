@@ -1,9 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // For formatting price
 import '../../services/real_time_sync_service.dart';
 import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
 import '../../models/active_patient_queue_item.dart';
-import '../../models/patient.dart';
+import '../../models/patient.dart'; // Assuming Patient model might be used, though not directly in snippet
+
+// Define Service data structure
+class ServiceItem {
+  final String name;
+  final String category;
+  final double price;
+  bool isSelected; // To track selection in the dialog
+
+  ServiceItem({
+    required this.name,
+    required this.category,
+    required this.price,
+    this.isSelected = false,
+  });
+}
 
 class AddToQueueScreen extends StatefulWidget {
   final QueueService queueService;
@@ -21,10 +37,38 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _genderController = TextEditingController();
-  final TextEditingController _conditionController = TextEditingController();
+  // final TextEditingController _conditionController = TextEditingController(); // Replaced
+  final TextEditingController _otherConditionController =
+      TextEditingController();
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
   bool _isAddingToQueue = false;
+
+  // Predefined services
+  final List<ServiceItem> _availableServices = [
+    ServiceItem(name: 'Consultation', category: 'Consultation', price: 500.0),
+    ServiceItem(name: 'Chest X-ray', category: 'Laboratory', price: 350.0),
+    ServiceItem(name: 'ECG', category: 'Laboratory', price: 650.0),
+    ServiceItem(
+        name: 'Fasting Blood Sugar', category: 'Laboratory', price: 150.0),
+    ServiceItem(
+        name: 'Total Cholesterol', category: 'Laboratory', price: 250.0),
+    ServiceItem(name: 'Triglycerides', category: 'Laboratory', price: 250.0),
+    ServiceItem(
+        name: 'High Density Lipoprotein (HDL)',
+        category: 'Laboratory',
+        price: 250.0),
+    ServiceItem(
+        name: 'Low Density Lipoprotein (LDL)',
+        category: 'Laboratory',
+        price: 200.0), // Corrected HDL to LDL based on common tests
+    ServiceItem(name: 'Blood Uric Acid', category: 'Laboratory', price: 200.0),
+    ServiceItem(name: 'Creatinine', category: 'Laboratory', price: 200.0),
+  ];
+
+  List<ServiceItem> _selectedServices = [];
+  double _totalPrice = 0.0;
+  bool _showOtherConditionField = false;
 
   int? _calculateAge(String birthDateString) {
     if (birthDateString.isEmpty) return null;
@@ -47,12 +91,41 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
 
   Future<void> _addPatientToQueue() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isAddingToQueue = true;
-      });
+      if (_selectedServices.isEmpty &&
+          _otherConditionController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Please select at least one service or specify a purpose.'),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+        return;
+      }
 
       final enteredPatientName = _patientNameController.text.trim();
       final enteredPatientId = _patientIdController.text.trim();
+
+      // Call the new method in QueueService (you need to implement this in QueueService)
+      bool alreadyInQueue = await widget.queueService.isPatientCurrentlyActive(
+        patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
+        patientName: enteredPatientName,
+      );
+
+      if (alreadyInQueue) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '$enteredPatientName is already in the active queue (waiting or in consultation).'),
+            backgroundColor: Colors.orange[700],
+          ),
+        );
+        return; // Stop further execution
+      }
+
+      setState(() {
+        _isAddingToQueue = true;
+      });
 
       try {
         final registeredPatientData = await _dbHelper.findRegisteredPatient(
@@ -141,6 +214,28 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
 
           // Proceed to add to queue with final chosen/confirmed details
           final now = DateTime.now();
+
+          String conditionSummary =
+              _selectedServices.map((s) => s.name).join(', ');
+          if (_showOtherConditionField &&
+              _otherConditionController.text.trim().isNotEmpty) {
+            if (conditionSummary.isNotEmpty) {
+              conditionSummary +=
+                  "; Other: ${_otherConditionController.text.trim()}";
+            } else {
+              conditionSummary = _otherConditionController.text.trim();
+            }
+          }
+          if (conditionSummary.isEmpty) conditionSummary = "Not specified";
+
+          final List<Map<String, dynamic>> servicesForQueue = _selectedServices
+              .map((service) => {
+                    'name': service.name,
+                    'category': service.category,
+                    'price': service.price,
+                  })
+              .toList();
+
           final newPatientQueueData = {
             'name': finalPatientNameToUse,
             'patientId':
@@ -149,10 +244,13 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             'addedTime': now.toIso8601String(),
             'gender': finalGenderToUse,
             'age': finalAgeToUse,
-            'condition': _conditionController.text.trim().isEmpty
-                ? 'General consultation'
-                : _conditionController.text.trim(),
+            // 'condition': _conditionController.text.trim().isEmpty // Replaced
+            //     ? 'General consultation'
+            //     : _conditionController.text.trim(),
+            'condition': conditionSummary,
             'status': 'waiting',
+            'selectedServices': servicesForQueue, // Added
+            'totalPrice': _totalPrice, // Added
           };
 
           await widget.queueService.addToQueue(newPatientQueueData);
@@ -168,8 +266,15 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           _patientIdController.clear();
           _ageController.clear();
           _genderController.clear();
-          _conditionController.clear();
-          setState(() {}); // Trigger rebuild to update queue list display
+          // _conditionController.clear(); // Removed
+          _otherConditionController.clear();
+          setState(() {
+            _selectedServices
+                .forEach((s) => s.isSelected = false); // Reset selection states
+            _selectedServices.clear();
+            _totalPrice = 0.0;
+            _showOtherConditionField = false;
+          }); // Trigger rebuild to update queue list display
         } else {
           // Patient not found in the database
           await showDialog(
@@ -199,6 +304,142 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         });
       }
     }
+  }
+
+  void _openServiceSelectionDialog() {
+    // Reset isSelected state for all available services before opening dialog
+    // to reflect current _selectedServices. This ensures checkboxes are correctly
+    // checked/unchecked based on what's already in _selectedServices.
+    for (var service in _availableServices) {
+      service.isSelected =
+          _selectedServices.any((selected) => selected.name == service.name);
+    }
+    // Ensure "Other" checkbox reflects _showOtherConditionField
+    bool dialogOtherSelected = _showOtherConditionField;
+    TextEditingController dialogOtherController =
+        TextEditingController(text: _otherConditionController.text);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          // Use StatefulBuilder to update dialog content
+          builder: (context, setDialogState) {
+            // Calculate price inside dialog for immediate feedback
+            double currentDialogPrice = 0;
+            for (var service in _availableServices) {
+              if (service.isSelected) {
+                currentDialogPrice += service.price;
+              }
+            }
+
+            return AlertDialog(
+              title: Text('Select Services / Purpose'),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: <Widget>[
+                    Text("Consultation",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal[700])),
+                    ..._availableServices
+                        .where((s) => s.category == 'Consultation')
+                        .map((service) => CheckboxListTile(
+                              title: Text(
+                                  '${service.name} (₱${service.price.toStringAsFixed(2)})'),
+                              value: service.isSelected,
+                              onChanged: (bool? value) {
+                                setDialogState(() {
+                                  service.isSelected = value!;
+                                });
+                              },
+                            )),
+                    SizedBox(height: 10),
+                    Text("Laboratory",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal[700])),
+                    ..._availableServices
+                        .where((s) => s.category == 'Laboratory')
+                        .map((service) => CheckboxListTile(
+                              title: Text(
+                                  '${service.name} (₱${service.price.toStringAsFixed(2)})'),
+                              value: service.isSelected,
+                              onChanged: (bool? value) {
+                                setDialogState(() {
+                                  service.isSelected = value!;
+                                });
+                              },
+                            )),
+                    SizedBox(height: 10),
+                    CheckboxListTile(
+                      title: Text("Other Purpose"),
+                      value: dialogOtherSelected,
+                      onChanged: (bool? value) {
+                        setDialogState(() {
+                          dialogOtherSelected = value!;
+                        });
+                      },
+                    ),
+                    if (dialogOtherSelected)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0, top: 8.0),
+                        child: TextFormField(
+                          controller: dialogOtherController,
+                          decoration: InputDecoration(
+                              labelText: 'Specify other purpose',
+                              border: OutlineInputBorder(),
+                              hintText: 'e.g., Follow-up checkup'),
+                          maxLines: 2,
+                        ),
+                      ),
+                    SizedBox(height: 10),
+                    Text(
+                      'Total Estimated: ₱${currentDialogPrice.toStringAsFixed(2)}',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: Text('Cancel'),
+                  onPressed: () {
+                    // Reset temporary dialog selections if cancelled
+                    for (var service in _availableServices) {
+                      service.isSelected = _selectedServices
+                          .any((selected) => selected.name == service.name);
+                    }
+                    Navigator.of(context).pop();
+                  },
+                ),
+                ElevatedButton(
+                  child: Text('Confirm'),
+                  onPressed: () {
+                    setState(() {
+                      _selectedServices = _availableServices
+                          .where((s) => s.isSelected)
+                          .toList();
+                      _totalPrice = _selectedServices.fold(
+                          0, (sum, item) => sum + item.price);
+                      _showOtherConditionField = dialogOtherSelected;
+                      if (_showOtherConditionField) {
+                        _otherConditionController.text =
+                            dialogOtherController.text;
+                      } else {
+                        _otherConditionController.clear();
+                      }
+                    });
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -304,16 +545,73 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                                 ],
                               ),
                               const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _conditionController,
-                                decoration: const InputDecoration(
-                                    labelText: 'Condition/Purpose of Visit',
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.medical_services),
-                                    hintText:
-                                        'Enter medical condition or reason for visit'),
-                                maxLines: 2,
+                              // TextFormField( // This is replaced
+                              //   controller: _conditionController,
+                              //   decoration: const InputDecoration(
+                              //       labelText: 'Condition/Purpose of Visit',
+                              //       border: OutlineInputBorder(),
+                              //       prefixIcon: Icon(Icons.medical_services),
+                              //       hintText:
+                              //           'Enter medical condition or reason for visit'),
+                              //   maxLines: 2,
+                              // ),
+
+                              // New Service Selection UI
+                              Text('Services / Purpose of Visit',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey[700])),
+                              const SizedBox(height: 8),
+                              ElevatedButton.icon(
+                                icon: Icon(Icons.medical_services_outlined),
+                                label: Text('Select Services / Purpose'),
+                                onPressed: _openServiceSelectionDialog,
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal[50],
+                                    foregroundColor: Colors.teal[700],
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 12),
+                                    textStyle: TextStyle(fontSize: 15)),
                               ),
+                              const SizedBox(height: 10),
+                              if (_selectedServices.isNotEmpty)
+                                Wrap(
+                                  spacing: 8.0,
+                                  runSpacing: 4.0,
+                                  children: _selectedServices
+                                      .map((service) => Chip(
+                                            label: Text(
+                                                '${service.name} (₱${service.price.toStringAsFixed(2)})'),
+                                            backgroundColor: Colors.teal[100],
+                                            labelStyle: TextStyle(
+                                                color: Colors.teal[800]),
+                                          ))
+                                      .toList(),
+                                ),
+                              if (_showOtherConditionField &&
+                                  _otherConditionController.text.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(
+                                      "Other: ${_otherConditionController.text}",
+                                      style: TextStyle(
+                                          fontStyle: FontStyle.italic)),
+                                ),
+                              if (_selectedServices.isNotEmpty ||
+                                  (_showOtherConditionField &&
+                                      _otherConditionController
+                                          .text.isNotEmpty))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 12.0),
+                                  child: Text(
+                                    'Total Estimated Price: ₱${_totalPrice.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green[700]),
+                                  ),
+                                ),
+                              // End New Service Selection UI
                             ],
                           ), // End child column
                         ), // End Padding
@@ -467,7 +765,14 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Widget _buildQueueTableHeader() {
-    final headers = ['Queue No.', 'Name', 'Patient ID', 'Arrival', 'Status'];
+    final headers = [
+      'Queue No.',
+      'Name',
+      'Patient ID',
+      'Arrival',
+      'Purpose',
+      'Status'
+    ];
     return Container(
       color: Colors.teal[600], // Header background
       // Apply rounded corners only to top-left and top-right if inside the bordered container
@@ -477,7 +782,13 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
       child: Row(
         children: headers.map((text) {
           return Expanded(
-            flex: (text == 'Name') ? 2 : (text == 'Patient ID' ? 2 : 1),
+            flex: (text == 'Name')
+                ? 3
+                : (text == 'Patient ID'
+                    ? 2
+                    : (text == 'Purpose')
+                        ? 3
+                        : 1),
             child: Text(text,
                 style: const TextStyle(
                     color: Colors.white,
@@ -493,8 +804,13 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   Widget _buildQueueTableRow(ActivePatientQueueItem item) {
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
+
+    // Access conditionOrPurpose, which should now be part of the ActivePatientQueueItem model
+    // and populated by your QueueService.
+    String purposeText = item.conditionOrPurpose ?? 'Not specified';
+
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 1), // Reduced margin
+      margin: const EdgeInsets.symmetric(vertical: 1),
       padding: const EdgeInsets.symmetric(
           vertical: 8, horizontal: 8), // Reduced padding
       decoration: BoxDecoration(
@@ -509,7 +825,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               child: Text(item.queueNumber.toString(),
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 13))),
           Expanded(
-              flex: 2,
+              flex: 3,
               child: Text(
                 item.patientName,
                 textAlign: TextAlign.center,
@@ -524,6 +840,18 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               flex: 1,
               child: Text(arrivalDisplayTime,
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 13))),
+          Expanded(
+              flex: 3,
+              child: Tooltip(
+                message: purposeText,
+                child: Text(
+                  purposeText,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              )),
           Expanded(
               flex: 1,
               child: Text(_getDisplayStatus(item.status),
@@ -574,7 +902,8 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     _patientIdController.dispose();
     _ageController.dispose();
     _genderController.dispose();
-    _conditionController.dispose();
+    // _conditionController.dispose(); // Removed
+    _otherConditionController.dispose();
     super.dispose();
   }
 }

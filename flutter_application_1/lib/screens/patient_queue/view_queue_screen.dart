@@ -47,7 +47,7 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> {
         // This might involve clearing servedAt or consultationStartedAt timestamps.
         // For now, using a general update method if available or modifying existing.
         success = await widget.queueService
-            .updatePatientStatus(item.queueEntryId, 'waiting');
+            .updatePatientStatusInQueue(item.queueEntryId, 'waiting');
       }
       // Add other status updates like 'removed' if it's not handled by a separate screen/flow.
 

@@ -1,13 +1,11 @@
 import 'dart:io';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'database_helper.dart';
 import '../models/active_patient_queue_item.dart';
 import 'auth_service.dart';
 import 'dart:math';
-import 'dart:convert';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -22,6 +20,24 @@ class QueueService {
   Future<List<ActivePatientQueueItem>> getActiveQueueItems(
       {List<String>? statuses}) async {
     return await _dbHelper.getActiveQueue(statuses: statuses);
+  }
+
+  /// Checks if a patient is already in the active queue with 'waiting' or 'in_consultation' status.
+  Future<bool> isPatientCurrentlyActive(
+      {String? patientId, required String patientName}) async {
+    try {
+      return await _dbHelper.isPatientInActiveQueue(
+        patientId: patientId,
+        patientName: patientName,
+      );
+    } catch (e) {
+      print('QueueService: Error checking if patient is active in queue: $e');
+      // Depending on your error handling strategy:
+      // Option 1: Rethrow the error to be handled by the caller
+      // throw Exception('Failed to check patient queue status: $e');
+      // Option 2: Return false, allowing the UI to potentially proceed.
+      return false;
+    }
   }
 
   /// Add patient to the active queue in the database.
@@ -53,6 +69,9 @@ class QueueService {
       createdAt:
           DateTime.tryParse(patientData['addedTime']?.toString() ?? '') ?? now,
       addedByUserId: currentUserId,
+      selectedServices:
+          patientData['selectedServices'] as List<Map<String, dynamic>>?,
+      totalPrice: patientData['totalPrice'] as double?,
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
@@ -84,7 +103,7 @@ class QueueService {
     if (item == null) return false;
 
     final updatedItem =
-        item.copyWith(status: 'removed', removedAt: () => DateTime.now());
+        item.copyWith(status: 'removed', removedAt: DateTime.now());
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
   }
@@ -132,6 +151,89 @@ class QueueService {
     }).toList();
   }
 
+  /// Updates the status of a patient in the active queue and sets relevant timestamps.
+  ///
+  /// Use this method to change a patient's status and automatically update
+  /// `consultationStartedAt`, `servedAt`, or `removedAt` based on the new status.
+  Future<bool> updatePatientStatusInQueue(
+    String queueEntryId,
+    String newStatus, {
+    DateTime? consultationStartedAt,
+    DateTime? servedAt,
+    DateTime? removedAt,
+  }) async {
+    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+    if (item == null) {
+      print(
+          'QueueService: Item with ID $queueEntryId not found for status update.');
+      return false;
+    }
+
+    ActivePatientQueueItem updatedItem;
+    final now = DateTime.now();
+
+    // Create a copy with the new status first
+    updatedItem = item.copyWith(status: newStatus);
+
+    // Update timestamps based on the new status
+    switch (newStatus.toLowerCase()) {
+      case 'waiting':
+        updatedItem = updatedItem.copyWith(
+          consultationStartedAt: null, // Explicitly nullify
+          servedAt: null, // Explicitly nullify
+          removedAt: null, // Explicitly nullify
+        );
+        break;
+      case 'in_consultation':
+        // If already in consultation, keep original start time, otherwise set to now or provided
+        updatedItem = updatedItem.copyWith(
+          consultationStartedAt: item.status == 'in_consultation'
+              ? item.consultationStartedAt
+              : (consultationStartedAt ?? now),
+          servedAt: null, // Nullify if moving back from served/other
+          removedAt: null, // Nullify if moving back from removed
+        );
+        break;
+      case 'served':
+        updatedItem = updatedItem.copyWith(
+          servedAt: servedAt ?? now,
+          // If consultationStartedAt is null when moving to served, set it to servedAt time.
+          consultationStartedAt:
+              item.consultationStartedAt ?? (servedAt ?? now),
+          removedAt: null, // Nullify if moving from removed
+        );
+        break;
+      case 'removed':
+        updatedItem = updatedItem.copyWith(
+          removedAt: removedAt ?? now,
+          // Optionally, you might want to keep servedAt if it was served then removed.
+          // For now, it will retain its previous value unless explicitly nulled.
+        );
+        break;
+      // Add other statuses if needed, e.g., 'cancelled', 'no_show'
+      default:
+        // For any other status, just update the status string
+        // Timestamps are not automatically managed for unlisted statuses here
+        break;
+    }
+
+    try {
+      final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+      if (result > 0) {
+        print(
+            'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
+        return true;
+      }
+      print(
+          'QueueService: Failed to update patient $queueEntryId to status $newStatus (DB update rows: $result)');
+      return false;
+    } catch (e) {
+      print(
+          'QueueService: Error updating patient status for $queueEntryId: $e');
+      return false;
+    }
+  }
+
   /// Mark patient as served in the active queue.
   Future<bool> markPatientAsServed(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
@@ -142,11 +244,9 @@ class QueueService {
 
     if (item.consultationStartedAt == null) {
       updatedItem = item.copyWith(
-          status: 'served',
-          servedAt: () => now,
-          consultationStartedAt: () => now);
+          status: 'served', servedAt: now, consultationStartedAt: now);
     } else {
-      updatedItem = item.copyWith(status: 'served', servedAt: () => now);
+      updatedItem = item.copyWith(status: 'served', servedAt: now);
     }
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
@@ -160,63 +260,20 @@ class QueueService {
 
     final updatedItem = item.copyWith(
         status: 'in_consultation',
-        consultationStartedAt: () => DateTime.now(),
-        servedAt: () => null);
-    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
-    return result > 0;
-  }
-
-  /// Update patient status in the active queue.
-  /// This is a more generic update method.
-  Future<bool> updatePatientStatus(
-      String queueEntryId, String newStatus) async {
-    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null) return false;
-
-    ActivePatientQueueItem updatedItem;
-    final now = DateTime.now();
-
-    switch (newStatus.toLowerCase()) {
-      case 'waiting':
-        updatedItem = item.copyWith(
-            status: 'waiting',
-            consultationStartedAt: () => null,
-            servedAt: () => null,
-            removedAt: () => null);
-        break;
-      case 'in_consultation':
-        if (item.status == 'served' || item.status == 'removed') return false;
-        updatedItem = item.copyWith(
-            status: 'in_consultation',
-            consultationStartedAt: () => item.consultationStartedAt ?? now,
-            servedAt: () => null);
-        break;
-      case 'served':
-        if (item.status == 'removed') return false;
-        updatedItem = item.copyWith(
-            status: 'served',
-            servedAt: () => now,
-            consultationStartedAt: () => item.consultationStartedAt ?? now);
-        break;
-      case 'removed':
-        updatedItem = item.copyWith(status: 'removed', removedAt: () => now);
-        break;
-      default:
-        updatedItem = item.copyWith(status: newStatus);
-    }
-
+        consultationStartedAt: DateTime.now(),
+        servedAt: null);
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
   }
 
   /// Mark patient as ongoing (in consultation).
   Future<bool> markPatientAsOngoing(String queueEntryId) async {
-    return await updatePatientStatus(queueEntryId, 'in_consultation');
+    return await updatePatientStatusInQueue(queueEntryId, 'in_consultation');
   }
 
   /// Mark patient as done.
   Future<bool> markPatientAsDone(String queueEntryId) async {
-    return await updatePatientStatus(queueEntryId, 'done');
+    return await updatePatientStatusInQueue(queueEntryId, 'done');
   }
 
   /// Generate daily queue report from the active queue data for a specific date.

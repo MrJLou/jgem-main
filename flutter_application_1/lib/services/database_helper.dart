@@ -6,10 +6,8 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/appointment.dart';
-import 'package:http/http.dart' as http;
 import '../models/active_patient_queue_item.dart';
 import 'package:intl/intl.dart';
 
@@ -24,13 +22,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   final String _databaseName = 'patient_management.db';
-  final int _databaseVersion = 13;
-
-  // Database sync settings
-  final String _syncUrl =
-      'http://192.168.1.100:8000/sync'; // Change to your server IP
-  final String _deviceId = DateTime.now().millisecondsSinceEpoch.toString();
-  final String _syncTimeKey = 'last_sync_time';
+  final int _databaseVersion = 15;
 
   // Tables
   final String tableUsers = 'users';
@@ -320,6 +312,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         billId TEXT,
         patientId TEXT NOT NULL,
+        referenceNumber TEXT UNIQUE NOT NULL, -- Added for payment reference
         paymentDate TEXT NOT NULL,
         amountPaid REAL NOT NULL,
         paymentMethod TEXT NOT NULL, -- 'Cash', 'Card Terminal'
@@ -371,6 +364,8 @@ class DatabaseHelper {
         gender TEXT,
         age INTEGER,
         conditionOrPurpose TEXT,
+        selectedServices TEXT, -- JSON string of List<Map<String, dynamic>> for selected services
+        totalPrice REAL, -- Total estimated price
         status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
         createdAt TEXT NOT NULL,
         addedByUserId TEXT,
@@ -686,6 +681,37 @@ class DatabaseHelper {
         print(
             "DATABASE_HELPER: Ensured report columns (excluding waiting/inConsultation) for $tablePatientQueue for version < 12 upgrading to v13.");
       }
+    }
+    if (oldVersion < 14) {
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'selectedServices', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'totalPrice', 'REAL');
+      print(
+          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added selectedServices and totalPrice to $tableActivePatientQueue.');
+    }
+    if (oldVersion < 15) {
+      // Step 1: Add the column as TEXT, allowing NULLs.
+      await _addColumnIfNotExists(db, tablePayments, 'referenceNumber', 'TEXT');
+      print(
+          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added referenceNumber (TEXT) to $tablePayments.');
+
+      // Step 2: Create a UNIQUE INDEX on the new column.
+      // This enforces uniqueness for future inserts/updates.
+      // Note: If there's existing non-unique data in referenceNumber (which shouldn't be the case if it was just added),
+      // this index creation might fail. This assumes the column is new or already contains unique values (or mostly NULLs).
+      try {
+        await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_referenceNumber ON $tablePayments (referenceNumber)');
+        print(
+            'DATABASE_HELPER: Created UNIQUE INDEX idx_payments_referenceNumber ON $tablePayments (referenceNumber).');
+      } catch (e) {
+        print(
+            'DATABASE_HELPER: Error creating UNIQUE INDEX for referenceNumber. It might already exist or there might be duplicate data if column was partially populated: $e');
+        // If this fails, it might be because the index was already created in a previous failed attempt or there's pre-existing duplicate data (unlikely for a newly added column).
+      }
+      print(
+          'DATABASE_HELPER: Application must ensure non-null and unique reference numbers for new entries into $tablePayments.');
     }
   }
 
@@ -1869,6 +1895,31 @@ To view live changes in DB Browser:
     return count;
   }
 
+  /// Checks if a patient is already in the active queue with 'waiting' or 'in_consultation' status.
+  Future<bool> isPatientInActiveQueue(
+      {String? patientId, required String patientName}) async {
+    final db = await database;
+    List<Map<String, dynamic>> result;
+
+    if (patientId != null && patientId.isNotEmpty) {
+      result = await db.query(
+        tableActivePatientQueue,
+        where: 'patientId = ? AND (status = ? OR status = ?)',
+        whereArgs: [patientId, 'waiting', 'in_consultation'],
+        limit: 1,
+      );
+    } else {
+      // Fallback to patientName if patientId is not available or empty
+      result = await db.query(
+        tableActivePatientQueue,
+        where: 'patientName = ? AND (status = ? OR status = ?)',
+        whereArgs: [patientName, 'waiting', 'in_consultation'],
+        limit: 1,
+      );
+    }
+    return result.isNotEmpty;
+  }
+
   // Add this new method
   Future<int> deleteActiveQueueItemsByDate(DateTime date) async {
     final db = await database;
@@ -1891,7 +1942,8 @@ To view live changes in DB Browser:
   }
 
   Future<List<Map<String, dynamic>>> searchPayments({
-    required String reference,
+    required String
+        reference, // This will now specifically be the referenceNumber
     DateTime? startDate,
     DateTime? endDate,
     String? paymentType,
@@ -1899,32 +1951,35 @@ To view live changes in DB Browser:
     final db = await database;
 
     String query = '''
-      SELECT p.*, pb.id as bill_id, pt.fullName as patient_name, cs.serviceName as service_name
+      SELECT p.*, 
+             pt.fullName as patient_name,
+             u.fullName as received_by_user_name 
       FROM $tablePayments p
-      LEFT JOIN $tablePatientBills pb ON p.billId = pb.id
       LEFT JOIN $tablePatients pt ON p.patientId = pt.id
-      LEFT JOIN $tableClinicServices cs ON pb.serviceId = cs.id -- This join might be problematic if bill is not directly linked to a single service
-      WHERE p.id LIKE ? OR p.billId LIKE ? OR pt.fullName LIKE ? -- Search by payment ID, bill ID, or patient name
-    '''; // Added OR billId LIKE ? OR pt.fullName LIKE ?
+      LEFT JOIN $tableUsers u ON p.receivedByUserId = u.id
+      WHERE 1=1
+    ''';
 
-    List<dynamic> arguments = [
-      '%$reference%',
-      '%$reference%',
-      '%$reference%'
-    ]; // Added arguments for new search terms
+    List<dynamic> arguments = [];
+
+    if (reference.isNotEmpty) {
+      query += ' AND p.referenceNumber LIKE ?'; // Search by referenceNumber
+      arguments.add('%$reference%');
+    }
 
     if (startDate != null) {
-      query += ' AND p.paymentDate >= ?';
+      query +=
+          ' AND DATE(p.paymentDate) >= DATE(?)'; // Ensure correct date comparison
       arguments.add(DateFormat('yyyy-MM-dd').format(startDate));
     }
 
     if (endDate != null) {
-      query += ' AND p.paymentDate <= ?';
+      query +=
+          ' AND DATE(p.paymentDate) <= DATE(?)'; // Ensure correct date comparison
       arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
     }
 
     if (paymentType != null && paymentType != 'all' && paymentType.isNotEmpty) {
-      // Added isNotEmpty check
       query += ' AND p.paymentMethod = ?';
       arguments.add(paymentType);
     }
@@ -2083,5 +2138,39 @@ To view live changes in DB Browser:
       await _logChange(tableClinicServices, id, 'delete');
     }
     return result;
+  }
+
+  // PAYMENTS METHODS (Can be expanded for more complex payment scenarios)
+
+  /// Inserts a new payment record into the database.
+  ///
+  /// The [paymentData] map should contain all necessary fields for the `payments` table,
+  /// including 'billId' (optional), 'patientId', 'referenceNumber', 'paymentDate',
+  /// 'amountPaid', 'paymentMethod', and 'receivedByUserId'.
+  Future<int> insertPayment(Map<String, dynamic> paymentData) async {
+    final db = await database;
+    // Ensure essential fields are present
+    if (paymentData['patientId'] == null ||
+        paymentData['referenceNumber'] == null ||
+        paymentData['paymentDate'] == null ||
+        paymentData['amountPaid'] == null ||
+        paymentData['paymentMethod'] == null ||
+        paymentData['receivedByUserId'] == null) {
+      throw ArgumentError("Missing essential payment data for insertPayment.");
+    }
+
+    // The 'id' for payments is AUTOINCREMENT, so we don't set it here.
+    // 'billId' can be null.
+
+    late int paymentId;
+    await db.transaction((txn) async {
+      paymentId = await txn.insert(tablePayments, paymentData);
+      if (paymentId > 0) {
+        // Log change using the auto-generated ID
+        await _logChange(tablePayments, paymentId.toString(), 'insert',
+            executor: txn);
+      }
+    });
+    return paymentId;
   }
 }

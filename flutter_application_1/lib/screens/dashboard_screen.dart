@@ -118,7 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final Map<String, List<String>> _rolePermissions = {
     'admin': [
       'Registration',
-      'User Management',
       'Maintenance',
       'Search',
       'Patient Laboratory Histories',
