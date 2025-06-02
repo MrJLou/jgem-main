@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
+import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -43,9 +44,9 @@ class PatientRecordManagementApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: const _AuthWrapper(), // Changed to auth wrapper
+      ),      home: const _AuthWrapper(), // Changed to auth wrapper
       routes: {
+        '/auth': (context) => const AuthScreen(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
         '/dashboard': (context) => const DashboardScreen(

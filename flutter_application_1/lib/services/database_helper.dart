@@ -21,7 +21,8 @@ class DatabaseHelper {
   DatabaseHelper._internal() {
     userDbService = UserDatabaseService(this);
     patientDbService = PatientDatabaseService(this);
-    appointmentDbService = AppointmentDatabaseService(this); // Initialize AppointmentDatabaseService
+    appointmentDbService = AppointmentDatabaseService(
+        this); // Initialize AppointmentDatabaseService
   }
 
   // Instance variables for the database and its path
@@ -50,7 +51,8 @@ class DatabaseHelper {
 
   late final UserDatabaseService userDbService;
   late final PatientDatabaseService patientDbService;
-  late final AppointmentDatabaseService appointmentDbService; // Declare AppointmentDatabaseService instance
+  late final AppointmentDatabaseService
+      appointmentDbService; // Declare AppointmentDatabaseService instance
 
   // Getter for database instance
   Future<Database> get database async {
@@ -95,44 +97,39 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     String path;
 
-    // Check if running on Windows and apply custom path
+    // Determine database path based on platform
     if (!kIsWeb && Platform.isWindows) {
-      // Use a specific path in the project's parent directory for easier access during development
-      path = join(await getDatabasesPath(), _databaseName); // Original usage
-      // path = 'C:\\Users\\Bernie\\Documents\\jgem-main\\${DatabaseHelper._databaseName}'; // Updated usage
-
-      // path =
-      //     'C:\\Users\\jesie\\Documents\\jgem-softeng\\jgem-main\\${DatabaseHelper._databaseName}'; // Updated usage
-      print('DATABASE_HELPER: Using fixed Windows path: $path');
-    } else {
-      // Existing logic for other platforms (Android, iOS, macOS, Linux)
+      // FORCED PATH for specific Windows development environment
+      path = normalize(join('C:', 'Users', 'jesie', 'Documents', 'jgem-softeng',
+          'jgem-main', DatabaseHelper._databaseName));
+      print(
+          'DATABASE_HELPER: [WINDOWS_DEV_FORCED_PATH] Attempting to use: $path');
+    } else if (!kIsWeb && Platform.isAndroid) {
       try {
-        if (!kIsWeb && Platform.isAndroid) {
-          try {
-            final externalDir = await getExternalStorageDirectory();
-            if (externalDir != null) {
-              path = join(externalDir.path, DatabaseHelper._databaseName); // Updated usage
-            } else {
-              final docDir = await getApplicationDocumentsDirectory();
-              path = join(docDir.path, DatabaseHelper._databaseName); // Updated usage
-            }
-          } catch (e) {
-            final docDir = await getApplicationDocumentsDirectory();
-            path = join(docDir.path, DatabaseHelper._databaseName); // Updated usage
-            print(
-                'DATABASE_HELPER: Error accessing external storage, using app docs dir. Error: $e');
-          }
+        final externalDir = await getExternalStorageDirectory();
+        if (externalDir != null) {
+          path = join(externalDir.path, DatabaseHelper._databaseName);
         } else {
-          // For iOS, macOS, Linux (non-Android mobile/desktop)
           final docDir = await getApplicationDocumentsDirectory();
-          path = join(docDir.path, DatabaseHelper._databaseName); // Updated usage
+          path = join(docDir.path, DatabaseHelper._databaseName);
         }
       } catch (e) {
-        // Ultimate fallback if path_provider fails for some reason on non-Windows
         final docDir = await getApplicationDocumentsDirectory();
-        path = join(docDir.path, DatabaseHelper._databaseName); // Updated usage
+        path = join(docDir.path, DatabaseHelper._databaseName);
         print(
-            'DATABASE_HELPER: Error determining optimal path, using default app docs dir. Error: $e');
+            'DATABASE_HELPER: Error accessing Android external storage, using app docs dir. Error: $e');
+      }
+    } else {
+      // For iOS, macOS, Linux, and other non-web platforms
+      try {
+        final docDir = await getApplicationDocumentsDirectory();
+        path = join(docDir.path, DatabaseHelper._databaseName);
+        print(
+            'DATABASE_HELPER: [OTHER_PLATFORMS] Using standard app data path: $path');
+      } catch (e) {
+        path = DatabaseHelper._databaseName;
+        print(
+            'DATABASE_HELPER: Critical error getting application documents directory, using relative path. Error: $e');
       }
     }
 
@@ -149,22 +146,21 @@ class DatabaseHelper {
     } catch (e) {
       print(
           'DATABASE_HELPER: Error creating directory for database. Error: $e');
-      // Depending on the error, you might want to throw it or handle it differently
     }
 
     print(
-        '********************************************************************************');
-    print('DATABASE_HELPER: Initializing database at path:');
+        '================================================================================');
+    print('DATABASE_HELPER: FINAL DATABASE PATH TO BE OPENED:');
     print(_instanceDbPath);
     print(
-        '********************************************************************************');
+        '================================================================================');
 
     // DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs
+    // Ensure this is commented out for production/normal use
     // final dbFile = File(_instanceDbPath!);
     // if (await dbFile.exists()) {
     //   await dbFile.delete();
-    //   print(
-    //       'DEVELOPMENT: Deleted existing database at $_instanceDbPath to ensure schema recreation.');
+    //   print('DEVELOPMENT: Deleted existing database at $_instanceDbPath to ensure schema recreation.');
     // }
     // END DEVELOPMENT ONLY SECTION
 
@@ -183,8 +179,10 @@ class DatabaseHelper {
     // This ensures it starts fresh for the day.
     print(
         'DATABASE_HELPER: Clearing ${DatabaseHelper.tableActivePatientQueue} after DB open/creation/upgrade.'); // Updated usage
-    await openedDb.delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
-    print('DATABASE_HELPER: ${DatabaseHelper.tableActivePatientQueue} cleared.'); // Updated usage
+    await openedDb
+        .delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
+    print(
+        'DATABASE_HELPER: ${DatabaseHelper.tableActivePatientQueue} cleared.'); // Updated usage
 
     return openedDb;
   }
@@ -404,22 +402,23 @@ class DatabaseHelper {
     print(
         'DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion...');
     if (oldVersion < 2) {
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityQuestion1', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityAnswer1', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityQuestion2', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityAnswer2', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityQuestion3', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableUsers, 'securityAnswer3', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityQuestion1', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityAnswer1', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityQuestion2', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityAnswer2', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityQuestion3', 'TEXT NOT NULL DEFAULT \'\'');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
+          'securityAnswer3', 'TEXT NOT NULL DEFAULT \'\'');
     }
     if (oldVersion < 3) {
       // Recreate appointments table with the new schema
-      await db.execute('DROP TABLE IF EXISTS ${DatabaseHelper.tableAppointments}');
+      await db
+          .execute('DROP TABLE IF EXISTS ${DatabaseHelper.tableAppointments}');
       await db.execute('''
         CREATE TABLE ${DatabaseHelper.tableAppointments} (
           id TEXT PRIMARY KEY,
@@ -441,7 +440,8 @@ class DatabaseHelper {
       // Add new columns to medical_records table
       await _addColumnIfNotExists(
           db, DatabaseHelper.tableMedicalRecords, 'appointmentId', 'TEXT');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableMedicalRecords, 'serviceId', 'TEXT');
+      await _addColumnIfNotExists(
+          db, DatabaseHelper.tableMedicalRecords, 'serviceId', 'TEXT');
       // If you needed to add FK constraints here to an existing table, it's more complex in SQLite.
       // Typically involves renaming table, creating new table with FK, copying data, deleting old table.
       // For TEXT columns added like this, the FKs in the CREATE TABLE statement (_onCreate) will apply to new DBs.
@@ -593,30 +593,31 @@ class DatabaseHelper {
           db, DatabaseHelper.tableActivePatientQueue, 'servedAt', 'TEXT');
       await _addColumnIfNotExists(
           db, DatabaseHelper.tableActivePatientQueue, 'removedAt', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'consultationStartedAt', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'queueNumber', 'INTEGER DEFAULT 0');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
+          'consultationStartedAt', 'TEXT');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
+          'queueNumber', 'INTEGER DEFAULT 0');
       print(
           'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added timestamp fields and queue number to Active Patient Queue table.');
     }
     if (oldVersion < 11) {
       // Re-ensure queueNumber column exists, as it might have been missed in a previous upgrade.
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'queueNumber', 'INTEGER DEFAULT 0');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
+          'queueNumber', 'INTEGER DEFAULT 0');
       print(
           'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Ensured queueNumber column in Active Patient Queue table.');
     }
     if (oldVersion < 12) {
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePatientQueue, 'totalPatientsInQueue', 'INTEGER');
+      await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
+          'totalPatientsInQueue', 'INTEGER');
       await _addColumnIfNotExists(
           db, DatabaseHelper.tablePatientQueue, 'patientsServed', 'INTEGER');
       await _addColumnIfNotExists(
           db, DatabaseHelper.tablePatientQueue, 'patientsRemoved', 'INTEGER');
+      await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
+          'averageWaitTimeMinutes', 'TEXT');
       await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePatientQueue, 'averageWaitTimeMinutes', 'TEXT');
-      await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
+          db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
       print(
           'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added patient status count columns to ${DatabaseHelper.tablePatientQueue}.');
     }
@@ -676,7 +677,8 @@ class DatabaseHelper {
             "DATABASE_HELPER: Copied data from ${DatabaseHelper.tablePatientQueue}_old_v12 to new ${DatabaseHelper.tablePatientQueue}, mapping v12 column names and providing NULL for generatedByUserId.");
 
         // 4. Drop the old table
-        await db.execute('DROP TABLE ${DatabaseHelper.tablePatientQueue}_old_v12');
+        await db
+            .execute('DROP TABLE ${DatabaseHelper.tablePatientQueue}_old_v12');
         print(
             "DATABASE_HELPER: Dropped old table ${DatabaseHelper.tablePatientQueue}_old_v12.");
       } else {
@@ -684,22 +686,23 @@ class DatabaseHelper {
         // would not have been added by the "oldVersion < 12" block (as they are commented out).
         // So, for these cases, no specific action is needed for these two columns for v13.
         // However, ensure the other columns from the "< 12" block are present if they weren't already.
-        await _addColumnIfNotExists(
-            db, DatabaseHelper.tablePatientQueue, 'totalPatientsInQueue', 'INTEGER');
+        await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
+            'totalPatientsInQueue', 'INTEGER');
         await _addColumnIfNotExists(
             db, DatabaseHelper.tablePatientQueue, 'patientsServed', 'INTEGER');
         await _addColumnIfNotExists(
             db, DatabaseHelper.tablePatientQueue, 'patientsRemoved', 'INTEGER');
+        await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
+            'averageWaitTimeMinutes', 'TEXT');
         await _addColumnIfNotExists(
-            db, DatabaseHelper.tablePatientQueue, 'averageWaitTimeMinutes', 'TEXT');
-        await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
+            db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
         print(
             "DATABASE_HELPER: Ensured report columns (excluding waiting/inConsultation) for ${DatabaseHelper.tablePatientQueue} for version < 12 upgrading to v13.");
       }
     }
     if (oldVersion < 14) {
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'selectedServices', 'TEXT');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
+          'selectedServices', 'TEXT');
       await _addColumnIfNotExists(
           db, DatabaseHelper.tableActivePatientQueue, 'totalPrice', 'REAL');
       print(
@@ -707,7 +710,8 @@ class DatabaseHelper {
     }
     if (oldVersion < 15) {
       // Step 1: Add the column as TEXT, allowing NULLs.
-      await _addColumnIfNotExists(db, DatabaseHelper.tablePayments, 'referenceNumber', 'TEXT');
+      await _addColumnIfNotExists(
+          db, DatabaseHelper.tablePayments, 'referenceNumber', 'TEXT');
       print(
           'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added referenceNumber (TEXT) to ${DatabaseHelper.tablePayments}.');
 
@@ -788,12 +792,15 @@ class DatabaseHelper {
     return userDbService.getUserSecurityDetails(username);
   }
 
-  Future<Map<String, dynamic>?> authenticateUser(String username, String password) async {
+  Future<Map<String, dynamic>?> authenticateUser(
+      String username, String password) async {
     return userDbService.authenticateUser(username, password);
   }
 
-  Future<bool> resetPassword(String username, String securityQuestion, String securityAnswer, String newPassword) async {
-    return userDbService.resetPassword(username, securityQuestion, securityAnswer, newPassword);
+  Future<bool> resetPassword(String username, String securityQuestion,
+      String securityAnswer, String newPassword) async {
+    return userDbService.resetPassword(
+        username, securityQuestion, securityAnswer, newPassword);
   }
 
   // PATIENT MANAGEMENT METHODS (Delegating to PatientDatabaseService)
@@ -823,9 +830,10 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>?> findRegisteredPatient(
       {String? patientId, required String fullName}) async {
-    return patientDbService.findRegisteredPatient(patientId: patientId, fullName: fullName);
+    return patientDbService.findRegisteredPatient(
+        patientId: patientId, fullName: fullName);
   }
-  
+
   Future<void> updatePatientFromSync(Map<String, dynamic> patientData) async {
     return patientDbService.updatePatientFromSync(patientData);
   }
@@ -862,13 +870,14 @@ class DatabaseHelper {
   Future<List<Appointment>> getPatientAppointments(String patientId) async {
     return appointmentDbService.getPatientAppointments(patientId);
   }
-  
-  Future<void> updatePatientQueueFromSync(Map<String, dynamic> queueData) async {
-      return appointmentDbService.updatePatientQueueFromSync(queueData);
+
+  Future<void> updatePatientQueueFromSync(
+      Map<String, dynamic> queueData) async {
+    return appointmentDbService.updatePatientQueueFromSync(queueData);
   }
 
   Future<List<Map<String, dynamic>>> getCurrentPatientQueue() async {
-      return appointmentDbService.getCurrentPatientQueue();
+    return appointmentDbService.getCurrentPatientQueue();
   }
 
   // MEDICAL RECORDS METHODS
@@ -1369,7 +1378,8 @@ To view live changes in DB Browser:
       ActivePatientQueueItem item) async {
     final db = await database;
     await db.insert(DatabaseHelper.tableActivePatientQueue, item.toJson());
-    await logChange(DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
+    await logChange(
+        DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
     return item;
   }
 
@@ -1382,7 +1392,8 @@ To view live changes in DB Browser:
       whereArgs: [queueEntryId],
     );
     if (result > 0) {
-      await logChange(DatabaseHelper.tableActivePatientQueue, queueEntryId, 'delete');
+      await logChange(
+          DatabaseHelper.tableActivePatientQueue, queueEntryId, 'delete');
     }
     return result;
   }
@@ -1398,7 +1409,8 @@ To view live changes in DB Browser:
       whereArgs: [queueEntryId],
     );
     if (result > 0) {
-      await logChange(DatabaseHelper.tableActivePatientQueue, queueEntryId, 'update');
+      await logChange(
+          DatabaseHelper.tableActivePatientQueue, queueEntryId, 'update');
     }
     return result;
   }
@@ -1413,7 +1425,8 @@ To view live changes in DB Browser:
       whereArgs: [item.queueEntryId],
     );
     if (result > 0) {
-      await logChange(DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'update');
+      await logChange(
+          DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'update');
     }
     return result;
   }
@@ -1752,7 +1765,8 @@ To view live changes in DB Browser:
       paymentId = await txn.insert(DatabaseHelper.tablePayments, paymentData);
       if (paymentId > 0) {
         // Log change using the auto-generated ID
-        await logChange(DatabaseHelper.tablePayments, paymentId.toString(), 'insert',
+        await logChange(
+            DatabaseHelper.tablePayments, paymentId.toString(), 'insert',
             executor: txn);
       }
     });

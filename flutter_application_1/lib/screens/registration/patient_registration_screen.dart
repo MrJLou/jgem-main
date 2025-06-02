@@ -53,16 +53,21 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       final patient = widget.patient!;
       final nameParts = patient.fullName.split(' ');
       _firstNameController.text = nameParts.isNotEmpty ? nameParts.first : '';
-      _lastNameController.text = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+      _lastNameController.text =
+          nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
       _dobController.text = DateFormat('yyyy-MM-dd').format(patient.birthDate);
       _contactController.text = patient.contactNumber ?? '';
       _emailController.text = ''; // Patient model does not have email
       _addressController.text = patient.address ?? '';
-      _emergencyContactController.text = ''; // Patient model does not have emergencyContactNumber
-      _emergencyContactNameController.text = ''; // Patient model does not have emergencyContactName
-      _medicalInfoController.text = ''; // Patient model does not have medicalHistory
+      _emergencyContactController.text =
+          ''; // Patient model does not have emergencyContactNumber
+      _emergencyContactNameController.text =
+          ''; // Patient model does not have emergencyContactName
+      _medicalInfoController.text =
+          ''; // Patient model does not have medicalHistory
       _allergiesController.text = patient.allergies ?? '';
-      _currentMedicationsController.text = ''; // Patient model does not have currentMedications
+      _currentMedicationsController.text =
+          ''; // Patient model does not have currentMedications
       _gender = patient.gender;
       _bloodType = patient.bloodType ?? 'A+';
       _generatedPatientId = patient.id;
@@ -91,40 +96,6 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              flex: 1,
-              child: Container(
-                margin: const EdgeInsets.only(right: 8.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      spreadRadius: 1,
-                      blurRadius: 3,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(
-                        "Patient Information",
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal[800]),
-                      ),
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
               flex: 2,
               child: Container(
                 decoration: BoxDecoration(
@@ -150,7 +121,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           child: Column(
                             children: [
                               Text(
-                                _isEditMode ? 'Update Patient Information' : 'Register New Patient',
+                                _isEditMode
+                                    ? 'Update Patient Information'
+                                    : 'Register New Patient',
                                 style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
@@ -159,7 +132,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                _isEditMode ? 'Modify the details below and save changes' : 'Enter patient details to create a new medical record',
+                                _isEditMode
+                                    ? 'Modify the details below and save changes'
+                                    : 'Enter patient details to create a new medical record',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: Colors.grey[600],
@@ -257,7 +232,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                         if (value == null || value.isEmpty) {
                                           return 'Required';
                                         }
-                                        if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) {
+                                        if (!RegExp(r'^[0-9]{10,}$')
+                                            .hasMatch(value)) {
                                           return 'Invalid number';
                                         }
                                         return null;
@@ -330,7 +306,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                   if (value == null || value.isEmpty) {
                                     return 'Required';
                                   }
-                                  if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) {
+                                  if (!RegExp(r'^[0-9]{10,}$')
+                                      .hasMatch(value)) {
                                     return 'Invalid number';
                                   }
                                   return null;
@@ -409,25 +386,36 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                         backgroundColor: Colors.blueGrey[600],
                                         behavior: SnackBarBehavior.floating,
                                         margin: const EdgeInsets.all(10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10)),
                                       ),
                                     );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: const Text('Clear is disabled in edit mode.'),
+                                        content: const Text(
+                                            'Clear is disabled in edit mode.'),
                                         backgroundColor: Colors.orange[700],
                                         behavior: SnackBarBehavior.floating,
                                         margin: const EdgeInsets.all(10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10)),
                                       ),
                                     );
                                   }
                                 },
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: _isEditMode ? Colors.grey : Colors.teal[700],
-                                  side: BorderSide(color: _isEditMode ? Colors.grey : Colors.teal[700]!),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  foregroundColor: _isEditMode
+                                      ? Colors.grey
+                                      : Colors.teal[700],
+                                  side: BorderSide(
+                                      color: _isEditMode
+                                          ? Colors.grey
+                                          : Colors.teal[700]!),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
                                   ),
@@ -437,11 +425,22 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: ElevatedButton.icon(
-                                icon: Icon(_isLoading ? null : (_isEditMode ? Icons.save_alt_outlined : Icons.person_add_alt_1)),
-                                label: _isLoading 
-                                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                icon: Icon(_isLoading
+                                    ? null
+                                    : (_isEditMode
+                                        ? Icons.save_alt_outlined
+                                        : Icons.person_add_alt_1)),
+                                label: _isLoading
+                                    ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
                                     : Text(
-                                        _isEditMode ? 'SAVE CHANGES' : 'REGISTER PATIENT',
+                                        _isEditMode
+                                            ? 'SAVE CHANGES'
+                                            : 'REGISTER PATIENT',
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
@@ -451,7 +450,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.teal[700],
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
                                   ),
@@ -549,7 +549,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         filled: true,
         fillColor: Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
       validator: validator,
     );
@@ -581,7 +582,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         filled: true,
         fillColor: Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
       onTap: () async {
         final DateTime? picked = await showDatePicker(
@@ -690,20 +692,25 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
         final patientData = Patient(
           id: _isEditMode ? _generatedPatientId! : '',
-          fullName: '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
+          fullName:
+              '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
           birthDate: DateFormat('yyyy-MM-dd').parse(_dobController.text),
           gender: _gender,
           contactNumber: _contactController.text.trim(),
           address: _addressController.text.trim(),
           bloodType: _bloodType,
           allergies: _allergiesController.text.trim(),
-          createdAt: _isEditMode && widget.patient != null ? widget.patient!.createdAt : DateTime.now(),
+          createdAt: _isEditMode && widget.patient != null
+              ? widget.patient!.createdAt
+              : DateTime.now(),
           updatedAt: DateTime.now(),
         );
 
         if (_isEditMode) {
           await ApiService.updatePatient(patientData);
-          setState(() { _isLoading = false; });
+          setState(() {
+            _isLoading = false;
+          });
           _showSuccessDialog(context, patientData.id!);
         } else {
           final newPatientId = await ApiService.createPatient(patientData);
@@ -713,9 +720,10 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           });
           _showSuccessDialog(context, newPatientId);
         }
-
       } catch (e) {
-        setState(() { _isLoading = false; });
+        setState(() {
+          _isLoading = false;
+        });
         // Clear any existing snackbars
         ScaffoldMessenger.of(context).clearSnackBars();
 
@@ -772,7 +780,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           ),
           title: Row(
             children: [
-              Icon(Icons.check_circle_outline, color: Colors.green[600], size: 28),
+              Icon(Icons.check_circle_outline,
+                  color: Colors.green[600], size: 28),
               const SizedBox(width: 10),
               Text(
                 _isEditMode ? 'Update Successful' : 'Registration Successful',

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math; // Added for rotation
+// import 'dart:async'; // REMOVED for Timer
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/login_rate_limiter.dart';
@@ -14,7 +16,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -24,6 +26,11 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   int _selectedIndex = 0; // 0 for Sign In, 1 for Sign Up
+
+  // State for interactive image rotation
+  double _rotationAngle = 0.0;
+  AnimationController? _imageRotationController; // Make nullable
+  late Animation<double> _imageRotationAnimation;
 
   @override
   void initState() {
@@ -40,7 +47,32 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
     _animationController.forward();
+
+    // Initialize for image rotation
+    _imageRotationController = AnimationController(
+      vsync: this, // This will require TickerProviderStateMixin
+      duration: const Duration(milliseconds: 400), // Duration for snapping back
+    );
+    _imageRotationAnimation = Tween<double>(begin: 0.0, end: 0.0).animate(
+        CurvedAnimation(
+            parent: _imageRotationController!,
+            curve: Curves.easeInOut) // Use ! for now, will be guarded in build
+        )
+      ..addListener(() {
+        setState(() {
+          _rotationAngle = _imageRotationAnimation.value;
+        });
+      });
+
+    // REMOVED Initialize for image slider
+    // if (_imageList.isNotEmpty) { // REMOVED
+    //   _pageController = PageController(initialPage: 0); // REMOVED
+    //   _startTimer(); // REMOVED
+    // } // REMOVED
   }
+
+  // REMOVED _startTimer method
+  // void _startTimer() { ... }
 
   Future<void> _checkExistingSession() async {
     setState(() => _isLoading = true);
@@ -84,6 +116,9 @@ class _LoginScreenState extends State<LoginScreen>
     _usernameController.dispose();
     _passwordController.dispose();
     _animationController.dispose();
+    _imageRotationController?.dispose(); // Use ?. for nullable controller
+    // _pageController?.dispose(); // REMOVED Dispose PageController
+    // _timer?.cancel(); // REMOVED Cancel Timer
     super.dispose();
   }
 
@@ -99,7 +134,7 @@ class _LoginScreenState extends State<LoginScreen>
         final username = _usernameController.text;
 
         // Check rate limiting before attempting login
-        await LoginRateLimiter.canAttemptLogin(username);
+        // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
         final response =
             await ApiService.login(username, _passwordController.text);
@@ -110,12 +145,12 @@ class _LoginScreenState extends State<LoginScreen>
           setState(() {
             _errorMessage = 'Login failed: User role not found in response.';
           });
-          await LoginRateLimiter.recordFailedAttempt(username);
+          // await LoginRateLimiter.recordFailedAttempt(username); // COMMENTED OUT
           return;
         }
 
         // Record successful login for rate limiting
-        await LoginRateLimiter.recordSuccessfulLogin(username);
+        // await LoginRateLimiter.recordSuccessfulLogin(username); // COMMENTED OUT
 
         // Save credentials after successful login
         await AuthService.saveLoginCredentials(
@@ -138,16 +173,17 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } catch (e) {
         // Record failed attempt for rate limiting if username was provided
-        if (_usernameController.text.isNotEmpty) {
-          await LoginRateLimiter.recordFailedAttempt(_usernameController.text);
-        }
+        // if (_usernameController.text.isNotEmpty) { // COMMENTED OUT
+        //   await LoginRateLimiter.recordFailedAttempt(_usernameController.text); // COMMENTED OUT
+        // }
 
         setState(() {
           _errorMessage = e.toString();
-          if (e.toString().contains('Too many attempts')) {
-            _errorMessage =
-                'Login failed: Too many attempts. Please try again later.';
-          } else if (e.toString().contains('Invalid credentials') ||
+          // if (e.toString().contains('Too many attempts')) { // COMMENTED OUT
+          //   _errorMessage = // COMMENTED OUT
+          //       'Login failed: Too many attempts. Please try again later.'; // COMMENTED OUT
+          // } else
+          if (e.toString().contains('Invalid credentials') ||
               e.toString().contains('User not found')) {
             _errorMessage = 'Login failed: Invalid username or password.';
           } else {
@@ -226,8 +262,19 @@ class _LoginScreenState extends State<LoginScreen>
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                                builder: (context) => const SignUpScreen()),
+                            PageRouteBuilder(
+                              pageBuilder:
+                                  (context, animation, secondaryAnimation) =>
+                                      const SignUpScreen(),
+                              transitionsBuilder: (context, animation,
+                                  secondaryAnimation, child) {
+                                return FadeTransition(
+                                    opacity: animation, child: child);
+                              },
+                              transitionDuration: const Duration(
+                                  milliseconds:
+                                      300), // Adjust duration as needed
+                            ),
                           );
                         },
                       ),
@@ -269,25 +316,99 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 60),
-                              // Here we would add an illustration like in the image
-                              // Using a placeholder in this case
+                              const SizedBox(height: 50), // Adjusted spacing
+
+                              // Static image with circular white background, now with FadeTransition
                               FadeTransition(
-                                opacity: _fadeAnimation,
-                                child: Container(
-                                  height: 250,
-                                  width: 250,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Icon(
-                                    Icons.medical_services_outlined,
-                                    size: 120,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                                opacity:
+                                    _fadeAnimation, // Using the existing fade animation
+                                child: _imageRotationController ==
+                                        null // Guard condition
+                                    ? Container(
+                                        width: 220,
+                                        height:
+                                            220) // Placeholder if not initialized
+                                    : GestureDetector(
+                                        onPanUpdate: (details) {
+                                          setState(() {
+                                            // Adjust sensitivity by a factor if needed
+                                            _rotationAngle += details.delta.dx *
+                                                0.01; // Horizontal drag spins
+                                            // You could also use details.delta.dy for vertical drag
+                                          });
+                                        },
+                                        onPanEnd: (details) {
+                                          // Animate back to 0
+                                          // Ensure the animation always goes from the current angle to 0
+                                          _imageRotationAnimation =
+                                              Tween<double>(
+                                            begin: _rotationAngle,
+                                            end: 0.0,
+                                          ).animate(CurvedAnimation(
+                                            parent:
+                                                _imageRotationController!, // Use ! as it's guarded
+                                            curve: Curves
+                                                .easeOut, // Use a nice curve for snapping back
+                                          ));
+                                          _imageRotationController!.forward(
+                                              from:
+                                                  0.0); // Use ! as it's guarded
+                                        },
+                                        child: Transform(
+                                          alignment: Alignment.center,
+                                          transform: Matrix4.identity()
+                                            ..setEntry(3, 2, 0.001)
+                                            ..rotateY(_rotationAngle),
+                                          child: Container(
+                                            width:
+                                                220, // Diameter of the circle
+                                            height:
+                                                220, // Diameter of the circle
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(
+                                                  0.95), // Slightly transparent white
+                                              shape: BoxShape.circle,
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.15),
+                                                  blurRadius: 10,
+                                                  spreadRadius: 2,
+                                                  offset: const Offset(0, 5),
+                                                ),
+                                              ],
+                                            ),
+                                            child: ClipOval(
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(
+                                                    15.0), // Padding inside the circle for the image
+                                                child: Image.asset(
+                                                  'assets/images/slide1.png',
+                                                  fit: BoxFit
+                                                      .contain, // Ensures the whole image is visible
+                                                  errorBuilder: (BuildContext
+                                                          context,
+                                                      Object exception,
+                                                      StackTrace? stackTrace) {
+                                                    // Fallback widget if image fails to load
+                                                    return Center(
+                                                      child: Icon(
+                                                        Icons
+                                                            .broken_image_outlined,
+                                                        color: Colors.teal[700],
+                                                        size: 60,
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                               ),
+                              const SizedBox(
+                                  height: 40), // Spacing after the image
                             ],
                           ),
                         ),
@@ -318,9 +439,22 @@ class _LoginScreenState extends State<LoginScreen>
                                           onPressed: () {
                                             Navigator.push(
                                               context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
+                                              PageRouteBuilder(
+                                                pageBuilder: (context,
+                                                        animation,
+                                                        secondaryAnimation) =>
                                                     const SignUpScreen(),
+                                                transitionsBuilder: (context,
+                                                    animation,
+                                                    secondaryAnimation,
+                                                    child) {
+                                                  return FadeTransition(
+                                                      opacity: animation,
+                                                      child: child);
+                                                },
+                                                transitionDuration: const Duration(
+                                                    milliseconds:
+                                                        300), // Adjust duration as needed
                                               ),
                                             );
                                           },

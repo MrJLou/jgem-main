@@ -201,7 +201,16 @@ class _SignUpScreenState extends State<SignUpScreen>
           );
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const LoginScreen(),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(
+                  milliseconds: 300), // Adjust duration as needed
+            ),
           );
         }
       } catch (e) {
@@ -650,9 +659,22 @@ class _SignUpScreenState extends State<SignUpScreen>
                                       Navigator.pushReplacement(
                                         // Use pushReplacement
                                         context,
-                                        MaterialPageRoute(
-                                            builder: (context) =>
-                                                const LoginScreen()),
+                                        PageRouteBuilder(
+                                          pageBuilder: (context, animation,
+                                                  secondaryAnimation) =>
+                                              const LoginScreen(),
+                                          transitionsBuilder: (context,
+                                              animation,
+                                              secondaryAnimation,
+                                              child) {
+                                            return FadeTransition(
+                                                opacity: animation,
+                                                child: child);
+                                          },
+                                          transitionDuration: const Duration(
+                                              milliseconds:
+                                                  300), // Adjust duration as needed
+                                        ),
                                       );
                                     },
                                     child: Text(
@@ -714,43 +736,44 @@ class _SignUpScreenState extends State<SignUpScreen>
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        splashColor: Colors.teal.withOpacity(0.1),
-        highlightColor: Colors.teal.withOpacity(0.05),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color:
-                isSelected ? Colors.teal.withOpacity(0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? Colors.teal[700] : Colors.grey[600],
-                size: 26,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.teal[800] : Colors.grey[700],
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 90,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              border: isSelected
+                  ? Border(
+                      left: BorderSide(
+                        color: Colors.teal[700]!,
+                        width: 4,
+                      ),
+                    )
+                  : null,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? Colors.teal[700] : Colors.grey[600],
+                  size: 24,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.teal[700] : Colors.grey[600],
+                    fontSize: 12,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -850,15 +873,19 @@ class _SignUpScreenState extends State<SignUpScreen>
             bool hasSpecialCharacters = value
                 .contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')); // Escaped '''
 
-            if (value.length < 8)
+            if (value.length < 8) {
               return 'Password must be at least 8 characters';
-            if (!hasUppercase)
+            }
+            if (!hasUppercase) {
               return 'Password must contain an uppercase letter';
-            if (!hasLowercase)
+            }
+            if (!hasLowercase) {
               return 'Password must contain a lowercase letter';
+            }
             if (!hasDigits) return 'Password must contain a number';
-            if (!hasSpecialCharacters)
+            if (!hasSpecialCharacters) {
               return 'Password must contain a special character';
+            }
 
             return null;
           },

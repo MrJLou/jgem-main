@@ -55,9 +55,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late List<IconData> _menuIcons;
 
   final Map<String, Map<String, dynamic>> _allMenuItems = {
-    'Live Queue & Analytics': {
-      'screen': (String accessLevel) => const SizedBox.shrink(),
-      'icon': Icons.ssid_chart_outlined
+    'Dashboard': {
+      'screen': (String accessLevel) => LiveQueueDashboardView(
+          queueService: QueueService(), appointments: []),
+      'icon': Icons.dashboard_outlined
     },
     'Registration': {
       'screen': (String accessLevel) => const RegistrationHubScreen(),
@@ -131,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'medtech': [
-      'Live Queue & Analytics',
+      'Dashboard',
       'Registration',
       'Search',
       'Patient Laboratory Histories',
@@ -145,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'About'
     ],
     'doctor': [
-      'Live Queue & Analytics',
+      'Dashboard',
       'Search',
       'Patient Laboratory Histories',
       'Patient Queue',
@@ -176,23 +177,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     List<Widget> tempScreens = [];
     List<IconData> tempIcons = [];
 
-    String liveQueueAnalyticsKey = 'Live Queue & Analytics';
-    if (_allMenuItems.containsKey(liveQueueAnalyticsKey) &&
-        allowedMenuKeys.contains(liveQueueAnalyticsKey)) {
+    String dashboardKey = 'Dashboard';
+    if (_allMenuItems.containsKey(dashboardKey) &&
+        allowedMenuKeys.contains(dashboardKey)) {
       bool prioritize =
           (widget.accessLevel == 'medtech' || widget.accessLevel == 'doctor');
       if (!prioritize) {
         if (allowedMenuKeys.isNotEmpty &&
-            allowedMenuKeys.first == liveQueueAnalyticsKey) {
+            allowedMenuKeys.first == dashboardKey) {
           prioritize = true;
         }
       }
 
-      if (prioritize && !tempTitles.contains(liveQueueAnalyticsKey)) {
-        tempTitles.add(liveQueueAnalyticsKey);
-        tempScreens.add(LiveQueueDashboardView(queueService: _queueService));
-        tempIcons
-            .add(_allMenuItems[liveQueueAnalyticsKey]!['icon'] as IconData);
+      if (prioritize && !tempTitles.contains(dashboardKey)) {
+        tempTitles.add(dashboardKey);
+        tempScreens.add(LiveQueueDashboardView(
+            queueService: _queueService, appointments: _appointments));
+        tempIcons.add(_allMenuItems[dashboardKey]!['icon'] as IconData);
       }
     }
 
@@ -206,8 +207,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Widget screenToShow;
         Function? screenBuilder = _allMenuItems[key]!['screen'] as Function?;
 
-        if (key == liveQueueAnalyticsKey) {
-          screenToShow = LiveQueueDashboardView(queueService: _queueService);
+        if (key == dashboardKey) {
+          if (!tempTitles.contains(dashboardKey)) {
+            screenToShow = LiveQueueDashboardView(
+                queueService: _queueService, appointments: _appointments);
+          } else {
+            int existingIndex = tempTitles.indexOf(dashboardKey);
+            if (existingIndex != -1) {
+              screenToShow = tempScreens[existingIndex];
+            } else {
+              screenToShow = LiveQueueDashboardView(
+                  queueService: _queueService, appointments: _appointments);
+            }
+          }
         } else if (key == 'Appointment Schedule') {
           screenToShow = _buildAppointmentModule();
         } else if (key == 'Registration') {
@@ -258,7 +270,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final apiAppointments = await ApiService.getAppointments(_selectedDate);
       if (mounted) {
-        setState(() => _appointments = apiAppointments);
+        setState(() => _appointments = apiAppointments ?? []);
       }
     } catch (e) {
       if (mounted) {
@@ -267,6 +279,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               content:
                   Text('Failed to load appointments: $e (local data shown)')),
         );
+        if (_appointments == null) {
+          setState(() => _appointments = []);
+        }
       }
       print('Failed to load appointments from API, using local/mock: $e');
     } finally {
@@ -552,7 +567,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_menuTitles.isEmpty && widget.accessLevel != 'patient') {
       return Scaffold(
           appBar: AppBar(
-              title: Text('Dashboard - ${widget.accessLevel}'),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 2,
+                            offset: const Offset(0, 1),
+                          )
+                        ]),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/slide1.png',
+                        height: 28,
+                        width: 28,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.medical_services_outlined,
+                                color: Colors.teal, size: 28),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'J-Gem Medical and Diagnostic Clinic',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
               backgroundColor: Colors.teal[700]),
           body: const Center(child: CircularProgressIndicator()));
     }
@@ -567,7 +619,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dashboard - ${widget.accessLevel}'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    )
+                  ]),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/slide1.png',
+                  height: 28,
+                  width: 28,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.medical_services_outlined,
+                      color: Colors.teal,
+                      size: 28),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'J-Gem Medical and Diagnostic Clinic',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Colors.teal[700],
         actions: [
           PopupMenuButton<String>(
@@ -1054,7 +1144,10 @@ class AppointmentDetailDialog extends StatelessWidget {
 
 class LiveQueueDashboardView extends StatefulWidget {
   final QueueService queueService;
-  const LiveQueueDashboardView({super.key, required this.queueService});
+  final List<Appointment> appointments;
+
+  const LiveQueueDashboardView(
+      {super.key, required this.queueService, required this.appointments});
 
   @override
   _LiveQueueDashboardViewState createState() => _LiveQueueDashboardViewState();
@@ -1064,6 +1157,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   late Future<List<ActivePatientQueueItem>> _queueFuture;
   final TextStyle cellStyle =
       const TextStyle(fontSize: 14, color: Colors.black87);
+  DateTime _calendarSelectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -1145,118 +1239,571 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     }
   }
 
+  Widget _buildWelcomeSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.teal.shade400, Colors.cyan.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome',
+                  style: TextStyle(
+                      fontSize: 16, color: Colors.white.withOpacity(0.9)),
+                ),
+                const Text(
+                  'Valued User',
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'To keep the body in good health is a duty... otherwise we shall not be able to keep our mind strong and clear.',
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.85),
+                      height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          Opacity(
+            opacity: 0.2,
+            child: Icon(Icons.medical_services_outlined,
+                size: 100, color: Colors.white.withOpacity(0.5)),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryMetricsSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildMetricCard(
+              'Appointments', '105', Icons.calendar_today, Colors.blue),
+          _buildMetricCard(
+              'Urgent Resolve', '40', Icons.warning_amber_rounded, Colors.red),
+          _buildMetricCard(
+              'Available Doctors', '37', Icons.person_search, Colors.green),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+      String title, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(title,
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                  Icon(icon, color: color, size: 20),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+              Text('TODAY',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodaysDoctorsSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Today's Doctors",
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal[700]),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 180,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _buildDoctorCard('Dr. James Wilson', 'Orthopedic',
+                    'assets/images/doctor_male1.png', '11:30 am to 3:30 pm'),
+                _buildDoctorCard('Dr. Eric Rodriguez', 'Cardiology',
+                    'assets/images/doctor_male2.png', '10:00 am to 2:30 pm'),
+                _buildDoctorCard('Dr. Lora Wallace', 'Neurology',
+                    'assets/images/doctor_female1.png', '3:00 pm to 6:00 pm'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDoctorCard(
+      String name, String specialty, String imagePath, String availability) {
+    Widget imageWidget;
+    if (imagePath.startsWith('assets/')) {
+      imageWidget = Image.asset(
+        imagePath,
+        height: 60,
+        width: 60,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.grey[200],
+            child: Icon(Icons.person, size: 30, color: Colors.grey[400])),
+      );
+    } else {
+      imageWidget = CircleAvatar(
+          radius: 30,
+          backgroundColor: Colors.grey[200],
+          child: Icon(Icons.person, size: 30, color: Colors.grey[400]));
+    }
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(right: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Container(
+        width: 150,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 32,
+              backgroundColor: Colors.teal[50],
+              child: ClipOval(
+                child: imageWidget,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(name,
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            Text(specialty,
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                  5,
+                  (index) =>
+                      Icon(Icons.star, color: Colors.amber[600], size: 13)),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.access_time, size: 11, color: Colors.grey[500]),
+                const SizedBox(width: 3),
+                Text(availability,
+                    style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveQueueDisplaySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Live Patient Queue',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[700])),
+            IconButton(
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: _refreshQueue,
+                tooltip: 'Refresh Queue',
+                color: Colors.teal[700]),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildTableHeader(),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: 200),
+          child: FutureBuilder<List<ActivePatientQueueItem>>(
+            future: _queueFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                    child: Text('Error loading queue: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text('No patients waiting or in consultation.',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                            textAlign: TextAlign.center)));
+              }
+              final queue = snapshot.data!;
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: queue.length,
+                itemBuilder: (context, index) => _buildTableRow(queue[index]),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        const SizedBox(height: 32),
+        Center(
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.next_plan_outlined, size: 18),
+            label: const Text('Next Patient'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal[600],
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                textStyle:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            onPressed: _nextPatient,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarAppointmentsSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 0, 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  DateFormat('MMMM yyyy').format(_calendarSelectedDate),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[800]),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.chevron_left, color: Colors.teal[700]),
+                      onPressed: () {
+                        setState(() {
+                          _calendarSelectedDate = DateTime(
+                              _calendarSelectedDate.year,
+                              _calendarSelectedDate.month - 1,
+                              _calendarSelectedDate.day);
+                        });
+                      },
+                      splashRadius: 20,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.chevron_right, color: Colors.teal[700]),
+                      onPressed: () {
+                        setState(() {
+                          _calendarSelectedDate = DateTime(
+                              _calendarSelectedDate.year,
+                              _calendarSelectedDate.month + 1,
+                              _calendarSelectedDate.day);
+                        });
+                      },
+                      splashRadius: 20,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Container(
+              height: 70,
+              padding: const EdgeInsets.all(8.0),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(child: Text('Mini Calendar Placeholder')),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+              padding: const EdgeInsets.only(right: 16.0),
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${widget.appointments.where((a) => DateUtils.isSameDay(a.date, _calendarSelectedDate)).length} Appointments',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                    ),
+                    Icon(Icons.arrow_forward_ios,
+                        size: 14, color: Colors.grey[500])
+                  ])),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: _buildLiveQueueDisplaySection(),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: ListView.builder(
+                    itemCount: widget.appointments
+                        .where((a) =>
+                            DateUtils.isSameDay(a.date, _calendarSelectedDate))
+                        .length,
+                    itemBuilder: (context, index) {
+                      final dailyAppointments = widget.appointments
+                          .where((a) => DateUtils.isSameDay(
+                              a.date, _calendarSelectedDate))
+                          .toList();
+                      final appointment = dailyAppointments[index];
+                      bool isHighlighted = index == 1;
+                      return _buildImageStyledAppointmentCard(
+                          appointment.patientId,
+                          appointment.notes ?? 'Followup',
+                          appointment.time.format(context),
+                          isHighlighted);
+                    })),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageStyledAppointmentCard(
+      String patientName, String details, String time, bool isHighlighted) {
+    return Card(
+        color: isHighlighted ? Colors.deepPurple.shade300 : Colors.white,
+        elevation: isHighlighted ? 3 : 1.5,
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: isHighlighted
+                    ? Colors.white.withOpacity(0.2)
+                    : Colors.teal.withOpacity(0.1),
+                child: Icon(
+                  Icons.person_outline,
+                  color: isHighlighted ? Colors.white : Colors.teal[700],
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      patientName,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color:
+                              isHighlighted ? Colors.white : Colors.grey[800],
+                          fontSize: 14),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      details,
+                      style: TextStyle(
+                          color: isHighlighted
+                              ? Colors.white.withOpacity(0.85)
+                              : Colors.grey[600],
+                          fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                time,
+                style: TextStyle(
+                    color: isHighlighted
+                        ? Colors.white.withOpacity(0.9)
+                        : Colors.grey[500],
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ));
+  }
+
+  Widget _buildYearMonthScroller() {
+    final currentYear = _calendarSelectedDate.year.toString();
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    final currentMonthIndex = _calendarSelectedDate.month - 1;
+
+    return Container(
+      width: 60,
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      color: Colors.grey[100],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Text(currentYear,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.teal[700],
+                  fontSize: 15)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: months.length,
+              itemBuilder: (context, index) {
+                bool isSelectedMonth = index == currentMonthIndex;
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _calendarSelectedDate = DateTime(
+                          _calendarSelectedDate.year,
+                          index + 1,
+                          _calendarSelectedDate.day);
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 4.0),
+                    color: isSelectedMonth
+                        ? Colors.teal.withOpacity(0.2)
+                        : Colors.transparent,
+                    child: Text(
+                      months[index],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelectedMonth
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isSelectedMonth
+                            ? Colors.teal[800]
+                            : Colors.grey[700],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          flex: 1,
-          child: Padding(
+          flex: 3,
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Live Patient Queue',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal[700])),
-                    IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _refreshQueue,
-                        tooltip: 'Refresh Queue',
-                        color: Colors.teal[700]),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _buildTableHeader(),
-                Expanded(
-                  child: FutureBuilder<List<ActivePatientQueueItem>>(
-                    future: _queueFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        return Center(
-                            child:
-                                Text('Error loading queue: ${snapshot.error}'));
-                      }
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(
-                            child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: Text(
-                                    'No patients waiting or in consultation.',
-                                    style: TextStyle(
-                                        fontSize: 16, color: Colors.grey),
-                                    textAlign: TextAlign.center)));
-                      }
-
-                      final queue = snapshot.data!;
-                      return ListView.builder(
-                        itemCount: queue.length,
-                        itemBuilder: (context, index) =>
-                            _buildTableRow(queue[index]),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.next_plan_outlined),
-                    label: const Text('Next Patient'),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal[600],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        textStyle: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    onPressed: _nextPatient,
-                  ),
-                ),
-                const SizedBox(height: 16),
+                _buildWelcomeSection(),
+                _buildSummaryMetricsSection(),
+                _buildTodaysDoctorsSection(),
               ],
             ),
           ),
         ),
         const VerticalDivider(width: 1, thickness: 1),
         Expanded(
-          flex: 1,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(Icons.analytics_outlined,
-                    size: 80, color: Colors.grey[400]),
-                const SizedBox(height: 20),
-                Text(
-                  'Monthly Analytics Report',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[700]),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Detailed analytics will be available in a future version.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontStyle: FontStyle.italic,
-                      color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-        ),
+            flex: 2,
+            child: Container(
+                color: Colors.grey[50],
+                child: Row(children: [
+                  Expanded(
+                    child: _buildCalendarAppointmentsSection(),
+                  ),
+                  _buildYearMonthScroller(),
+                ]))),
       ],
     );
   }
