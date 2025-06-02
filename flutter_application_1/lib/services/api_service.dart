@@ -23,14 +23,14 @@ class ApiService {
       final auth = await _dbHelper.authenticateUser(username, password);
       if (auth != null &&
           auth['user'] != null &&
-          auth['user']['role'] != null) {
-        _currentUserRole = auth['user']['role'];
+          auth['user'].role != null) {
+        _currentUserRole = auth['user'].role;
 
         // Save to SharedPreferences
         await AuthService.saveLoginCredentials(
           token: auth['token'],
           username: username,
-          accessLevel: auth['user']['role'],
+          accessLevel: auth['user'].role,
         );
 
         return auth;

@@ -105,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen>
             await ApiService.login(username, _passwordController.text);
 
         // Validate that the user has a role (access level) from the response
-        final userRole = response['user']?['role'];
+        final userRole = response['user']?.role;
         if (userRole == null) {
           setState(() {
             _errorMessage = 'Login failed: User role not found in response.';

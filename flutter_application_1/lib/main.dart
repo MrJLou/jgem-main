@@ -44,7 +44,7 @@ class PatientRecordManagementApp extends StatelessWidget {
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: _AuthWrapper(), // Changed to auth wrapper
+      home: const _AuthWrapper(), // Changed to auth wrapper
       routes: {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignUpScreen(),
@@ -61,11 +61,27 @@ class PatientRecordManagementApp extends StatelessWidget {
   }
 }
 
-class _AuthWrapper extends StatelessWidget {
+class _AuthWrapper extends StatefulWidget {
+  const _AuthWrapper({super.key});
+
+  @override
+  State<_AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<_AuthWrapper> {
+  late final Future<bool> _isLoggedInFuture;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _isLoggedInFuture = AuthService.isLoggedIn();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
-      future: AuthService.isLoggedIn(),
+      future: _isLoggedInFuture,
       builder: (context, AsyncSnapshot<bool> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
