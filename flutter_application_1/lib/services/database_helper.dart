@@ -30,7 +30,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 15;
+  static const int _databaseVersion = 17; // Incremented version
 
   // Tables
   static const String tableUsers = 'users';
@@ -95,42 +95,96 @@ class DatabaseHelper {
 
   // Initialize database
   Future<Database> _initDatabase() async {
-    String path;
+    String path; // Will be assigned in one of the branches below
+    final String projectRoot = Directory.current.path; // e.g., /path/to/jgem-main/flutter_application_1
+    final String workspaceRootDirectoryPath = Directory(projectRoot).parent.path; // e.g., /path/to/jgem-main
+    
+    // Path with .db extension (from _databaseName constant)
+    final String workspaceDatabasePathWithDbExt = normalize(join(workspaceRootDirectoryPath, DatabaseHelper._databaseName));
+    final File workspaceDatabaseFileWithDbExt = File(workspaceDatabasePathWithDbExt);
 
-    // Determine database path based on platform
-    if (!kIsWeb && Platform.isWindows) {
-      // FORCED PATH for specific Windows development environment
-      path = normalize(join('C:', 'Users', 'jesie', 'Documents', 'jgem-softeng',
-          'jgem-main', DatabaseHelper._databaseName));
-      print(
-          'DATABASE_HELPER: [WINDOWS_DEV_FORCED_PATH] Attempting to use: $path');
-    } else if (!kIsWeb && Platform.isAndroid) {
-      try {
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir != null) {
-          path = join(externalDir.path, DatabaseHelper._databaseName);
-        } else {
-          final docDir = await getApplicationDocumentsDirectory();
-          path = join(docDir.path, DatabaseHelper._databaseName);
-        }
-      } catch (e) {
-        final docDir = await getApplicationDocumentsDirectory();
-        path = join(docDir.path, DatabaseHelper._databaseName);
-        print(
-            'DATABASE_HELPER: Error accessing Android external storage, using app docs dir. Error: $e');
-      }
+    // Path without .db (e.g., 'patient_management')
+    final String dbNameWithoutExtension = DatabaseHelper._databaseName.endsWith('.db') 
+        ? DatabaseHelper._databaseName.substring(0, DatabaseHelper._databaseName.length - 3) 
+        : DatabaseHelper._databaseName;
+    final String workspaceDatabasePathWithoutDbExt = normalize(join(workspaceRootDirectoryPath, dbNameWithoutExtension));
+    final File workspaceDatabaseFileWithoutDbExt = File(workspaceDatabasePathWithoutDbExt);
+
+    if (await workspaceDatabaseFileWithDbExt.exists()) {
+        path = workspaceDatabasePathWithDbExt;
+        print('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (with .db ext): $path');
+    } else if (await workspaceDatabaseFileWithoutDbExt.exists()) {
+        path = workspaceDatabasePathWithoutDbExt;
+        print('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (WITHOUT .db ext): $path');
     } else {
-      // For iOS, macOS, Linux, and other non-web platforms
-      try {
-        final docDir = await getApplicationDocumentsDirectory();
-        path = join(docDir.path, DatabaseHelper._databaseName);
-        print(
-            'DATABASE_HELPER: [OTHER_PLATFORMS] Using standard app data path: $path');
-      } catch (e) {
-        path = DatabaseHelper._databaseName;
-        print(
-            'DATABASE_HELPER: Critical error getting application documents directory, using relative path. Error: $e');
-      }
+        print('DATABASE_HELPER: Database not found in workspace root (tried with/without .db: $workspaceDatabasePathWithDbExt AND $workspaceDatabasePathWithoutDbExt). Trying platform-specific locations.');
+        
+        // Platform-specific fallback logic
+        if (!kIsWeb && Platform.isWindows) {
+            final String projectDatabasesSubfolderPath = normalize(join(projectRoot, 'databases', DatabaseHelper._databaseName));
+            final File projectDbFileInSubfolder = File(projectDatabasesSubfolderPath);
+
+            if (await projectDbFileInSubfolder.exists()) {
+              path = projectDatabasesSubfolderPath;
+              print('DATABASE_HELPER: [WINDOWS_PROJECT_DATABASES] Using database from project_root/databases/: $path');
+            } else {
+              try {
+                final Directory docDir = await getApplicationDocumentsDirectory();
+                path = join(docDir.path, DatabaseHelper._databaseName);
+                print('DATABASE_HELPER: [WINDOWS_APP_DOCS] Using app documents directory for database: $path');
+              } catch (e) {
+                path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root itself
+                print('DATABASE_HELPER: [WINDOWS_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+              }
+            }
+        } else if (!kIsWeb && Platform.isAndroid) {
+            try {
+              Directory? storageDir;
+              try {
+                  storageDir = await getExternalStorageDirectory();
+              } catch (e) {
+                  print('DATABASE_HELPER: [ANDROID_DEBUG] Failed to get external storage, trying app docs. Error: $e');
+              }
+
+              if (storageDir != null) {
+                String potentialPath = join(storageDir.path, DatabaseHelper._databaseName);
+                final File externalDbFile = File(potentialPath);
+                if (await externalDbFile.exists()) {
+                    path = potentialPath;
+                    print('DATABASE_HELPER: [ANDROID_EXTERNAL_STORAGE] Using existing database from external storage: $path');
+                } else {
+                    print('DATABASE_HELPER: [ANDROID_INFO] DB not in external storage ($potentialPath) or dir unavailable. Defaulting to app documents dir.');
+                    final docDir = await getApplicationDocumentsDirectory();
+                    path = join(docDir.path, DatabaseHelper._databaseName);
+                    print('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (external check done): $path');
+                }
+              } else { // externalDir was null
+                final docDir = await getApplicationDocumentsDirectory();
+                path = join(docDir.path, DatabaseHelper._databaseName);
+                print('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (externalDir was null): $path');
+              }
+            } catch (e) { 
+              path = normalize(join(projectRoot, DatabaseHelper._databaseName)); 
+              print('DATABASE_HELPER: [ANDROID_PROJECT_ROOT_FALLBACK] Using project root (all other paths failed): $path. Error: $e');
+            }
+        } else if (!kIsWeb && (Platform.isIOS || Platform.isLinux || Platform.isMacOS)) {
+            try {
+              final docDir = await getApplicationDocumentsDirectory();
+              path = join(docDir.path, DatabaseHelper._databaseName);
+              print('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_APP_DOCS] Using app documents directory: $path');
+            } catch (e) {
+              path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root
+              print('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+            }
+        } else {
+            if (kIsWeb) {
+                 print('DATABASE_HELPER: [WEB] Web platform detected. Database name: "${DatabaseHelper._databaseName}" will be used by sqflite_common_ffi_web (typically IndexedDB).');
+                 path = DatabaseHelper._databaseName; // For web, path is usually just the name for IndexedDB.
+            } else {
+                print('DATABASE_HELPER: [UNKNOWN_PLATFORM] Using project root as a last resort for database: $projectRoot/${DatabaseHelper._databaseName}');
+                path = normalize(join(projectRoot, DatabaseHelper._databaseName));
+            }
+        }
     }
 
     _instanceDbPath = path; // Store the determined path
@@ -143,12 +197,22 @@ class DatabaseHelper {
         print(
             'DATABASE_HELPER: Created directory for database at ${directory.path}');
       }
+      
+      // Verify directory is writable
+      final testFile = File(join(directory.path, 'test_write.tmp'));
+      try {
+        await testFile.writeAsString('test');
+        await testFile.delete();
+        print('DATABASE_HELPER: Directory is writable');
+      } catch (e) {
+        print('DATABASE_HELPER: Directory write test failed: $e');
+        throw Exception('Database directory is not writable: ${directory.path}');
+      }
     } catch (e) {
       print(
-          'DATABASE_HELPER: Error creating directory for database. Error: $e');
-    }
-
-    print(
+          'DATABASE_HELPER: Error creating or verifying directory for database. Error: $e');
+      throw Exception('Failed to prepare database directory: $e');
+    }    print(
         '================================================================================');
     print('DATABASE_HELPER: FINAL DATABASE PATH TO BE OPENED:');
     print(_instanceDbPath);
@@ -164,16 +228,55 @@ class DatabaseHelper {
     // }
     // END DEVELOPMENT ONLY SECTION
 
-    final openedDb = await openDatabase(
-      _instanceDbPath!,
-      version: DatabaseHelper._databaseVersion, // Updated usage
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-      // onOpen: (db) async { // Alternative place to clear, but doing it after ensures table exists
-      //   print('DATABASE_HELPER: Clearing active_patient_queue onOpen.');
-      //   await db.delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
-      // }
-    );
+    Database openedDb;
+    try {
+      openedDb = await openDatabase(
+        _instanceDbPath!,
+        version: DatabaseHelper._databaseVersion, // Updated usage
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+        // onOpen: (db) async { // Alternative place to clear, but doing it after ensures table exists
+        //   print('DATABASE_HELPER: Clearing active_patient_queue onOpen.');
+        //   await db.delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
+        // }
+      );
+    } catch (e) {
+      print('DATABASE_HELPER: Failed to open database at $_instanceDbPath');
+      print('DATABASE_HELPER: Error details: $e');
+      
+      // Try to recover by using a different path or cleaning up
+      if (e.toString().contains('unable to open database file')) {
+        print('DATABASE_HELPER: Attempting recovery by trying alternative path...');
+        
+        // Try alternative path in user's temp directory
+        try {
+          final tempDir = Directory.systemTemp;
+          final altPath = join(tempDir.path, 'flutter_app_db', DatabaseHelper._databaseName);
+          final altDirectory = Directory(dirname(altPath));
+          
+          if (!await altDirectory.exists()) {
+            await altDirectory.create(recursive: true);
+          }
+          
+          print('DATABASE_HELPER: Trying alternative path: $altPath');
+          _instanceDbPath = altPath;
+          
+          openedDb = await openDatabase(
+            altPath,
+            version: DatabaseHelper._databaseVersion,
+            onCreate: _onCreate,
+            onUpgrade: _onUpgrade,
+          );
+          
+          print('DATABASE_HELPER: Successfully opened database at alternative path');
+        } catch (altError) {
+          print('DATABASE_HELPER: Alternative path also failed: $altError');
+          throw Exception('Unable to open database at any location. Original error: $e, Alternative error: $altError');
+        }
+      } else {
+        rethrow;
+      }
+    }
 
     // Clear the active_patient_queue table every time the database is initialized
     // This ensures it starts fresh for the day.
@@ -234,6 +337,8 @@ class DatabaseHelper {
         serviceId TEXT,
         status TEXT NOT NULL,
         notes TEXT,
+        consultationType TEXT,
+        durationMinutes INTEGER,
         createdAt TEXT NOT NULL,
         createdById TEXT NOT NULL, 
         FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE,
@@ -380,6 +485,7 @@ class DatabaseHelper {
         selectedServices TEXT, -- JSON string of List<Map<String, dynamic>> for selected services
         totalPrice REAL, -- Total estimated price
         status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
+        paymentStatus TEXT DEFAULT 'Pending', -- Added column
         createdAt TEXT NOT NULL,
         addedByUserId TEXT,
         servedAt TEXT,          -- New field
@@ -429,6 +535,8 @@ class DatabaseHelper {
           serviceId TEXT, 
           status TEXT NOT NULL,
           notes TEXT,
+          consultationType TEXT,
+          durationMinutes INTEGER,
           createdAt TEXT NOT NULL,
           createdById TEXT NOT NULL, 
           FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE,
@@ -732,6 +840,15 @@ class DatabaseHelper {
       print(
           'DATABASE_HELPER: Application must ensure non-null and unique reference numbers for new entries into ${DatabaseHelper.tablePayments}.');
     }
+    if (oldVersion < 16) {
+      await _addColumnIfNotExists(db, DatabaseHelper.tableAppointments, 'consultationType', 'TEXT');
+      await _addColumnIfNotExists(db, DatabaseHelper.tableAppointments, 'durationMinutes', 'INTEGER');
+      print('DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added consultationType and durationMinutes to ${DatabaseHelper.tableAppointments}.');
+    }
+    if (oldVersion < 17) { // New upgrade step for paymentStatus
+      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue, 'paymentStatus', 'TEXT DEFAULT \'Pending\'');
+      print('DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added paymentStatus to ${DatabaseHelper.tableActivePatientQueue}.');
+    }
   }
 
   Future<void> _addColumnIfNotExists(DatabaseExecutor db, String tableName,
@@ -869,6 +986,17 @@ class DatabaseHelper {
 
   Future<List<Appointment>> getPatientAppointments(String patientId) async {
     return appointmentDbService.getPatientAppointments(patientId);
+  }
+
+  Future<List<Appointment>> getAllAppointments() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      DatabaseHelper.tableAppointments,
+      orderBy: 'date DESC, time DESC',
+    );
+    return List.generate(maps.length, (i) {
+      return Appointment.fromJson(maps[i]);
+    });
   }
 
   Future<void> updatePatientQueueFromSync(
@@ -1771,5 +1899,21 @@ To view live changes in DB Browser:
       }
     });
     return paymentId;
+  }
+
+  Future<int> deleteActiveQueueItemByQueueEntryId(String queueEntryId) async {
+    final db = await database;
+    try {
+      final result = await db.delete(
+        tableActivePatientQueue,
+        where: 'queueEntryId = ?',
+        whereArgs: [queueEntryId],
+      );
+      print("DatabaseHelper: Deleted active queue item with queueEntryId: $queueEntryId, rows affected: $result");
+      return result;
+    } catch (e) {
+      print("DatabaseHelper: Error deleting active queue item with queueEntryId $queueEntryId: $e");
+      return 0; // Or throw, depending on error handling strategy
+    }
   }
 }

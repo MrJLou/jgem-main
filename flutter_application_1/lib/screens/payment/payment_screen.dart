@@ -6,6 +6,7 @@ import 'package:flutter_application_1/services/queue_service.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
+import 'package:shared_preferences/shared_preferences.dart'; // Added for persistence
 
 // Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
 // import 'transaction_history_screen.dart';
@@ -26,20 +27,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
   ActivePatientQueueItem? _selectedPatientQueueItem;
   bool _isLoadingPatients = true;
   String? _currentUserId;
-  ActivePatientQueueItem? _lastProcessedPatientItem; // Store last processed item for summary
-  String? _lastProcessedReferenceNumber; // Store last ref number for summary
-  double _lastProcessedChange = 0.0; // Store last change for summary, initialize
-  bool _isSummaryExpanded = false; // State for the expansion tile
+  
+  // State for the last processed payment summary (will be loaded from SharedPreferences)
+  ActivePatientQueueItem? _lastProcessedPatientItem;
+  String? _lastProcessedReferenceNumber;
+  double _lastProcessedChange = 0.0;
+  
+  bool _isSummaryExpanded = false; // State for the expansion tile (no longer used for ExpansionTile)
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
-  final Uuid _uuid = Uuid(); // Made Uuid final
+  final Uuid _uuid = Uuid();
+
+  // Keys for SharedPreferences
+  static const String _lastPaymentRefKey = 'last_payment_ref';
+  static const String _lastPatientItemKey = 'last_patient_item_json';
+  static const String _lastChangeKey = 'last_payment_change';
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUserId();
     _fetchInConsultationPatients();
+    _loadLastProcessedPaymentSummary(); // Load persisted summary
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -109,6 +119,44 @@ class _PaymentScreenState extends State<PaymentScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  Future<void> _loadLastProcessedPaymentSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? patientItemJson = prefs.getString(_lastPatientItemKey);
+    final String? refNum = prefs.getString(_lastPaymentRefKey);
+    final double? changeAmount = prefs.getDouble(_lastChangeKey);
+
+    if (patientItemJson != null && refNum != null && changeAmount != null) {
+      try {
+        final patientItem = ActivePatientQueueItem.fromJson(jsonDecode(patientItemJson) as Map<String, dynamic>);
+        setState(() {
+          _lastProcessedPatientItem = patientItem;
+          _lastProcessedReferenceNumber = refNum;
+          _lastProcessedChange = changeAmount;
+        });
+      } catch (e) {
+        print("Error loading last payment summary from SharedPreferences: $e");
+        // Clear potentially corrupted data
+        await prefs.remove(_lastPatientItemKey);
+        await prefs.remove(_lastPaymentRefKey);
+        await prefs.remove(_lastChangeKey);
+      }
+    }
+  }
+
+  Future<void> _saveLastProcessedPaymentSummary() async {
+    if (_lastProcessedPatientItem != null && _lastProcessedReferenceNumber != null) {
+      final prefs = await SharedPreferences.getInstance();
+      try {
+        final patientItemJson = jsonEncode(_lastProcessedPatientItem!.toJson());
+        await prefs.setString(_lastPatientItemKey, patientItemJson);
+        await prefs.setString(_lastPaymentRefKey, _lastProcessedReferenceNumber!);
+        await prefs.setDouble(_lastChangeKey, _lastProcessedChange);
+      } catch (e) {
+        print("Error saving last payment summary to SharedPreferences: $e");
+      }
     }
   }
 
@@ -192,10 +240,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _lastProcessedPatientItem = processedPatientItem;
         _lastProcessedReferenceNumber = referenceNumber;
         _lastProcessedChange = _change;
-
+        
         _selectedPatientQueueItem = null; // Clear selection after processing
         _amountPaidController.clear();
       });
+      
+      await _saveLastProcessedPaymentSummary(); // Save summary to SharedPreferences
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -261,6 +311,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           color: isSelected ? Colors.teal[100] : Colors.white,
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: ListTile(
+            dense: true,
             leading: CircleAvatar(
               backgroundColor: Colors.teal[700],
               child: Text(
@@ -495,70 +546,88 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     final patient = _lastProcessedPatientItem!;
-    final paymentDate = DateTime.now(); // Assuming payment date is current time for summary
-    // We can store the actual payment date from _processPayment if needed for more accuracy.
+    // final paymentDate = DateTime.now(); // Use the actual stored payment date if available
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.all(16.0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ExpansionTile(
-        key: PageStorageKey('payment_summary_expansion_tile_${_lastProcessedReferenceNumber}'), // Unique key
-        initiallyExpanded: _isSummaryExpanded,
-        onExpansionChanged: (bool expanded) {
-          setState(() {
-            _isSummaryExpanded = expanded;
-          });
-        },
-        collapsedIconColor: Colors.teal[700],
-        iconColor: Colors.teal[800],
-        title: Text(
-          'Last Payment: ${_lastProcessedReferenceNumber ?? "N/A"}',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal[800]),
-        ),
-        subtitle: Text('Patient: ${patient.patientName}', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 16.0, top: 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Divider(),
-                _buildSummaryDetailRow(
-                    'Payment Date:', 
-                    DateFormat('dd MMM yyyy, hh:mm a').format(paymentDate)
-                ),
-                _buildSummaryDetailRow(
-                    'Patient ID:', 
-                    patient.patientId?.substring(0,8) ?? 'N/A'
-                ),
-                 _buildSummaryDetailRow(
-                    'Services:', 
-                    patient.conditionOrPurpose ?? 'N/A'
-                ),
-                _buildSummaryDetailRow(
-                    'Total Bill:', 
-                    '₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}'
-                ),
-                _buildSummaryDetailRow(
-                    'Amount Paid:', 
-                    '₱${(patient.totalPrice! + _lastProcessedChange).toStringAsFixed(2)}'
-                ),
-                _buildSummaryDetailRow(
-                    'Change Given:', 
-                    '₱${_lastProcessedChange.toStringAsFixed(2)}'
-                ),
-                // Add more details if necessary
-              ],
-            ),
+    return GestureDetector(
+      onTap: () => _showLastPaymentDetailsDialog(patient, _lastProcessedReferenceNumber!, _lastProcessedChange),
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.all(16.0), // Keep margin for the card itself
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min, // Make card height fit content
+            children: [
+              Text(
+                'Last Payment: ${_lastProcessedReferenceNumber ?? "N/A"}',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal[800]),
+              ),
+              const SizedBox(height: 4),
+              Text('Patient: ${patient.patientName}', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'Tap to view details',
+                    style: TextStyle(fontSize: 12, color: Colors.teal[600], fontStyle: FontStyle.italic),
+                  ),
+                  Icon(Icons.touch_app, size: 16, color: Colors.teal[600]),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
+  void _showLastPaymentDetailsDialog(ActivePatientQueueItem patient, String referenceNumber, double changeGiven) {
+    final paymentDate = DateTime.now(); // Or use actual stored date if available
+    final totalBill = patient.totalPrice ?? 0.0;
+    final amountPaid = totalBill + changeGiven;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Payment Details: $referenceNumber', style: TextStyle(color: Colors.teal[800])),
+          content: SingleChildScrollView( // Ensure dialog content is scrollable
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSummaryDetailRow('Payment Date:', DateFormat('dd MMM yyyy, hh:mm a').format(paymentDate)),
+                _buildSummaryDetailRow('Patient Name:', patient.patientName),
+                _buildSummaryDetailRow('Patient ID:', patient.patientId?.substring(0,8) ?? 'N/A'),
+                const Divider(),
+                _buildSummaryDetailRow('Services:', patient.conditionOrPurpose ?? 'N/A'),
+                // You can add more detailed service breakdown here if available from patient.selectedServices
+                const Divider(),
+                _buildSummaryDetailRow('Total Bill:', '₱${totalBill.toStringAsFixed(2)}'),
+                _buildSummaryDetailRow('Amount Paid:', '₱${amountPaid.toStringAsFixed(2)}'),
+                _buildSummaryDetailRow('Change Given:', '₱${changeGiven.toStringAsFixed(2)}', isHighlighted: true),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Close', style: TextStyle(color: Colors.teal[700])),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        );
+      },
+    );
+  }
+
   // Helper widget for summary details, similar to payment_search_screen
-  Widget _buildSummaryDetailRow(String label, String value) {
+  Widget _buildSummaryDetailRow(String label, String value, {bool isHighlighted = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -579,7 +648,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 13, color: Colors.black87), // Slightly smaller font
+              style: TextStyle(
+                fontSize: 13,
+                color: isHighlighted ? Colors.teal[700] : Colors.black87,
+              ),
             ),
           ),
         ],

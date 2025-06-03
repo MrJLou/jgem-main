@@ -40,8 +40,8 @@ class QueueService {
     }
   }
 
-  /// Add patient to the active queue in the database.
-  Future<ActivePatientQueueItem> addToQueue(
+  /// Add patient to the active queue in the database using raw data.
+  Future<ActivePatientQueueItem> addPatientDataToQueue(
       Map<String, dynamic> patientData) async {
     final currentUserId = await _authService.getCurrentUserId();
     final now = DateTime.now();
@@ -75,6 +75,21 @@ class QueueService {
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
+  }
+
+  /// Adds a pre-constructed ActivePatientQueueItem object to the active queue.
+  /// This is useful for activating scheduled appointments.
+  Future<bool> addPatientToQueue(ActivePatientQueueItem queueItem) async {
+    try {
+      // The DatabaseHelper.addToActiveQueue method already handles the DB insertion.
+      // It returns the item, so we assume success if no exception.
+      await _dbHelper.addToActiveQueue(queueItem);
+      print('QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
+      return true; // Return true on success
+    } catch (e) {
+      print("QueueService: Error in addPatientToQueue for ${queueItem.patientName}: $e");
+      return false; // Return false on failure
+    }
   }
 
   /// Get the next queue number for today
@@ -460,6 +475,23 @@ class QueueService {
     await file.writeAsBytes(await pdf.save());
     print('PDF Report saved to $filePath');
     return file;
+  }
+
+  /// Removes a 'Scheduled' entry from the active queue based on the original appointment ID.
+  /// This is used when an appointment is cancelled or deleted.
+  Future<void> removeScheduledEntryForAppointment(String appointmentId) async {
+    if (appointmentId.isEmpty) {
+      print("QueueService: removeScheduledEntryForAppointment called with empty appointmentId.");
+      return;
+    }
+    final String queueEntryIdToRemove = 'appt_$appointmentId';
+    try {
+      await _dbHelper.deleteActiveQueueItemByQueueEntryId(queueEntryIdToRemove);
+      print("QueueService: Attempted to remove scheduled entry $queueEntryIdToRemove for appointment $appointmentId.");
+    } catch (e) {
+      print("QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
+      // Depending on policy, you might want to rethrow or handle silently
+    }
   }
 }
 

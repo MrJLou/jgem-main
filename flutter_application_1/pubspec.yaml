@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  intl: ^0.17.0
+  intl: ^0.18.1
   shared_preferences: ^2.2.2
   sqflite_migration: ^0.3.0 
   sqflite: ^2.3.0  
@@ -54,7 +54,8 @@ dependencies:
   shelf: ^1.4.1
   shelf_router: ^1.1.4
   shelf_static: ^1.1.2
-
+  table_calendar: ^3.0.9
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

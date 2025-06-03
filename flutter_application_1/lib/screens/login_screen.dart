@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
+import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/login_rate_limiter.dart';
@@ -28,51 +29,79 @@ class _LoginScreenState extends State<LoginScreen>
   int _selectedIndex = 0; // 0 for Sign In, 1 for Sign Up
 
   // State for interactive image rotation
-  double _rotationAngle = 0.0;
+  double _interactiveRotationAngle = 0.0; // Renamed from _rotationAngle and initialized
+  double _interactiveRotationAngleStartSnap = 0.0; // For snap-back logic
   AnimationController? _imageRotationController; // Make nullable
-  late Animation<double> _imageRotationAnimation;
+  // late Animation<double> _imageRotationAnimation; // REMOVED - replaced by direct controller listener
+
+  // New animations for floating logo and continuous rotation
+  late AnimationController _logoFloatController;
+  late Animation<double> _logoFloatAnimation;
+  late AnimationController _continuousRotationController;
+  late Animation<double> _continuousRotationAnimation;
+
+  // Login attempt tracking
+  final Map<String, int> _loginAttempts = {};
+  final int _maxLoginAttempts = 3;
 
   @override
   void initState() {
     super.initState();
-    _checkExistingSession();
+
+    // Initialize controllers first
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+    _imageRotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    )..addListener(() {
+      if (mounted) {
+        setState(() {
+          _interactiveRotationAngle = lerpDouble(_interactiveRotationAngleStartSnap, 0.0, _imageRotationController!.value)!;
+        });
+      }
+    });
+    _logoFloatController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _continuousRotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 25), // Slower rotation
+    );
+
+    // Then initialize animations that depend on these controllers
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
       ),
     );
-    _animationController.forward();
-
-    // Initialize for image rotation
-    _imageRotationController = AnimationController(
-      vsync: this, // This will require TickerProviderStateMixin
-      duration: const Duration(milliseconds: 400), // Duration for snapping back
-    );
-    _imageRotationAnimation = Tween<double>(begin: 0.0, end: 0.0).animate(
-        CurvedAnimation(
-            parent: _imageRotationController!,
-            curve: Curves.easeInOut) // Use ! for now, will be guarded in build
-        )
+    _logoFloatAnimation = Tween<double>(begin: -10.0, end: 10.0).animate(
+      CurvedAnimation(parent: _logoFloatController, curve: Curves.easeInOut),
+    )..addListener(() {
+      if (mounted) {
+         setState(() {});
+      }
+    });
+    _continuousRotationAnimation = Tween<double>(begin: 0, end: 2 * math.pi)
+        .animate(_continuousRotationController)
       ..addListener(() {
-        setState(() {
-          _rotationAngle = _imageRotationAnimation.value;
-        });
+        if (mounted) {
+          setState(() {});
+        }
       });
 
-    // REMOVED Initialize for image slider
-    // if (_imageList.isNotEmpty) { // REMOVED
-    //   _pageController = PageController(initialPage: 0); // REMOVED
-    //   _startTimer(); // REMOVED
-    // } // REMOVED
-  }
+    // Now call methods that might trigger rebuilds or use controllers
+    _checkExistingSession();
 
-  // REMOVED _startTimer method
-  // void _startTimer() { ... }
+    // Finally, start animations
+    _animationController.forward();
+    _logoFloatController.repeat(reverse: true);
+    _continuousRotationController.repeat();
+  }
 
   Future<void> _checkExistingSession() async {
     setState(() => _isLoading = true);
@@ -117,6 +146,8 @@ class _LoginScreenState extends State<LoginScreen>
     _passwordController.dispose();
     _animationController.dispose();
     _imageRotationController?.dispose(); // Use ?. for nullable controller
+    _logoFloatController.dispose(); // Dispose new controller
+    _continuousRotationController.dispose(); // Dispose new controller
     // _pageController?.dispose(); // REMOVED Dispose PageController
     // _timer?.cancel(); // REMOVED Cancel Timer
     super.dispose();
@@ -129,9 +160,10 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
+      final username = _usernameController.text; // Store username locally
 
       try {
-        final username = _usernameController.text;
+        // final username = _usernameController.text; // Already defined above
 
         // Check rate limiting before attempting login
         // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
@@ -145,12 +177,16 @@ class _LoginScreenState extends State<LoginScreen>
           setState(() {
             _errorMessage = 'Login failed: User role not found in response.';
           });
+          _recordFailedLoginAttempt(username); // Record failed attempt
           // await LoginRateLimiter.recordFailedAttempt(username); // COMMENTED OUT
           return;
         }
 
         // Record successful login for rate limiting
         // await LoginRateLimiter.recordSuccessfulLogin(username); // COMMENTED OUT
+
+        // Reset login attempts for this user on successful login
+        _loginAttempts.remove(username);
 
         // Save credentials after successful login
         await AuthService.saveLoginCredentials(
@@ -176,6 +212,7 @@ class _LoginScreenState extends State<LoginScreen>
         // if (_usernameController.text.isNotEmpty) { // COMMENTED OUT
         //   await LoginRateLimiter.recordFailedAttempt(_usernameController.text); // COMMENTED OUT
         // }
+        _recordFailedLoginAttempt(username); // Record failed attempt
 
         setState(() {
           _errorMessage = e.toString();
@@ -195,6 +232,51 @@ class _LoginScreenState extends State<LoginScreen>
         if (mounted) {
           setState(() => _isLoading = false);
         }
+      }
+    }
+  }
+
+  void _recordFailedLoginAttempt(String username) {
+    if (username.isEmpty) return;
+
+    final attempts = (_loginAttempts[username] ?? 0) + 1;
+    _loginAttempts[username] = attempts;
+
+    if (attempts >= _maxLoginAttempts) {
+      // Show alert dialog
+      if (mounted) { // Ensure widget is still in the tree
+        showDialog(
+          context: context,
+          barrierDismissible: false, // User must tap button!
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              title: const Text('Too Many Login Attempts'),
+              content: const Text(
+                  'You have exceeded the maximum number of login attempts. Would you like to reset your password?'),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                  },
+                ),
+                TextButton(
+                  child: const Text('Reset Password'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                    // Reset attempts for this user as they are being navigated to reset password
+                    _loginAttempts.remove(username);
+                    Navigator.push(
+                      context, // Use the original context for navigation
+                      MaterialPageRoute(
+                          builder: (context) => const ForgotPasswordScreen()),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
       }
     }
   }
@@ -320,86 +402,98 @@ class _LoginScreenState extends State<LoginScreen>
 
                               // Static image with circular white background, now with FadeTransition
                               FadeTransition(
-                                opacity:
-                                    _fadeAnimation, // Using the existing fade animation
-                                child: _imageRotationController ==
-                                        null // Guard condition
+                                opacity: _fadeAnimation, // Using the existing fade animation
+                                child: _imageRotationController == null // Guard condition
                                     ? Container(
                                         width: 220,
-                                        height:
-                                            220) // Placeholder if not initialized
-                                    : GestureDetector(
-                                        onPanUpdate: (details) {
-                                          setState(() {
-                                            // Adjust sensitivity by a factor if needed
-                                            _rotationAngle += details.delta.dx *
-                                                0.01; // Horizontal drag spins
-                                            // You could also use details.delta.dy for vertical drag
-                                          });
-                                        },
-                                        onPanEnd: (details) {
-                                          // Animate back to 0
-                                          // Ensure the animation always goes from the current angle to 0
-                                          _imageRotationAnimation =
-                                              Tween<double>(
-                                            begin: _rotationAngle,
-                                            end: 0.0,
-                                          ).animate(CurvedAnimation(
-                                            parent:
-                                                _imageRotationController!, // Use ! as it's guarded
-                                            curve: Curves
-                                                .easeOut, // Use a nice curve for snapping back
-                                          ));
-                                          _imageRotationController!.forward(
-                                              from:
-                                                  0.0); // Use ! as it's guarded
-                                        },
-                                        child: Transform(
-                                          alignment: Alignment.center,
-                                          transform: Matrix4.identity()
-                                            ..setEntry(3, 2, 0.001)
-                                            ..rotateY(_rotationAngle),
-                                          child: Container(
-                                            width:
-                                                220, // Diameter of the circle
-                                            height:
-                                                220, // Diameter of the circle
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(
-                                                  0.95), // Slightly transparent white
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.15),
-                                                  blurRadius: 10,
-                                                  spreadRadius: 2,
-                                                  offset: const Offset(0, 5),
+                                        height: 220) // Placeholder if not initialized
+                                    : AnimatedBuilder(
+                                        animation: _logoFloatController,
+                                        builder: (BuildContext context, Widget? staticRotatingChild) {
+                                          double floatValue = _logoFloatAnimation.value;
+                                          double normalizedFloatAbs = floatValue.abs() / 10.0; // 0 at center, 1 at extremes
+
+                                          double shadowOpacity = 0.15 + (0.1 * (1 - normalizedFloatAbs));
+                                          double shadowBlur = 8 + (12 * normalizedFloatAbs);
+                                          double shadowSpread = 1 + (4 * normalizedFloatAbs);
+                                          double shadowWidth = 180 - (30 * normalizedFloatAbs);
+                                          double shadowHeight = 15 - (7 * normalizedFloatAbs);
+
+                                          return Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              // Shadow Element
+                                              if (_logoFloatController.isAnimating)
+                                                Transform.translate(
+                                                  offset: const Offset(0, 125.0), // Changed: Fixed Y offset for shadow to be at the bottom
+                                                  child: Container(
+                                                    width: shadowWidth,
+                                                    height: shadowHeight,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.rectangle,
+                                                      borderRadius: BorderRadius.all(Radius.elliptical(shadowWidth / 2, shadowHeight / 2)),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.black.withOpacity(shadowOpacity),
+                                                          blurRadius: shadowBlur,
+                                                          spreadRadius: shadowSpread,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
                                                 ),
-                                              ],
-                                            ),
-                                            child: ClipOval(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                    15.0), // Padding inside the circle for the image
-                                                child: Image.asset(
-                                                  'assets/images/slide1.png',
-                                                  fit: BoxFit
-                                                      .contain, // Ensures the whole image is visible
-                                                  errorBuilder: (BuildContext
-                                                          context,
-                                                      Object exception,
-                                                      StackTrace? stackTrace) {
-                                                    // Fallback widget if image fails to load
-                                                    return Center(
-                                                      child: Icon(
-                                                        Icons
-                                                            .broken_image_outlined,
-                                                        color: Colors.teal[700],
-                                                        size: 60,
-                                                      ),
-                                                    );
-                                                  },
+
+                                              // Floating and Rotating Logo
+                                              Transform.translate(
+                                                offset: Offset(0, floatValue),
+                                                child: staticRotatingChild,
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                        child: GestureDetector(
+                                          onPanUpdate: (details) {
+                                            if (mounted) { // Add mounted check
+                                              setState(() {
+                                                _interactiveRotationAngle += details.delta.dx * 0.01;
+                                              });
+                                            }
+                                          },
+                                          onPanEnd: (details) {
+                                            if (mounted && _imageRotationController != null && !_imageRotationController!.isAnimating) { // Add mounted & null checks
+                                              _interactiveRotationAngleStartSnap = _interactiveRotationAngle;
+                                              _imageRotationController!.forward(from: 0.0);
+                                            }
+                                          },
+                                          child: Transform(
+                                            alignment: Alignment.center,
+                                            transform: Matrix4.identity()
+                                              ..setEntry(3, 2, 0.001)
+                                              ..rotateY(_continuousRotationAnimation.value + _interactiveRotationAngle),
+                                            child: Container(
+                                              width: 200, // Slightly smaller to give shadow space
+                                              height: 200,
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.95),
+                                                shape: BoxShape.circle,
+                                                // Removed original BoxShadow to use the new dynamic one
+                                              ),
+                                              child: ClipOval(
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(15.0),
+                                                  child: Image.asset(
+                                                    'assets/images/slide1.png',
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+                                                      return Center(
+                                                        child: Icon(
+                                                          Icons.broken_image_outlined,
+                                                          color: Colors.teal[700],
+                                                          size: 50, // Adjusted size
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -613,27 +707,27 @@ class _LoginScreenState extends State<LoginScreen>
 
                                     const SizedBox(height: 16),
 
-                                    // Forgot password link
-                                    Center(
-                                      child: TextButton(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const ForgotPasswordScreen(),
-                                                  ),
-                                                );
-                                              },
-                                        child: Text(
-                                          'Forgot Password?',
-                                          style: TextStyle(
-                                              color: theme.primaryColor),
-                                        ),
-                                      ),
-                                    ),
+                                    // Forgot password link - REMOVED
+                                    // Center(
+                                    //   child: TextButton(
+                                    //     onPressed: _isLoading
+                                    //         ? null
+                                    //         : () {
+                                    //             Navigator.push(
+                                    //               context,
+                                    //               MaterialPageRoute(
+                                    //                 builder: (context) =>
+                                    //                     const ForgotPasswordScreen(),
+                                    //               ),
+                                    //             );
+                                    //           },
+                                    //     child: Text(
+                                    //       'Forgot Password?',
+                                    //       style: TextStyle(
+                                    //           color: theme.primaryColor),
+                                    //     ),
+                                    //   ),
+                                    // ),
                                   ],
                                 ),
                               ),

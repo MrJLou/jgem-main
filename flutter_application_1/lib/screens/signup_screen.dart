@@ -285,8 +285,15 @@ class _SignUpScreenState extends State<SignUpScreen>
                     Navigator.pushReplacement(
                       // Use pushReplacement to avoid stacking screens
                       context,
-                      MaterialPageRoute(
-                          builder: (context) => const LoginScreen()),
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const LoginScreen(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
+                          return FadeTransition(opacity: animation, child: child);
+                        },
+                        transitionDuration: const Duration(milliseconds: 300),
+                      ),
                     );
                   },
                 ),

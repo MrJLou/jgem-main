@@ -63,7 +63,7 @@ class PatientRecordManagementApp extends StatelessWidget {
 }
 
 class _AuthWrapper extends StatefulWidget {
-  const _AuthWrapper({super.key});
+  const _AuthWrapper();
 
   @override
   State<_AuthWrapper> createState() => _AuthWrapperState();

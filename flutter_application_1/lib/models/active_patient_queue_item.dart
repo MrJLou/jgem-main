@@ -16,6 +16,7 @@ class ActivePatientQueueItem {
       selectedServices; // New: To store structured service data
   final double? totalPrice; // New: To store calculated total price
   final String status; // e.g., 'waiting', 'ongoing', 'done', 'removed'
+  final String paymentStatus; // Added: e.g., 'Pending', 'Paid', 'Waived'
   final DateTime createdAt; // Timestamp when this queue entry was created
   final String? addedByUserId; // User ID of staff who added the patient
   final DateTime? servedAt; // Timestamp when patient status changes to 'served'
@@ -35,6 +36,7 @@ class ActivePatientQueueItem {
     this.selectedServices, // Added
     this.totalPrice, // Added
     required this.status,
+    this.paymentStatus = 'Pending', // Added with default value
     required this.createdAt,
     this.addedByUserId,
     this.servedAt,
@@ -84,6 +86,7 @@ class ActivePatientQueueItem {
       selectedServices: services, // Updated
       totalPrice: (json['totalPrice'] as num?)?.toDouble(), // Updated
       status: json['status'] as String,
+      paymentStatus: json['paymentStatus'] as String? ?? 'Pending', // Added
       createdAt: DateTime.parse(json['createdAt'] as String),
       addedByUserId: json['addedByUserId'] as String?,
       servedAt: json['servedAt'] != null
@@ -112,6 +115,7 @@ class ActivePatientQueueItem {
           : null, // Encode to JSON string
       'totalPrice': totalPrice,
       'status': status,
+      'paymentStatus': paymentStatus, // Added
       'createdAt': createdAt.toIso8601String(),
       'addedByUserId': addedByUserId,
       'servedAt': servedAt?.toIso8601String(),
@@ -132,6 +136,7 @@ class ActivePatientQueueItem {
     List<Map<String, dynamic>>? selectedServices, // Added
     double? totalPrice, // Added
     String? status,
+    String? paymentStatus, // Added
     DateTime? createdAt,
     String? addedByUserId,
     DateTime? servedAt,
@@ -150,6 +155,7 @@ class ActivePatientQueueItem {
       selectedServices: selectedServices ?? this.selectedServices, // Updated
       totalPrice: totalPrice ?? this.totalPrice, // Updated
       status: status ?? this.status,
+      paymentStatus: paymentStatus ?? this.paymentStatus, // Added
       createdAt: createdAt ?? this.createdAt,
       addedByUserId: addedByUserId ?? this.addedByUserId,
       servedAt: servedAt ?? this.servedAt,

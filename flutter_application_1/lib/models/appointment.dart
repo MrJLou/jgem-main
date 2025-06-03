@@ -12,6 +12,10 @@ class Appointment {
   final DateTime? createdAt;
   final String? createdById;
 
+  // Added new fields
+  final String? consultationType;
+  final int? durationMinutes;
+
   Appointment({
     required this.id,
     required this.patientId,
@@ -23,6 +27,9 @@ class Appointment {
     this.notes,
     this.createdAt,
     this.createdById,
+    // Added to constructor
+    this.consultationType,
+    this.durationMinutes,
   });
 
   factory Appointment.fromJson(Map<String, dynamic> json) {
@@ -43,6 +50,9 @@ class Appointment {
       createdAt:
           json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       createdById: json['createdById'] as String?,
+      // Added for fromJson
+      consultationType: json['consultationType'] as String?,
+      durationMinutes: json['durationMinutes'] as int?,
     );
   }
 
@@ -51,13 +61,16 @@ class Appointment {
       'id': id,
       'patientId': patientId,
       'date': date.toIso8601String(),
-      'time': '${time.hour}:${time.minute}',
+      'time': '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}', // Padded time
       'doctorId': doctorId,
       'serviceId': serviceId,
       'status': status,
       'notes': notes,
       'createdAt': createdAt?.toIso8601String(),
       'createdById': createdById,
+      // Added for toJson
+      'consultationType': consultationType,
+      'durationMinutes': durationMinutes,
     };
   }
 
@@ -72,6 +85,9 @@ class Appointment {
     String? notes,
     DateTime? createdAt,
     String? createdById,
+    // Added for copyWith
+    String? consultationType,
+    int? durationMinutes,
   }) {
     return Appointment(
       id: id ?? this.id,
@@ -84,6 +100,9 @@ class Appointment {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       createdById: createdById ?? this.createdById,
+      // Added for copyWith
+      consultationType: consultationType ?? this.consultationType,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
     );
   }
 }

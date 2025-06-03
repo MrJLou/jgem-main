@@ -15,6 +15,7 @@ class RealTimeSyncService {
   static int? _serverPort;
   static String? _accessCode;
   static final DatabaseHelper _dbHelper = DatabaseHelper();
+  static StreamSubscription? _wsSubscription;
 
   // Stream controllers for real-time events
   static final StreamController<Map<String, dynamic>> _patientQueueUpdates =
@@ -61,15 +62,15 @@ class RealTimeSyncService {
       await prefs.setInt('lan_server_port', port);
       await prefs.setString('lan_access_code', accessCode);
 
-      // Close existing connection
+      // Close existing connection and cancel old subscription
       await disconnect();
 
       // Connect to WebSocket
       final wsUrl = 'ws://$serverIp:$port/ws?access_code=$accessCode';
       _wsChannel = IOWebSocketChannel.connect(wsUrl);
 
-      // Listen for messages
-      _wsChannel!.stream.listen(
+      // Listen for messages and store the subscription
+      _wsSubscription = _wsChannel!.stream.listen(
         _handleWebSocketMessage,
         onError: (error) {
           debugPrint('WebSocket error: $error');
@@ -265,6 +266,9 @@ class RealTimeSyncService {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
 
+    await _wsSubscription?.cancel();
+    _wsSubscription = null;
+
     if (_wsChannel != null) {
       await _wsChannel!.sink.close();
       _wsChannel = null;
@@ -277,7 +281,11 @@ class RealTimeSyncService {
   /// Dispose the service
   static Future<void> dispose() async {
     await disconnect();
-    await _patientQueueUpdates.close();
-    await _patientInfoUpdates.close();
+    if (!_patientQueueUpdates.isClosed) {
+      await _patientQueueUpdates.close();
+    }
+    if (!_patientInfoUpdates.isClosed) {
+      await _patientInfoUpdates.close();
+    }
   }
 }

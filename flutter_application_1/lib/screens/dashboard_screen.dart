@@ -13,6 +13,7 @@ import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
 import 'laboratory/laboratory_hub_screen.dart';
 import 'patient_queue/patient_queue_hub_screen.dart';
+import 'appointments/appointment_overview_screen.dart'; // Import the new AppointmentOverviewScreen
 import 'analytics/patient_analytics_screen.dart';
 import 'reports/report_hub_screen.dart'; // Import the ReportHubScreen
 import 'billing/billing_hub_screen.dart';
@@ -23,6 +24,11 @@ import 'about_screen.dart'; // Assuming an AboutScreen exists or will be created
 import 'logs/user_activity_log_screen.dart'; // Corrected import path
 import 'lan_client_connection_screen.dart'; // Import LAN client connection screen
 import 'patient_queue/view_queue_screen.dart'; // For TableCellWidget
+
+// Imports for new settings screens
+import 'settings/user_profile_screen.dart';
+import 'settings/appearance_settings_screen.dart';
+import 'package:table_calendar/table_calendar.dart'; // Added for TableCalendar
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
@@ -87,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.groups_outlined
     },
     'Appointment Schedule': {
-      'screen': (String accessLevel) => const SizedBox.shrink(),
+      'screen': (String accessLevel) => const AppointmentOverviewScreen(),
       'icon': Icons.calendar_month_outlined
     },
     'Patient Analytics': {
@@ -163,15 +169,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void initState() {
+    print('DEBUG: DashboardScreen initState START');
     super.initState();
     _queueService = QueueService();
+    print('DEBUG: DashboardScreen initState calling _configureMenuForRole');
     _configureMenuForRole();
+    print('DEBUG: DashboardScreen initState calling _loadInitialData');
     _loadInitialData();
+    print('DEBUG: DashboardScreen initState END');
   }
 
   void _configureMenuForRole() {
+    print('DEBUG: Received accessLevel in _configureMenuForRole: ${widget.accessLevel}');
     List<String> allowedMenuKeys =
         _rolePermissions[widget.accessLevel] ?? _rolePermissions['patient']!;
+    print('DEBUG: allowedMenuKeys for ${widget.accessLevel}: $allowedMenuKeys');
 
     List<String> tempTitles = [];
     List<Widget> tempScreens = [];
@@ -221,7 +233,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }
           }
         } else if (key == 'Appointment Schedule') {
-          screenToShow = _buildAppointmentModule();
+          screenToShow = const AppointmentOverviewScreen();
         } else if (key == 'Registration') {
           if (widget.accessLevel == 'medtech') {
             screenToShow = PatientRegistrationScreen();
@@ -292,7 +304,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _loadInitialData() async {
-    if (!mounted) return;
+    print('DEBUG: DashboardScreen _loadInitialData START');
+    if (!mounted) {
+      print('DEBUG: DashboardScreen _loadInitialData NOT MOUNTED, returning');
+      return;
+    }
     setState(() => _isLoading = true);
     _appointments = [
       Appointment(
@@ -313,11 +329,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           notes: 'New patient consultation'),
     ];
     await _loadAppointments();
+    print('DEBUG: DashboardScreen _loadInitialData after _loadAppointments');
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
+    print('DEBUG: DashboardScreen _loadInitialData END');
   }
 
   Future<void> _saveAppointment() async {
@@ -512,7 +530,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
               decoration: BoxDecoration(
                 color: isSelected
                     ? Colors.teal.withOpacity(0.15)
@@ -665,6 +683,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'Settings & Actions',
             onSelected: (String result) {
               switch (result) {
+                case 'user_profile':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const UserProfileScreen()),
+                  );
+                  break;
+                case 'appearance_settings':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AppearanceSettingsScreen()),
+                  );
+                  break;
+                case 'system_settings':
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SystemSettingsScreen()));
+                  break;
                 case 'activity_log':
                   Navigator.push(
                       context,
@@ -678,12 +714,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           builder: (context) =>
                               const LanClientConnectionScreen()));
                   break;
-                case 'system_settings':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const SystemSettingsScreen()));
-                  break;
                 case 'logout':
                   _logout();
                   break;
@@ -691,6 +721,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             itemBuilder: (BuildContext context) {
               List<PopupMenuEntry<String>> items = [];
+              // User & App Personalization Group
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'user_profile',
+                  child: ListTile(
+                      leading: Icon(Icons.account_circle_outlined),
+                      title: Text('User Profile')),
+                ),
+              );
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'appearance_settings',
+                  child: ListTile(
+                      leading: Icon(Icons.palette_outlined),
+                      title: Text('Appearance')),
+                ),
+              );
+              items.add(const PopupMenuDivider()); // Divider 1
+
+              // System & Technical Settings Group
+              items.add(
+                const PopupMenuItem<String>(
+                  value: 'system_settings',
+                  child: ListTile(
+                      leading: Icon(Icons.settings_applications),
+                      title: Text('System Settings')),
+                ),
+              );
               items.add(
                 const PopupMenuItem<String>(
                   value: 'activity_log',
@@ -706,15 +764,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       leading: Icon(Icons.wifi), title: Text('LAN Connection')),
                 ),
               );
-              items.add(
-                const PopupMenuItem<String>(
-                  value: 'system_settings',
-                  child: ListTile(
-                      leading: Icon(Icons.settings_applications),
-                      title: Text('System Settings')),
-                ),
-              );
-              items.add(const PopupMenuDivider());
+              items.add(const PopupMenuDivider()); // Divider 2
+
+              // Session Management Group
               items.add(
                 const PopupMenuItem<String>(
                   value: 'logout',
@@ -728,7 +780,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: Row(
-        children: <Widget>[
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           MouseRegion(
             onEnter: (_) => setState(() => _isHovered = true),
             onExit: (_) => setState(() => _isHovered = false),
@@ -747,10 +800,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.start,
-                  children: List.generate(
-                    _menuTitles.length,
-                    (index) => _buildNavigationItem(index),
-                  ),
+                  children: () {
+                    List<Widget> navWidgets = [];
+                    for (int i = 0; i < _menuTitles.length; i++) {
+                      if (_menuTitles[i] == 'Report') {
+                        navWidgets.add(const Divider(
+                          height: 32.0,
+                          thickness: 1,
+                          indent: 16,
+                          endIndent: 16,
+                          color: Colors.black26,
+                        ));
+                      }
+                      navWidgets.add(_buildNavigationItem(i));
+                    }
+                    return navWidgets;
+                  }(),
                 ),
               ),
             ),
@@ -819,86 +884,91 @@ class _AppointmentFormState extends State<AppointmentForm> {
       padding: const EdgeInsets.all(16.0),
       child: Form(
         key: widget.formKey,
-        child: ListView(
-          children: <Widget>[
-            Text(
-              'Add New Appointment on ${DateFormat('yyyy-MM-dd').format(widget.selectedDate)}',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: widget.patientIdController,
-              decoration: InputDecoration(
-                labelText: 'Patient ID (auto-generated if empty)',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.fiber_new),
-                  tooltip: 'Generate New ID',
-                  onPressed: () {
-                    widget.patientIdController.text =
-                        widget.generatePatientId();
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: ListView(
+              children: <Widget>[
+                Text(
+                  'Add New Appointment on ${DateFormat('yyyy-MM-dd').format(widget.selectedDate)}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: widget.patientIdController,
+                  decoration: InputDecoration(
+                    labelText: 'Patient ID (auto-generated if empty)',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.fiber_new),
+                      tooltip: 'Generate New ID',
+                      onPressed: () {
+                        widget.patientIdController.text =
+                            widget.generatePatientId();
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: widget.patientNameController,
+                  decoration: const InputDecoration(
+                      labelText: 'Patient Name', border: OutlineInputBorder()),
+                  validator: (value) {
+                    if (value == null || value.isEmpty)
+                      return 'Please enter patient name';
+                    return null;
                   },
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: widget.patientNameController,
-              decoration: const InputDecoration(
-                  labelText: 'Patient Name', border: OutlineInputBorder()),
-              validator: (value) {
-                if (value == null || value.isEmpty)
-                  return 'Please enter patient name';
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: widget.doctorController,
-              decoration: const InputDecoration(
-                  labelText: 'Doctor', border: OutlineInputBorder()),
-              validator: (value) {
-                if (value == null || value.isEmpty)
-                  return 'Please enter doctor name';
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            ListTile(
-              title:
-                  Text('Selected Time: ${widget.selectedTime.format(context)}'),
-              trailing: const Icon(Icons.access_time),
-              onTap: () => _selectTime(context),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4.0),
-                side: BorderSide(color: Colors.grey.shade400),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: widget.notesController,
-              decoration: const InputDecoration(
-                  labelText: 'Notes (Optional)', border: OutlineInputBorder()),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                    onPressed: widget.onCancel, child: const Text('CANCEL')),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: widget.onSave,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white),
-                  child: const Text('SAVE APPOINTMENT'),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: widget.doctorController,
+                  decoration: const InputDecoration(
+                      labelText: 'Doctor', border: OutlineInputBorder()),
+                  validator: (value) {
+                    if (value == null || value.isEmpty)
+                      return 'Please enter doctor name';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  title:
+                      Text('Selected Time: ${widget.selectedTime.format(context)}'),
+                  trailing: const Icon(Icons.access_time),
+                  onTap: () => _selectTime(context),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4.0),
+                    side: BorderSide(color: Colors.grey.shade400),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: widget.notesController,
+                  decoration: const InputDecoration(
+                      labelText: 'Notes (Optional)', border: OutlineInputBorder()),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                        onPressed: widget.onCancel, child: const Text('CANCEL')),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: widget.onSave,
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          foregroundColor: Colors.white),
+                      child: const Text('SAVE APPOINTMENT'),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -912,10 +982,8 @@ Widget _buildAppointmentList(
   }
   return ListView.builder(
     itemCount: appointments.length,
-    itemBuilder: (context, index) {
-      return _buildAppointmentCard(
-          appointments[index], onUpdateStatus, context);
-    },
+    itemBuilder: (context, index) => _buildAppointmentCard(
+        appointments[index], onUpdateStatus, context),
   );
 }
 
@@ -1154,88 +1222,327 @@ class LiveQueueDashboardView extends StatefulWidget {
 }
 
 class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
-  late Future<List<ActivePatientQueueItem>> _queueFuture;
+  late Future<List<ActivePatientQueueItem>> _activeQueueFuture;
   final TextStyle cellStyle =
       const TextStyle(fontSize: 14, color: Colors.black87);
   DateTime _calendarSelectedDate = DateTime.now();
+  DateTime _calendarFocusedDay = DateTime.now();
+  List<Appointment> _allAppointmentsForCalendar = [];
+  List<Appointment> _dailyAppointmentsForDisplay = [];
+  
+  List<dynamic> _combinedQueueForDisplayList = [];
+  bool _isLoadingQueueAndAppointments = true;
 
   @override
   void initState() {
+    print('DEBUG: LiveQueueDashboardView initState START');
     super.initState();
-    _loadQueue();
+    print('DEBUG: LiveQueueDashboardView initState calling _loadCombinedQueueData');
+    _loadCombinedQueueData();
+    print('DEBUG: LiveQueueDashboardView initState END');
   }
 
-  void _loadQueue() {
+  Future<void> _loadCombinedQueueData() async {
+    print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START');
+    if (!mounted) {
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData NOT MOUNTED, returning');
+      return;
+    }
     setState(() {
-      _queueFuture = widget.queueService
-          .getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+      _isLoadingQueueAndAppointments = true;
+    });
+
+    try {
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetching activeQueueItems...');
+      final activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetched activeQueueItems. Count: ${activeQueueItems.length}');
+      
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetching allAppointments...');
+      final allAppointments = await ApiService.getAllAppointments();
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetched allAppointments. Count: ${allAppointments.length}');
+      
+      if (mounted) {
+        _allAppointmentsForCalendar = allAppointments;
+        _filterDailyAppointments();
+
+        List<dynamic> combinedList = [];
+        DateTime today = DateTime.now();
+
+        // Get patient IDs of those already in the active queue system to avoid duplication
+        final Set<String> patientIdsInActiveSystem = activeQueueItems
+            .map((item) => item.patientId)
+            .where((id) => id != null) // Ensure we only consider non-null patient IDs
+            .cast<String>() // Cast to Set<String> after filtering nulls
+            .toSet();
+
+        // Filter for today's appointments that are not yet in the active system and are in a schedulable status
+        List<Appointment> todayScheduledAppointmentsToAdd = _allAppointmentsForCalendar
+            .where((appt) =>
+                isSameDay(appt.date, today) &&
+                (appt.status.toLowerCase() == 'confirmed' || appt.status.toLowerCase() == 'pending') && // Eligible if confirmed or pending
+                !patientIdsInActiveSystem.contains(appt.patientId) // And not already processed into active queue
+            )
+            .toList();
+
+        todayScheduledAppointmentsToAdd.sort((a, b) {
+            final aTime = a.time.hour * 60 + a.time.minute;
+            final bTime = b.time.hour * 60 + b.time.minute;
+            return aTime.compareTo(bTime);
+        });
+
+        for (var appt in todayScheduledAppointmentsToAdd) {
+          combinedList.add(ActivePatientQueueItem(
+            queueEntryId: 'appt_${appt.id}', // Prefix to identify as originally scheduled
+            patientId: appt.patientId,
+            patientName: 'PT: ${appt.patientId}', // Placeholder, consider fetching full name
+            arrivalTime: DateTime(appt.date.year, appt.date.month, appt.date.day, appt.time.hour, appt.time.minute),
+            queueNumber: 0, // Not a typical queue number; time is more relevant
+            status: 'Scheduled', // Pseudo-status for display
+            // Assuming Appointment model might have consultationType and paymentStatus, otherwise defaults are used.
+            conditionOrPurpose: appt.consultationType ?? appt.notes ?? 'Appointment',
+            paymentStatus: 'Pending', // Default for purely scheduled items not yet in active queue payment system
+            createdAt: appt.createdAt ?? DateTime.now(), // Use appointment creation time if available
+          ));
+        }
+
+        combinedList.addAll(activeQueueItems); // Add walk-ins and activated appointments
+
+        // Sort the combined list: In Consultation > Waiting > Scheduled (by time)
+        combinedList.sort((a, b) {
+          int statusValue(String status) {
+            if (status.toLowerCase() == 'in_consultation') return 0;
+            if (status.toLowerCase() == 'waiting') return 1;
+            if (status.toLowerCase() == 'scheduled') return 2;
+            return 3; // Other statuses last
+          }
+          int compare = statusValue(a.status).compareTo(statusValue(b.status));
+          if (compare == 0) { // If status is the same, sort by arrival/scheduled time
+            return a.arrivalTime.compareTo(b.arrivalTime);
+          }
+          return compare;
+        });
+
+        setState(() {
+          _combinedQueueForDisplayList = combinedList;
+          // _activeQueueFuture probably still refers to items managed by QueueService for 'next' logic
+          _activeQueueFuture = Future.value(activeQueueItems); 
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        print("Failed to load combined queue data: $e");
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData ERROR: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingQueueAndAppointments = false;
+        });
+      }
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData END');
+    }
+  }
+
+  void _filterDailyAppointments() {
+    if (!mounted) return;
+    setState(() {
+      _dailyAppointmentsForDisplay = _allAppointmentsForCalendar
+          .where((appt) => isSameDay(appt.date, _calendarSelectedDate))
+          .toList();
+      _dailyAppointmentsForDisplay.sort((a, b) {
+        final aTime = a.time.hour * 60 + a.time.minute;
+        final bTime = b.time.hour * 60 + b.time.minute;
+        return aTime.compareTo(bTime);
+      });
     });
   }
 
-  void _refreshQueue() => _loadQueue();
+  void _refreshAllData() {
+    _loadCombinedQueueData();
+  }
+
+  void _refreshActiveQueueForNextPatient() async {
+    final activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+    setState(() {
+      _activeQueueFuture = Future.value(activeQueueItems);
+    });
+     _loadCombinedQueueData();
+  }
+
+  Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
+    if (!mounted) return;
+    setState(() { /* Potentially set a loading state for this specific item */ });
+
+    try {
+      final originalAppointment = _allAppointmentsForCalendar.firstWhere(
+        (appt) => appt.id == appointmentId,
+      );
+
+      // Find the corresponding display item to check its current paymentStatus if needed
+      // This representation is what's shown in the queue with the default 'Pending' or an updated status.
+      final displayItemInQueue = _combinedQueueForDisplayList.firstWhere(
+          (item) => item is ActivePatientQueueItem && item.queueEntryId == 'appt_${originalAppointment.id}',
+          orElse: () => null, // Should ideally exist if button is pressed
+      ) as ActivePatientQueueItem?;
+
+      if (displayItemInQueue != null && displayItemInQueue.paymentStatus != 'Paid' && displayItemInQueue.paymentStatus != 'Waived') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment is ${displayItemInQueue.paymentStatus} for ${originalAppointment.patientId}. Activating anyway.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        // Depending on policy, you might prevent activation here:
+        // if (strictPolicy) { setState(() {}); return; }
+      }
+
+      final newQueueItem = ActivePatientQueueItem(
+        queueEntryId: 'active_${DateTime.now().millisecondsSinceEpoch}',
+        patientId: originalAppointment.patientId,
+        patientName: 'PT: ${originalAppointment.patientId}', 
+        arrivalTime: DateTime.now(),
+        queueNumber: 0, 
+        status: 'in_consultation',
+        paymentStatus: displayItemInQueue?.paymentStatus ?? 'Pending', // Carry over displayed payment status
+        conditionOrPurpose: originalAppointment.consultationType ?? originalAppointment.notes ?? 'Scheduled Consultation',
+        createdAt: DateTime.now(),
+      );
+
+      bool addedToActiveQueue = await widget.queueService.addPatientToQueue(newQueueItem); 
+
+      if (addedToActiveQueue) {
+        await ApiService.updateAppointmentStatus(appointmentId, 'In Consultation');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${newQueueItem.patientName} is now In Consultation.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadCombinedQueueData(); // Refresh the list
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to activate scheduled appointment.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        print("Error activating scheduled patient: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error activating: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() { /* Clear loading state for the item if set */ });
+      }
+    }
+  }
+
+  Future<void> _callNextScheduled() async {
+    if (!mounted) return;
+
+    final scheduledPatients = _combinedQueueForDisplayList
+        .where((item) => item is ActivePatientQueueItem && item.status == 'Scheduled')
+        .cast<ActivePatientQueueItem>()
+        .toList();
+
+    if (scheduledPatients.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No appointments currently scheduled for today or all have been processed.'),
+            backgroundColor: Colors.amber));
+      }
+      return;
+    }
+    // Sort by appointment time (which is stored in arrivalTime for these pseudo-items)
+    scheduledPatients.sort((a, b) => a.arrivalTime.compareTo(b.arrivalTime));
+    final nextScheduled = scheduledPatients.first;
+
+    // The queueEntryId for these is 'appt_ORIGINAL_ID'
+    if (nextScheduled.queueEntryId.startsWith('appt_')) {
+      String originalAppointmentId = nextScheduled.queueEntryId.substring(5); // Remove 'appt_'
+      await _activateAndCallScheduledPatient(originalAppointmentId);
+    } else {
+      // This case should ideally not happen if data is consistent
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Error: Selected scheduled item has an invalid ID format.'),
+            backgroundColor: Colors.red));
+      }
+    }
+  }
 
   Future<void> _nextPatient() async {
     if (!mounted) return;
     try {
-      final queue = await _queueFuture;
-      final waitingPatients =
-          queue.where((p) => p.status == 'waiting').toList();
-      if (waitingPatients.isEmpty) {
+      final queue = await widget.queueService.getActiveQueueItems(statuses: ['waiting']);
+      
+      if (queue.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No patients currently waiting.'),
+            content: Text('No walk-in patients currently waiting.'),
             backgroundColor: Colors.amber));
         return;
       }
-      waitingPatients.sort((a, b) => (a.queueNumber).compareTo(b.queueNumber));
-      final nextPatient = waitingPatients.first;
+
+      queue.sort((a, b) => (a.queueNumber ?? 0).compareTo(b.queueNumber ?? 0));
+      
+      final nextPatientToCall = queue.first;
+
       bool success = await widget.queueService
-          .markPatientAsInConsultation(nextPatient.queueEntryId);
+          .markPatientAsInConsultation(nextPatientToCall.queueEntryId);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success
-              ? '${nextPatient.patientName} is now In Consultation.'
-              : 'Failed to move ${nextPatient.patientName}.'),
+              ? '${nextPatientToCall.patientName} is now In Consultation.'
+              : 'Failed to move ${nextPatientToCall.patientName}.'),
           backgroundColor: success ? Colors.green : Colors.red,
         ),
       );
-      if (success) _refreshQueue();
+      if (success) {
+        _refreshAllData(); 
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error processing next patient: $e'),
+          content: Text('Error processing next walk-in patient: $e'),
           backgroundColor: Colors.red));
     }
   }
 
   static String _getDisplayStatus(String status) {
     switch (status.toLowerCase()) {
-      case 'waiting':
-        return 'Waiting';
-      case 'in_consultation':
-        return 'In Consultation';
-      case 'served':
-        return 'Served';
-      case 'removed':
-        return 'Removed';
-      default:
-        return status;
+      case 'waiting': return 'Waiting';
+      case 'in_consultation': return 'In Consultation';
+      case 'served': return 'Served';
+      case 'removed': return 'Removed';
+      case 'scheduled': return 'Scheduled (Today)';
+      default: return status;
     }
   }
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
-      case 'waiting':
-        return Colors.orange.shade700;
-      case 'in_consultation':
-        return Colors.blue.shade700;
-      case 'served':
-        return Colors.green.shade700;
-      case 'removed':
-        return Colors.red.shade700;
-      default:
-        return Colors.grey.shade700;
+      case 'waiting': return Colors.orange.shade700;
+      case 'in_consultation': return Colors.blue.shade700;
+      case 'served': return Colors.green.shade700;
+      case 'removed': return Colors.red.shade700;
+      case 'scheduled': return Colors.purple.shade400;
+      default: return Colors.grey.shade700;
     }
   }
 
@@ -1303,13 +1610,13 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildMetricCard(
-              'Appointments', '105', Icons.calendar_today, Colors.blue),
-          _buildMetricCard(
-              'Urgent Resolve', '40', Icons.warning_amber_rounded, Colors.red),
-          _buildMetricCard(
-              'Available Doctors', '37', Icons.person_search, Colors.green),
+          Expanded(child: _buildMetricCard('Appointments', '105', Icons.calendar_today, Colors.blue)),
+          const SizedBox(width: 16),
+          Expanded(child: _buildMetricCard('Urgent Resolve', '40', Icons.warning_amber_rounded, Colors.red)),
+          const SizedBox(width: 16),
+          Expanded(child: _buildMetricCard('Available Doctors', '37', Icons.person_search, Colors.green)),
         ],
       ),
     );
@@ -1317,31 +1624,29 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
 
   Widget _buildMetricCard(
       String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(title,
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-                  Icon(icon, color: color, size: 20),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 28, fontWeight: FontWeight.bold, color: color)),
-              Text('TODAY',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 10)),
-            ],
-          ),
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                Icon(icon, color: color, size: 20),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+            Text('TODAY',
+                style: TextStyle(color: Colors.grey[500], fontSize: 10)),
+          ],
         ),
       ),
     );
@@ -1454,183 +1759,110 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     );
   }
 
-  Widget _buildLiveQueueDisplaySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Live Patient Queue',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal[700])),
-            IconButton(
-                icon: const Icon(Icons.refresh, size: 20),
-                onPressed: _refreshQueue,
-                tooltip: 'Refresh Queue',
-                color: Colors.teal[700]),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _buildTableHeader(),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: 200),
-          child: FutureBuilder<List<ActivePatientQueueItem>>(
-            future: _queueFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
-                    child: Text('Error loading queue: ${snapshot.error}'));
-              }
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(
-                    child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text('No patients waiting or in consultation.',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                            textAlign: TextAlign.center)));
-              }
-              final queue = snapshot.data!;
-              return ListView.builder(
-                shrinkWrap: true,
-                itemCount: queue.length,
-                itemBuilder: (context, index) => _buildTableRow(queue[index]),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 16),
-        const SizedBox(height: 32),
-        Center(
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.next_plan_outlined, size: 18),
-            label: const Text('Next Patient'),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal[600],
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                textStyle:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            onPressed: _nextPatient,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildCalendarAppointmentsSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 0, 16.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  DateFormat('MMMM yyyy').format(_calendarSelectedDate),
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800]),
+          Card(
+            elevation: 2.0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+            child: TableCalendar<Appointment>(
+              firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
+              lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
+              focusedDay: _calendarFocusedDay,
+              selectedDayPredicate: (day) => isSameDay(_calendarSelectedDate, day),
+              calendarFormat: CalendarFormat.month,
+              startingDayOfWeek: StartingDayOfWeek.sunday,
+              headerStyle: HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+                titleTextStyle: TextStyle(fontSize: 17.0, color: Colors.teal[800], fontWeight: FontWeight.bold),
+                leftChevronIcon: Icon(Icons.chevron_left, color: Colors.teal[700], size: 24),
+                rightChevronIcon: Icon(Icons.chevron_right, color: Colors.teal[700], size: 24),
+              ),
+              calendarStyle: CalendarStyle(
+                selectedDecoration: BoxDecoration(
+                  color: Colors.teal[400],
+                  shape: BoxShape.circle,
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.chevron_left, color: Colors.teal[700]),
-                      onPressed: () {
-                        setState(() {
-                          _calendarSelectedDate = DateTime(
-                              _calendarSelectedDate.year,
-                              _calendarSelectedDate.month - 1,
-                              _calendarSelectedDate.day);
-                        });
-                      },
-                      splashRadius: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.chevron_right, color: Colors.teal[700]),
-                      onPressed: () {
-                        setState(() {
-                          _calendarSelectedDate = DateTime(
-                              _calendarSelectedDate.year,
-                              _calendarSelectedDate.month + 1,
-                              _calendarSelectedDate.day);
-                        });
-                      },
-                      splashRadius: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                )
-              ],
+                todayDecoration: BoxDecoration(
+                  color: Colors.teal[100]?.withOpacity(0.8),
+                  shape: BoxShape.circle,
+                ),
+                markerDecoration: BoxDecoration(
+                  color: Colors.pinkAccent[200],
+                  shape: BoxShape.circle,
+                ),
+                markersMaxCount: 1,
+                outsideDaysVisible: false,
+              ),
+              eventLoader: (day) {
+                return _allAppointmentsForCalendar
+                    .where((appointment) => isSameDay(appointment.date, day))
+                    .toList();
+              },
+              onDaySelected: (selectedDay, focusedDay) {
+                if (!isSameDay(_calendarSelectedDate, selectedDay)) {
+                  setState(() {
+                    _calendarSelectedDate = selectedDay;
+                    _calendarFocusedDay = focusedDay;
+                    _filterDailyAppointments();
+                  });
+                }
+              },
+              onPageChanged: (focusedDay) {
+                _calendarFocusedDay = focusedDay;
+              },
             ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Appointments for ${DateFormat.yMMMd().format(_calendarSelectedDate)}",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal[700]),
+              ),
+              Text(
+                "${_dailyAppointmentsForDisplay.length} scheduled",
+                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Container(
-              height: 70,
-              padding: const EdgeInsets.all(8.0),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(child: Text('Mini Calendar Placeholder')),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${widget.appointments.where((a) => DateUtils.isSameDay(a.date, _calendarSelectedDate)).length} Appointments',
-                      style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+          _dailyAppointmentsForDisplay.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event_busy_outlined, size: 40, color: Colors.grey[400]),
+                        const SizedBox(height: 8),
+                        Text(
+                          "No appointments scheduled for this day.",
+                          style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                    Icon(Icons.arrow_forward_ios,
-                        size: 14, color: Colors.grey[500])
-                  ])),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: _buildLiveQueueDisplaySection(),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Padding(
-                padding: const EdgeInsets.only(right: 16.0),
-                child: ListView.builder(
-                    itemCount: widget.appointments
-                        .where((a) =>
-                            DateUtils.isSameDay(a.date, _calendarSelectedDate))
-                        .length,
-                    itemBuilder: (context, index) {
-                      final dailyAppointments = widget.appointments
-                          .where((a) => DateUtils.isSameDay(
-                              a.date, _calendarSelectedDate))
-                          .toList();
-                      final appointment = dailyAppointments[index];
-                      bool isHighlighted = index == 1;
-                      return _buildImageStyledAppointmentCard(
-                          appointment.patientId,
-                          appointment.notes ?? 'Followup',
-                          appointment.time.format(context),
-                          isHighlighted);
-                    })),
-          ),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _dailyAppointmentsForDisplay.length,
+                  itemBuilder: (context, index) {
+                    final appointment = _dailyAppointmentsForDisplay[index];
+                    return _buildImageStyledAppointmentCard(
+                        appointment.patientId,
+                        appointment.notes ?? appointment.consultationType ?? 'Scheduled',
+                        appointment.time.format(context),
+                        false);
+                  },
+                ),
         ],
       ),
     );
@@ -1731,43 +1963,45 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   color: Colors.teal[700],
                   fontSize: 15)),
           const SizedBox(height: 10),
-          Expanded(
-            child: ListView.builder(
-              itemCount: months.length,
-              itemBuilder: (context, index) {
-                bool isSelectedMonth = index == currentMonthIndex;
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      _calendarSelectedDate = DateTime(
-                          _calendarSelectedDate.year,
-                          index + 1,
-                          _calendarSelectedDate.day);
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 8.0, horizontal: 4.0),
-                    color: isSelectedMonth
-                        ? Colors.teal.withOpacity(0.2)
-                        : Colors.transparent,
-                    child: Text(
-                      months[index],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelectedMonth
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isSelectedMonth
-                            ? Colors.teal[800]
-                            : Colors.grey[700],
-                      ),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: months.length,
+            itemBuilder: (context, index) {
+              bool isSelectedMonth = index == currentMonthIndex;
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    _calendarSelectedDate = DateTime(
+                        _calendarSelectedDate.year,
+                        index + 1,
+                        _calendarSelectedDate.day);
+                    _calendarFocusedDay = _calendarSelectedDate; // Keep focused day in sync
+                    _filterDailyAppointments(); // Update appointment list
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 8.0, horizontal: 4.0),
+                  color: isSelectedMonth
+                      ? Colors.teal.withOpacity(0.2)
+                      : Colors.transparent,
+                  child: Text(
+                    months[index],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelectedMonth
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isSelectedMonth
+                          ? Colors.teal[800]
+                          : Colors.grey[700],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -1784,11 +2018,13 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildWelcomeSection(),
                 _buildSummaryMetricsSection(),
                 _buildTodaysDoctorsSection(),
+                const SizedBox(height: 16), // Added spacing before the queue
+                _buildLiveQueueDisplaySection(), // Correct placement of the live queue
               ],
             ),
           ),
@@ -1798,25 +2034,37 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
             flex: 2,
             child: Container(
                 color: Colors.grey[50],
-                child: Row(children: [
-                  Expanded(
-                    child: _buildCalendarAppointmentsSection(),
+                child: SingleChildScrollView(
+                  // Ensure this child is a Row for calendar and scroller side-by-side
+                  child: Row( 
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: _buildCalendarAppointmentsSection(),
+                      ),
+                      _buildYearMonthScroller(),
+                    ],
                   ),
-                  _buildYearMonthScroller(),
-                ]))),
+                ))),
       ],
     );
   }
 
   Widget _buildTableHeader() {
-    final headers = ['No.', 'Name', 'Arrival', 'Condition', 'Status'];
+    final headers = ['No.', 'Name', 'Arrival', 'Condition', 'Payment', 'Status & Actions'];
     return Container(
       color: Colors.teal[600],
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: headers.map((text) {
+          int flex = 1;
+          if (text == 'Name' || text == 'Condition') flex = 2;
+          if (text == 'Status & Actions') flex = 3;
+          if (text == 'Payment') flex = 1; 
+
           return Expanded(
-              flex: (text == 'Name' || text == 'Condition') ? 2 : 1,
+              flex: flex,
               child: TableCellWidget(
                   text: text,
                   style: const TextStyle(
@@ -1831,45 +2079,181 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   Widget _buildTableRow(ActivePatientQueueItem item) {
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
+    
+    bool isRepresentingScheduledAppointment = item.queueEntryId.startsWith('appt_');
+    String originalAppointmentId = isRepresentingScheduledAppointment ? item.queueEntryId.substring(5) : '';
+
     final dataCells = [
-      (item.queueNumber).toString(),
+      isRepresentingScheduledAppointment ? arrivalDisplayTime : (item.queueNumber).toString(),
       item.patientName,
-      arrivalDisplayTime,
+      isRepresentingScheduledAppointment ? "-" : arrivalDisplayTime,
       item.conditionOrPurpose ?? 'N/A',
+      item.paymentStatus,
     ];
+
+    TextStyle paymentStatusStyle = TextStyle(
+        fontSize: cellStyle.fontSize,
+        fontWeight: FontWeight.w500,
+        color: item.paymentStatus == 'Paid' 
+            ? Colors.green.shade700 
+            : (item.paymentStatus == 'Pending' ? Colors.orange.shade800 : Colors.grey.shade700)
+    );
+    if (isRepresentingScheduledAppointment && item.status == 'Scheduled'){
+        paymentStatusStyle = paymentStatusStyle.copyWith(color: Colors.purple.shade700);
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-          color: Colors.white,
+          color: isRepresentingScheduledAppointment && item.status == 'Scheduled' ? Colors.purple[50] : (item.status == 'removed'
+              ? Colors.grey.shade200
+              : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
           border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
       child: Row(
         children: [
           ...dataCells.asMap().entries.map((entry) {
             int idx = entry.key;
-            String text = entry.value;
-            int flex = (idx == 1 || idx == 3) ? 2 : 1;
+            String text = entry.value.toString();
+            int flex = 1;
+            TextStyle currentCellStyle = cellStyle;
+
+            switch (idx) {
+              case 0:
+                flex = 1;
+                currentCellStyle = cellStyle.copyWith(fontWeight: FontWeight.bold);
+                if (isRepresentingScheduledAppointment) currentCellStyle = currentCellStyle.copyWith(color: Colors.purple[700]);
+                break;
+              case 1:
+                flex = 2;
+                break;
+              case 2:
+                flex = 1;
+                break;
+              case 3:
+                flex = 2;
+                break;
+              case 4:
+                flex = 1;
+                currentCellStyle = paymentStatusStyle;
+                break;
+            }
+
             return Expanded(
                 flex: flex,
-                child: TableCellWidget(
-                    text: text,
-                    style: cellStyle.copyWith(
-                        fontWeight:
-                            idx == 0 ? FontWeight.bold : FontWeight.normal)));
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: TableCellWidget(
+                    child: Text(text, style: currentCellStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                  ),
+                ));
           }).toList(),
           Expanded(
-            flex: 1,
-            child: TableCellWidget(
-                child: Text(_getDisplayStatus(item.status),
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _getStatusColor(item.status),
-                        fontSize: cellStyle.fontSize),
-                    textAlign: TextAlign.center)),
+            flex: 3,
+            child: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: ElevatedButton.icon(
+                        icon: Icon(Icons.play_circle_outline, size: 16),
+                        label: Text("Activate", style: TextStyle(fontSize: 12)),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal[600],
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          if (item.paymentStatus != 'Paid' && item.paymentStatus != 'Waived') {
+                          }
+                          _activateAndCallScheduledPatient(originalAppointmentId);
+                        },
+                    ), 
+                  )
+                : TableCellWidget(
+                    child: Text(_getDisplayStatus(item.status),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _getStatusColor(item.status),
+                            fontSize: cellStyle.fontSize),
+                        textAlign: TextAlign.center)),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLiveQueueDisplaySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Live Patient Queue (Today)',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[700])),
+            IconButton(
+                icon: const Icon(Icons.refresh, size: 20),
+                onPressed: _refreshAllData, // Make sure _refreshAllData exists
+                tooltip: 'Refresh Queue & Appointments',
+                color: Colors.teal[700]),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildTableHeader(), // Make sure _buildTableHeader exists
+        _isLoadingQueueAndAppointments
+            ? const Center(child: CircularProgressIndicator(key: Key('liveQueueLoadingIndicator')))
+            : _combinedQueueForDisplayList.isEmpty
+                ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                        child: Text('No patients in queue or scheduled for today.',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                            textAlign: TextAlign.center)))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(), // Important for nested scrolling
+                    itemCount: _combinedQueueForDisplayList.length,
+                    itemBuilder: (context, index) {
+                        final item = _combinedQueueForDisplayList[index];
+                        // Assuming item is always ActivePatientQueueItem due to list construction in _loadCombinedQueueData
+                        return _buildTableRow(item as ActivePatientQueueItem); // Make sure _buildTableRow exists and handles item
+                    },
+                  ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.directions_walk, size: 18),
+              label: const Text('Next Walk-In'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal[600],
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  textStyle:
+                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              onPressed: _nextPatient, 
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.event_available, size: 18),
+              label: const Text('Call Scheduled'),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepOrange[600],
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  textStyle:
+                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              onPressed: _callNextScheduled, 
+            ),
+          ],
+        ),
+        const SizedBox(height: 16), // Optional: Add some padding at the bottom of the section
+      ],
     );
   }
 }

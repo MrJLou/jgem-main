@@ -253,7 +253,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             'totalPrice': _totalPrice, // Added
           };
 
-          await widget.queueService.addToQueue(newPatientQueueData);
+          await widget.queueService.addPatientDataToQueue(newPatientQueueData);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('$finalPatientNameToUse added to queue!'),

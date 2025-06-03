@@ -11,9 +11,11 @@ import '../models/active_patient_queue_item.dart';
 import '../services/auth_service.dart';
 import '../services/lan_sync_service.dart';
 import '../models/clinic_service.dart';
+import './queue_service.dart';
 
 class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
+  static final QueueService _queueService = QueueService();
   static String? _currentUserRole;
 
   // Authentication Methods
@@ -115,6 +117,14 @@ class ApiService {
     }
   }
 
+  static Future<List<Appointment>> getAllAppointments() async {
+    try {
+      return await _dbHelper.getAllAppointments();
+    } catch (e) {
+      throw Exception('Failed to load all appointments: $e');
+    }
+  }
+
   static Future<Appointment> saveAppointment(Appointment appointment) async {
     try {
       return await _dbHelper.insertAppointment(appointment);
@@ -127,7 +137,13 @@ class ApiService {
       String id, String newStatus) async {
     try {
       await _dbHelper.updateAppointmentStatus(id, newStatus);
+      // If appointment is cancelled, remove its scheduled entry from the live queue
+      if (newStatus.toLowerCase() == 'cancelled') {
+        await _queueService.removeScheduledEntryForAppointment(id);
+        print("ApiService: Appointment $id cancelled, removed from queue.");
+      }
     } catch (e) {
+      print("ApiService: Error in updateAppointmentStatus for $id: $e");
       throw Exception('Failed to update status: $e');
     }
   }
@@ -135,8 +151,15 @@ class ApiService {
   static Future<bool> deleteAppointment(String id) async {
     try {
       final result = await _dbHelper.deleteAppointment(id);
-      return result > 0;
+      if (result > 0) {
+        // If appointment is deleted, also remove its scheduled entry from the live queue
+        await _queueService.removeScheduledEntryForAppointment(id);
+        print("ApiService: Appointment $id deleted, removed from queue.");
+        return true;
+      }
+      return false;
     } catch (e) {
+      print("ApiService: Error in deleteAppointment for $id: $e");
       throw Exception('Failed to delete appointment: $e');
     }
   }
@@ -306,6 +329,15 @@ class ApiService {
     } catch (e) {
       print('ApiService: Failed to search patients in active queue: $e');
       throw Exception('Failed to search patients in active queue: $e');
+    }
+  }
+
+  static Future<ActivePatientQueueItem> addToActiveQueue(ActivePatientQueueItem item) async {
+    try {
+      return await _dbHelper.addToActiveQueue(item);
+    } catch (e) {
+      print('ApiService: Failed to add to active queue: $e');
+      throw Exception('Failed to add patient to active queue: $e');
     }
   }
 
@@ -502,9 +534,7 @@ class ApiService {
 
   static Future<void> initializeDatabaseForLan() async {
     try {
-      await _dbHelper.database; // Ensure database is initialized
-
-      // Initialize LAN sync service
+      await _dbHelper.database; // Ensure database is initialized      // Initialize LAN sync service
       try {
         await LanSyncService.initialize(_dbHelper);
         print('LAN sync service initialized successfully');
@@ -524,7 +554,22 @@ class ApiService {
       // Schedule periodic sync
       _startPeriodicSync();
     } catch (e) {
-      throw Exception('Database initialization error: $e');
+      // More detailed error information for debugging
+      final errorDetails = e.toString();
+      print('Database initialization failed with error: $errorDetails');
+      
+      // Provide more specific error messages based on the type of failure
+      if (errorDetails.contains('network') || errorDetails.contains('NetworkInfo') || errorDetails.contains('wifi')) {
+        throw Exception('Database initialization error: Network interface access failed during LAN setup. This may be due to network permissions or unavailable network interface. LAN features will be limited. Original error: $e');
+      } else if (errorDetails.contains('path') || errorDetails.contains('directory') || errorDetails.contains('FileSystemException')) {
+        throw Exception('Database initialization error: File system access failed during database setup. Check directory permissions and available storage space. Original error: $e');
+      } else if (errorDetails.contains('SharedPreferences')) {
+        throw Exception('Database initialization error: Failed to access app settings storage. This may be due to storage permissions. Original error: $e');
+      } else if (errorDetails.contains('getApplicationDocumentsDirectory')) {
+        throw Exception('Database initialization error: Cannot access documents directory. Check app permissions and available storage. Original error: $e');
+      } else {
+        throw Exception('Database initialization error: $e');
+      }
     }
   }
 
@@ -618,6 +663,14 @@ class ApiService {
       );
     } catch (e) {
       throw Exception('Failed to search services: $e');
+    }
+  }
+
+  static Future<List<User>> getUsers() async {
+    try {
+      return await _dbHelper.getUsers();
+    } catch (e) {
+      throw Exception('Failed to load users: $e');
     }
   }
 }

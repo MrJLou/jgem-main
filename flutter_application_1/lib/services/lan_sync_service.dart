@@ -26,41 +26,82 @@ class LanSyncService {
   static StreamSubscription? _dirWatcher;
   static String? _accessCode; // For basic authentication
   static List<String> _allowedIpRanges = [];
-
   // Initialize the service
   static Future<void> initialize(DatabaseHelper dbHelper) async {
-    _dbHelper = dbHelper;
+    try {
+      _dbHelper = dbHelper;
 
-    // Get saved settings
-    final prefs = await SharedPreferences.getInstance();
-    final syncInterval =
-        prefs.getInt(_syncIntervalKey) ?? 5; // Default 5 minutes
-    final lanServerEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
-    final serverPort = prefs.getInt(_serverPortKey) ?? _defaultPort;
+      // Get saved settings with error handling
+      SharedPreferences? prefs;
+      try {
+        prefs = await SharedPreferences.getInstance();
+      } catch (e) {
+        debugPrint('Failed to access SharedPreferences: $e');
+        throw Exception('Failed to access app settings: $e');
+      }
 
-    // Get or generate access code
-    _accessCode = prefs.getString(_accessCodeKey);
-    if (_accessCode == null) {
-      _accessCode = _generateAccessCode();
-      await prefs.setString(_accessCodeKey, _accessCode!);
+      final syncInterval = prefs.getInt(_syncIntervalKey) ?? 5; // Default 5 minutes
+      final lanServerEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
+      final serverPort = prefs.getInt(_serverPortKey) ?? _defaultPort;
+
+      // Get or generate access code with error handling
+      try {
+        _accessCode = prefs.getString(_accessCodeKey);
+        if (_accessCode == null) {
+          _accessCode = _generateAccessCode();
+          await prefs.setString(_accessCodeKey, _accessCode!);
+        }
+      } catch (e) {
+        debugPrint('Failed to handle access code: $e');
+        _accessCode = _generateAccessCode(); // Generate fallback code
+      }
+
+      // Determine LAN IP ranges with error handling
+      try {
+        await _configureLanIpRanges();
+      } catch (e) {
+        debugPrint('Failed to configure LAN IP ranges: $e');
+        // Use fallback IP ranges
+        _allowedIpRanges = ['127.0.0', '192.168.0', '192.168.1', '10.0.0', '172.16.0'];
+      }
+
+      // Export DB to accessible location with error handling
+      try {
+        await _setupDbForSharing();
+      } catch (e) {
+        debugPrint('Failed to setup database for sharing: $e');
+        throw Exception('Failed to setup database sharing: $e');
+      }
+
+      // Start sync timer with error handling
+      try {
+        _startPeriodicSync(syncInterval);
+      } catch (e) {
+        debugPrint('Failed to start periodic sync: $e');
+        // Continue without periodic sync
+      }
+
+      // Start LAN server if enabled with error handling
+      if (lanServerEnabled) {
+        try {
+          await startLanServer(port: serverPort);
+        } catch (e) {
+          debugPrint('Failed to start LAN server: $e');
+          // Continue without LAN server
+        }
+      }
+
+      // Monitor for file changes with error handling
+      try {
+        await _startFileChangeMonitoring();
+      } catch (e) {
+        debugPrint('Failed to start file change monitoring: $e');
+        // Continue without file monitoring
+      }
+    } catch (e) {
+      debugPrint('LanSyncService initialization failed: $e');
+      rethrow;
     }
-
-    // Determine LAN IP ranges
-    await _configureLanIpRanges();
-
-    // Export DB to accessible location
-    await _setupDbForSharing();
-
-    // Start sync timer
-    _startPeriodicSync(syncInterval);
-
-    // Start LAN server if enabled
-    if (lanServerEnabled) {
-      await startLanServer(port: serverPort);
-    }
-
-    // Monitor for file changes
-    await _startFileChangeMonitoring();
   }
 
   // Generate a random access code for basic auth
@@ -121,40 +162,55 @@ class LanSyncService {
     }
     return false;
   }
-
   // Set up database for sharing
   static Future<void> _setupDbForSharing() async {
     try {
       Directory targetDir;
 
-      // Platform-specific directory selection
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        // For desktop platforms, use documents directory
-        targetDir = await getApplicationDocumentsDirectory();
-      } else if (Platform.isAndroid) {
-        // For Android, try external storage first, fallback to documents
-        try {
-          final externalDir = await getExternalStorageDirectory();
-          targetDir = externalDir ?? await getApplicationDocumentsDirectory();
-        } catch (e) {
+      // Platform-specific directory selection with error handling
+      try {
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          // For desktop platforms, use documents directory
+          targetDir = await getApplicationDocumentsDirectory();
+        } else if (Platform.isAndroid) {
+          // For Android, try external storage first, fallback to documents
+          try {
+            final externalDir = await getExternalStorageDirectory();
+            targetDir = externalDir ?? await getApplicationDocumentsDirectory();
+          } catch (e) {
+            debugPrint('External storage not available, using documents directory: $e');
+            targetDir = await getApplicationDocumentsDirectory();
+          }
+        } else {
+          // For other platforms (iOS), use documents directory
           targetDir = await getApplicationDocumentsDirectory();
         }
-      } else {
-        // For other platforms (iOS), use documents directory
-        targetDir = await getApplicationDocumentsDirectory();
+      } catch (e) {
+        debugPrint('Failed to get application documents directory: $e');
+        throw Exception('Cannot access documents directory: $e');
       }
 
       // Ensure the directory exists and is accessible
-      if (!await targetDir.exists()) {
-        await targetDir.create(recursive: true);
+      try {
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+      } catch (e) {
+        debugPrint('Failed to create target directory: $e');
+        throw Exception('Cannot create or access target directory: $e');
       }
 
       // Path for the shared database
       _dbPath = join(targetDir.path, 'patient_management_shared.db');
       _watchDir = targetDir;
 
-      // Copy current database to shared location
-      await _copyDatabaseToSharedLocation();
+      // Copy current database to shared location with error handling
+      try {
+        await _copyDatabaseToSharedLocation();
+      } catch (e) {
+        debugPrint('Failed to copy database to shared location: $e');
+        // This is not critical, we can continue without the initial copy
+      }
 
       debugPrint('DB path for LAN sharing: $_dbPath');
     } catch (e) {
@@ -162,26 +218,52 @@ class LanSyncService {
       rethrow;
     }
   }
-
   // Copy database to shared location
   static Future<void> _copyDatabaseToSharedLocation() async {
-    if (_dbHelper == null) return;
+    if (_dbHelper == null) {
+      debugPrint('Database helper is null, cannot copy database');
+      return;
+    }
 
     try {
       final dbPath = await _dbHelper!.currentDatabasePath;
-      if (dbPath != null && _dbPath != null) {
-        final sourceFile = File(dbPath);
-        final targetFile = File(_dbPath!);
+      if (dbPath == null) {
+        debugPrint('Current database path is null, cannot copy database');
+        return;
+      }
+      
+      if (_dbPath == null) {
+        debugPrint('Target database path is null, cannot copy database');
+        return;
+      }
 
-        if (await sourceFile.exists()) {
-          await sourceFile.copy(targetFile.path);
-          debugPrint('Database copied to shared location: $_dbPath');
+      final sourceFile = File(dbPath);
+      if (!await sourceFile.exists()) {
+        debugPrint('Source database file does not exist: $dbPath');
+        return;
+      }
+
+      final targetFile = File(_dbPath!);
+      
+      try {
+        await sourceFile.copy(targetFile.path);
+        debugPrint('Database copied to shared location: $_dbPath');
+      } catch (e) {
+        debugPrint('Failed to copy database file: $e');
+        // Try to create an empty database file as fallback
+        try {
+          await targetFile.create(recursive: true);
+          debugPrint('Created empty database file as fallback: $_dbPath');
+        } catch (createError) {
+          debugPrint('Failed to create fallback database file: $createError');
+          rethrow;
         }
       }
     } catch (e) {
       debugPrint('Error copying database to shared location: $e');
+      throw Exception('Failed to setup database sharing: $e');
     }
-  } // Start periodic synchronization
+  }// Start periodic synchronization
 
   static void _startPeriodicSync(int intervalMinutes) {
     // Cancel existing timer if any
