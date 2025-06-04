@@ -8,6 +8,8 @@ import '../models/appointment.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart'; // Added import
 import '../models/active_patient_queue_item.dart'; // Added import
+import 'package:flutter_application_1/services/patient_database_service.dart'; // ADDED
+import 'package:flutter_application_1/services/database_helper.dart'; // ADDED
 import 'user_management_screen.dart';
 import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
@@ -318,7 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           time: const TimeOfDay(hour: 9, minute: 0),
           doctorId: 'dr_smith_id',
           status: 'Confirmed',
-          notes: 'Regular checkup'),
+          consultationType: 'Regular checkup'),
       Appointment(
           id: '2',
           patientId: 'PT-1002',
@@ -326,7 +328,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           time: const TimeOfDay(hour: 11, minute: 30),
           doctorId: 'dr_johnson_id',
           status: 'Pending',
-          notes: 'New patient consultation'),
+          consultationType: 'New patient consultation'),
     ];
     await _loadAppointments();
     print('DEBUG: DashboardScreen _loadInitialData after _loadAppointments');
@@ -357,7 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           time: _selectedTime,
           doctorId: _doctorController.text,
           status: 'Confirmed',
-          notes: _notesController.text,
+          consultationType: _notesController.text,
         );
 
         await ApiService.saveAppointment(newAppointment);
@@ -1023,8 +1025,8 @@ Widget _buildAppointmentCard(Appointment appointment,
         children: [
           Text('Doctor ID: ${appointment.doctorId}'),
           Text('Time: ${appointment.time.format(context)}'),
-          if (appointment.notes != null && appointment.notes!.isNotEmpty)
-            Text('Notes: ${appointment.notes}'),
+          if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
+            Text('Consultation Type: ${appointment.consultationType}'),
         ],
       ),
       trailing: _buildStatusDropdown(appointment.status, (newStatus) {
@@ -1155,10 +1157,10 @@ class AppointmentCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text('Doctor ID: ${appointment.doctorId}'),
               Text('Time: ${appointment.time.format(context)}'),
-              if (appointment.notes != null && appointment.notes!.isNotEmpty)
+              if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
-                  child: Text('Notes: ${appointment.notes}',
+                  child: Text('Consultation Type: ${appointment.consultationType}',
                       style: const TextStyle(fontStyle: FontStyle.italic)),
                 ),
               const SizedBox(height: 12),
@@ -1196,8 +1198,8 @@ class AppointmentDetailDialog extends StatelessWidget {
             Text('Time: ${appointment.time.format(context)}'),
             Text('Doctor ID: ${appointment.doctorId}'),
             Text('Status: ${appointment.status}'),
-            if (appointment.notes != null && appointment.notes!.isNotEmpty)
-              Text('Notes: ${appointment.notes}'),
+            if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
+              Text('Consultation Type: ${appointment.consultationType}'),
           ],
         ),
       ),
@@ -1227,7 +1229,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       const TextStyle(fontSize: 14, color: Colors.black87);
   DateTime _calendarSelectedDate = DateTime.now();
   DateTime _calendarFocusedDay = DateTime.now();
-  List<Appointment> _allAppointmentsForCalendar = [];
+  List<Appointment> _allAppointmentsForCalendar = []; // Holds all appointments for calendar
   List<Appointment> _dailyAppointmentsForDisplay = [];
   
   List<dynamic> _combinedQueueForDisplayList = [];
@@ -1237,13 +1239,42 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   void initState() {
     print('DEBUG: LiveQueueDashboardView initState START');
     super.initState();
-    print('DEBUG: LiveQueueDashboardView initState calling _loadCombinedQueueData');
-    _loadCombinedQueueData();
+    print('DEBUG: LiveQueueDashboardView initState calling _loadAppointments and _loadCombinedQueueData');
+    _loadAppointments().then((_) { // Load all appointments first
+      _loadCombinedQueueData(_calendarSelectedDate); // Then load queue data for selected date
+    });
     print('DEBUG: LiveQueueDashboardView initState END');
   }
 
-  Future<void> _loadCombinedQueueData() async {
-    print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START');
+  // ADDED: Method to load all appointments for the calendar view
+  Future<void> _loadAppointments() async {
+    if (!mounted) return;
+    // print('DEBUG: LiveQueueDashboardView _loadAppointments START');
+    // setState(() {
+    //   _isLoadingAppointments = true; // You might want a separate loading state for this
+    // });
+    try {
+      final appointments = await ApiService.getAllAppointments();
+      if (mounted) {
+        setState(() {
+          _allAppointmentsForCalendar = appointments;
+          _filterDailyAppointments(); // Filter for the initially selected date
+          // _isLoadingAppointments = false;
+          print('DEBUG: LiveQueueDashboardView _loadAppointments SUCCESS - Loaded ${appointments.length} appointments.');
+        });
+      }
+    } catch (e) {
+      print('DEBUG: LiveQueueDashboardView _loadAppointments ERROR: $e');
+      // if (mounted) {
+      //   setState(() {
+      //     _isLoadingAppointments = false;
+      //   });
+      // }
+    }
+  }
+
+  Future<void> _loadCombinedQueueData(DateTime selectedDateForQueue) async {
+    print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START for date: ${DateFormat.yMd().format(selectedDateForQueue)}');
     if (!mounted) {
       print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData NOT MOUNTED, returning');
       return;
@@ -1253,98 +1284,98 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     });
 
     try {
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetching activeQueueItems...');
-      final activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetched activeQueueItems. Count: ${activeQueueItems.length}');
+      final now = DateTime.now();
+      final isToday = selectedDateForQueue.year == now.year &&
+                      selectedDateForQueue.month == now.month &&
+                      selectedDateForQueue.day == now.day;
+
+      List<ActivePatientQueueItem> activeQueueItems = [];
+      if (isToday) {
+        activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${activeQueueItems.length} active items for today.');
+      } else {
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Not today, so no active items fetched.');
+      }
       
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetching allAppointments...');
-      final allAppointments = await ApiService.getAllAppointments();
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData fetched allAppointments. Count: ${allAppointments.length}');
+      // _allAppointmentsForCalendar should be populated by _loadAppointments now
+      final scheduledAppointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
+        return appt.date.year == selectedDateForQueue.year &&
+               appt.date.month == selectedDateForQueue.month &&
+               appt.date.day == selectedDateForQueue.day &&
+               appt.status == 'Scheduled';
+      }).toList();
+
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Found ${scheduledAppointmentsForSelectedDate.length} scheduled appointments for ${DateFormat.yMd().format(selectedDateForQueue)}.');
+
+      List<ActivePatientQueueItem> scheduledAppointmentsAsQueueItems = scheduledAppointmentsForSelectedDate.map((appt) {
+        // CORRECTED: Manual instantiation of ActivePatientQueueItem
+        return ActivePatientQueueItem(
+          queueEntryId: 'appt_${appt.id}', // Prefix to identify as originally scheduled
+          patientId: appt.patientId,
+          // CORRECTED: Simpler patient name placeholder, or fetch if available/needed elsewhere
+          patientName: 'Patient: ${appt.patientId.substring(0, appt.patientId.length > 5 ? 5 : appt.patientId.length)}...', 
+          arrivalTime: DateTime(appt.date.year, appt.date.month, appt.date.day, appt.time.hour, appt.time.minute),
+          queueNumber: 0, 
+          status: 'Scheduled', // Explicitly set status for display in queue
+          conditionOrPurpose: appt.consultationType ?? 'Appointment',
+          paymentStatus: 'Pending', // Default, as it's not an active queue item yet
+          createdAt: appt.createdAt ?? DateTime.now(),
+          originalAppointmentId: appt.id,
+          // Populate other fields like gender, age if available on Appointment and needed for ActivePatientQueueItem
+        );
+      }).toList();
       
-      if (mounted) {
-        _allAppointmentsForCalendar = allAppointments;
-        _filterDailyAppointments();
+      scheduledAppointmentsAsQueueItems.removeWhere((scheduledItem) => 
+        activeQueueItems.any((activeItem) => activeItem.originalAppointmentId == scheduledItem.originalAppointmentId)
+      );
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData After removing duplicates, ${scheduledAppointmentsAsQueueItems.length} scheduled items remain for queue display.');
 
-        List<dynamic> combinedList = [];
-        DateTime today = DateTime.now();
 
-        // Get patient IDs of those already in the active queue system to avoid duplication
-        final Set<String> patientIdsInActiveSystem = activeQueueItems
-            .map((item) => item.patientId)
-            .where((id) => id != null) // Ensure we only consider non-null patient IDs
-            .cast<String>() // Cast to Set<String> after filtering nulls
-            .toSet();
+      List<dynamic> combinedList = [];
+      combinedList.addAll(activeQueueItems);
+      combinedList.addAll(scheduledAppointmentsAsQueueItems);
+      
+      combinedList.sort((a, b) {
+        bool aIsActive = a.status == 'waiting' || a.status == 'in_consultation';
+        bool bIsActive = b.status == 'waiting' || b.status == 'in_consultation';
 
-        // Filter for today's appointments that are not yet in the active system and are in a schedulable status
-        List<Appointment> todayScheduledAppointmentsToAdd = _allAppointmentsForCalendar
-            .where((appt) =>
-                isSameDay(appt.date, today) &&
-                (appt.status.toLowerCase() == 'confirmed' || appt.status.toLowerCase() == 'pending') && // Eligible if confirmed or pending
-                !patientIdsInActiveSystem.contains(appt.patientId) // And not already processed into active queue
-            )
-            .toList();
+        if (aIsActive && !bIsActive) return -1;
+        if (!aIsActive && bIsActive) return 1;
 
-        todayScheduledAppointmentsToAdd.sort((a, b) {
-            final aTime = a.time.hour * 60 + a.time.minute;
-            final bTime = b.time.hour * 60 + b.time.minute;
-            return aTime.compareTo(bTime);
-        });
-
-        for (var appt in todayScheduledAppointmentsToAdd) {
-          combinedList.add(ActivePatientQueueItem(
-            queueEntryId: 'appt_${appt.id}', // Prefix to identify as originally scheduled
-            patientId: appt.patientId,
-            patientName: 'PT: ${appt.patientId}', // Placeholder, consider fetching full name
-            arrivalTime: DateTime(appt.date.year, appt.date.month, appt.date.day, appt.time.hour, appt.time.minute),
-            queueNumber: 0, // Not a typical queue number; time is more relevant
-            status: 'Scheduled', // Pseudo-status for display
-            // Assuming Appointment model might have consultationType and paymentStatus, otherwise defaults are used.
-            conditionOrPurpose: appt.consultationType ?? appt.notes ?? 'Appointment',
-            paymentStatus: 'Pending', // Default for purely scheduled items not yet in active queue payment system
-            createdAt: appt.createdAt ?? DateTime.now(), // Use appointment creation time if available
-          ));
+        if (aIsActive && bIsActive) {
+          if (a.queueNumber != null && b.queueNumber != null && a.queueNumber != b.queueNumber) {
+            return a.queueNumber!.compareTo(b.queueNumber!);
+          }
+          return a.arrivalTime.compareTo(b.arrivalTime);
+        } else { 
+            DateTime aDateTime = DateTime(a.date.year, a.date.month, a.date.day, a.time.hour, a.time.minute);
+            DateTime bDateTime = DateTime(b.date.year, b.date.month, b.date.day, b.time.hour, b.time.minute);
+            return aDateTime.compareTo(bDateTime);
         }
+      });
 
-        combinedList.addAll(activeQueueItems); // Add walk-ins and activated appointments
 
-        // Sort the combined list: In Consultation > Waiting > Scheduled (by time)
-        combinedList.sort((a, b) {
-          int statusValue(String status) {
-            if (status.toLowerCase() == 'in_consultation') return 0;
-            if (status.toLowerCase() == 'waiting') return 1;
-            if (status.toLowerCase() == 'scheduled') return 2;
-            return 3; // Other statuses last
-          }
-          int compare = statusValue(a.status).compareTo(statusValue(b.status));
-          if (compare == 0) { // If status is the same, sort by arrival/scheduled time
-            return a.arrivalTime.compareTo(b.arrivalTime);
-          }
-          return compare;
-        });
-
+      if (mounted) {
         setState(() {
           _combinedQueueForDisplayList = combinedList;
-          // _activeQueueFuture probably still refers to items managed by QueueService for 'next' logic
-          _activeQueueFuture = Future.value(activeQueueItems); 
+          _isLoadingQueueAndAppointments = false;
+          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData _combinedQueueForDisplayList updated with ${combinedList.length} items.');
         });
       }
     } catch (e) {
-      if (mounted) {
-        print("Failed to load combined queue data: $e");
-        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData ERROR: $e');
-      }
-    } finally {
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData ERROR: $e');
       if (mounted) {
         setState(() {
           _isLoadingQueueAndAppointments = false;
         });
       }
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData END');
     }
   }
 
+  // ADDED: Method to filter appointments for the list below the calendar
   void _filterDailyAppointments() {
     if (!mounted) return;
+    // print('DEBUG: LiveQueueDashboardView _filterDailyAppointments for date: ${DateFormat.yMd().format(_calendarSelectedDate)}');
     setState(() {
       _dailyAppointmentsForDisplay = _allAppointmentsForCalendar
           .where((appt) => isSameDay(appt.date, _calendarSelectedDate))
@@ -1354,11 +1385,38 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         final bTime = b.time.hour * 60 + b.time.minute;
         return aTime.compareTo(bTime);
       });
+      // print('DEBUG: LiveQueueDashboardView _filterDailyAppointments Found ${_dailyAppointmentsForDisplay.length} appointments for display.');
     });
   }
 
+  Widget _buildQueueTitle() {
+    final now = DateTime.now();
+    final isToday = _calendarSelectedDate.year == now.year &&
+                    _calendarSelectedDate.month == now.month &&
+                    _calendarSelectedDate.day == now.day;
+    
+    String title;
+    if (isToday) {
+      title = 'Live Patient Queue (Today)';
+    } else {
+      title = 'Patient Queue for ${DateFormat.yMMMd().format(_calendarSelectedDate)}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Text(
+        title,
+        style: TextStyle( // REMOVED const
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.teal[700],
+        ),
+      ),
+    );
+  }
+
   void _refreshAllData() {
-    _loadCombinedQueueData();
+    _loadCombinedQueueData(_calendarSelectedDate);
   }
 
   void _refreshActiveQueueForNextPatient() async {
@@ -1366,7 +1424,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     setState(() {
       _activeQueueFuture = Future.value(activeQueueItems);
     });
-     _loadCombinedQueueData();
+     _loadCombinedQueueData(_calendarSelectedDate);
   }
 
   Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
@@ -1405,8 +1463,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         queueNumber: 0, 
         status: 'in_consultation',
         paymentStatus: displayItemInQueue?.paymentStatus ?? 'Pending', // Carry over displayed payment status
-        conditionOrPurpose: originalAppointment.consultationType ?? originalAppointment.notes ?? 'Scheduled Consultation',
+        conditionOrPurpose: originalAppointment.consultationType ?? 'Scheduled Consultation',
         createdAt: DateTime.now(),
+        originalAppointmentId: originalAppointment.id,
       );
 
       bool addedToActiveQueue = await widget.queueService.addPatientToQueue(newQueueItem); 
@@ -1421,7 +1480,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
               backgroundColor: Colors.green,
             ),
           );
-          _loadCombinedQueueData(); // Refresh the list
+          _loadCombinedQueueData(_calendarSelectedDate); // Refresh the list
         }
       } else {
         if (mounted) {
@@ -1810,6 +1869,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     _calendarSelectedDate = selectedDay;
                     _calendarFocusedDay = focusedDay;
                     _filterDailyAppointments();
+                    _loadCombinedQueueData(selectedDay);
                   });
                 }
               },
@@ -1856,11 +1916,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   itemCount: _dailyAppointmentsForDisplay.length,
                   itemBuilder: (context, index) {
                     final appointment = _dailyAppointmentsForDisplay[index];
-                    return _buildImageStyledAppointmentCard(
-                        appointment.patientId,
-                        appointment.notes ?? appointment.consultationType ?? 'Scheduled',
-                        appointment.time.format(context),
-                        false);
+                    return _buildImageStyledAppointmentCard(appointment);
                   },
                 ),
         ],
@@ -1868,8 +1924,10 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     );
   }
 
-  Widget _buildImageStyledAppointmentCard(
-      String patientName, String details, String time, bool isHighlighted) {
+  Widget _buildImageStyledAppointmentCard(Appointment appointment, {bool isHighlighted = false}) {
+    String details = appointment.consultationType ?? 'Scheduled';
+    if (details.isEmpty) details = 'Scheduled';
+
     return Card(
         color: isHighlighted ? Colors.deepPurple.shade300 : Colors.white,
         elevation: isHighlighted ? 3 : 1.5,
@@ -1896,7 +1954,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      patientName,
+                      appointment.patientId,
                       style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color:
@@ -1918,18 +1976,72 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                time,
-                style: TextStyle(
-                    color: isHighlighted
-                        ? Colors.white.withOpacity(0.9)
-                        : Colors.grey[500],
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500),
-              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    appointment.time.format(context),
+                    style: TextStyle(
+                        color: isHighlighted
+                            ? Colors.white.withOpacity(0.9)
+                            : Colors.grey[500],
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  _buildDashboardAppointmentStatusChip(appointment.status),
+                ],
+              )
             ],
           ),
         ));
+  }
+
+  Widget _buildDashboardAppointmentStatusChip(String status) {
+    Color chipColor = Colors.grey.shade400;
+    IconData iconData = Icons.info_outline;
+    String label = status;
+
+    switch (status.toLowerCase()) {
+      case 'scheduled (simulated)':
+      case 'scheduled':
+        chipColor = Colors.blue.shade600;
+        iconData = Icons.schedule_outlined;
+        label = 'Scheduled';
+        break;
+      case 'confirmed':
+        chipColor = Colors.green.shade600;
+        iconData = Icons.check_circle_outline;
+        label = 'Confirmed';
+        break;
+      case 'in consultation':
+        chipColor = Colors.orange.shade700;
+        iconData = Icons.medical_services_outlined;
+        label = 'In Consult';
+        break;
+      case 'completed':
+        chipColor = Colors.purple.shade600;
+        iconData = Icons.done_all_outlined;
+        label = 'Completed';
+        break;
+      case 'cancelled':
+        chipColor = Colors.red.shade600;
+        iconData = Icons.cancel_outlined;
+        label = 'Cancelled';
+        break;
+      default:
+        label = status.length > 10 ? '${status.substring(0,8)}...': status;
+    }
+    return Chip(
+      avatar: Icon(iconData, color: Colors.white, size: 12),
+      label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      backgroundColor: chipColor,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 0.0),
+      labelPadding: const EdgeInsets.only(left: 2.0, right: 4.0),
+      iconTheme: const IconThemeData(size: 12),
+    );
   }
 
   Widget _buildYearMonthScroller() {
@@ -1976,8 +2088,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                         _calendarSelectedDate.year,
                         index + 1,
                         _calendarSelectedDate.day);
-                    _calendarFocusedDay = _calendarSelectedDate; // Keep focused day in sync
-                    _filterDailyAppointments(); // Update appointment list
+                    _calendarFocusedDay = _calendarSelectedDate;
+                    _filterDailyAppointments();
                   });
                 },
                 child: Container(
@@ -2023,8 +2135,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 _buildWelcomeSection(),
                 _buildSummaryMetricsSection(),
                 _buildTodaysDoctorsSection(),
-                const SizedBox(height: 16), // Added spacing before the queue
-                _buildLiveQueueDisplaySection(), // Correct placement of the live queue
+                const SizedBox(height: 16),
+                _buildLiveQueueDisplaySection(),
               ],
             ),
           ),
@@ -2035,7 +2147,6 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
             child: Container(
                 color: Colors.grey[50],
                 child: SingleChildScrollView(
-                  // Ensure this child is a Row for calendar and scroller side-by-side
                   child: Row( 
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2084,7 +2195,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     String originalAppointmentId = isRepresentingScheduledAppointment ? item.queueEntryId.substring(5) : '';
 
     final dataCells = [
-      isRepresentingScheduledAppointment ? arrivalDisplayTime : (item.queueNumber).toString(),
+      isRepresentingScheduledAppointment && item.status == 'Scheduled'
+          ? arrivalDisplayTime
+          : (item.queueNumber).toString(),
       item.patientName,
       isRepresentingScheduledAppointment ? "-" : arrivalDisplayTime,
       item.conditionOrPurpose ?? 'N/A',
@@ -2106,36 +2219,55 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-          color: isRepresentingScheduledAppointment && item.status == 'Scheduled' ? Colors.purple[50] : (item.status == 'removed'
-              ? Colors.grey.shade200
-              : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
-          border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+          color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
+              ? Colors.indigo[50] // CHANGED: More distinct color for scheduled
+              : (item.status == 'removed'
+                  ? Colors.grey.shade200
+                  : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
+          border: Border.all( // ADDED: Border for scheduled items
+            color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
+                   ? Colors.indigo[200]! 
+                   : Colors.grey.shade300,
+            width: isRepresentingScheduledAppointment && item.status == 'Scheduled' ? 1.5 : 1.0,
+          ),
+          borderRadius: BorderRadius.circular(4) // ADDED: Rounded corners
+      ),
       child: Row(
         children: [
           ...dataCells.asMap().entries.map((entry) {
             int idx = entry.key;
             String text = entry.value.toString();
             int flex = 1;
-            TextStyle currentCellStyle = cellStyle;
+            TextStyle currentCellStyle = cellStyle.copyWith(
+              color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
+                     ? Colors.indigo[700] 
+                     : cellStyle.color
+            );
 
             switch (idx) {
-              case 0:
+              case 0: // No. or Scheduled Time
                 flex = 1;
-                currentCellStyle = cellStyle.copyWith(fontWeight: FontWeight.bold);
-                if (isRepresentingScheduledAppointment) currentCellStyle = currentCellStyle.copyWith(color: Colors.purple[700]);
+                currentCellStyle = currentCellStyle.copyWith(
+                  fontWeight: FontWeight.bold,
+                  // Color is already handled above
+                );
                 break;
-              case 1:
+              case 1: // Name
                 flex = 2;
                 break;
-              case 2:
+              case 2: // Arrival (or '-' for scheduled)
                 flex = 1;
                 break;
-              case 3:
+              case 3: // Condition
                 flex = 2;
                 break;
-              case 4:
+              case 4: // Payment
                 flex = 1;
-                currentCellStyle = paymentStatusStyle;
+                currentCellStyle = paymentStatusStyle.copyWith(
+                  color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
+                         ? Colors.indigo[700] 
+                         : paymentStatusStyle.color
+                );
                 break;
             }
 
@@ -2196,32 +2328,32 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     color: Colors.teal[700])),
             IconButton(
                 icon: const Icon(Icons.refresh, size: 20),
-                onPressed: _refreshAllData, // Make sure _refreshAllData exists
+                onPressed: _refreshAllData,
                 tooltip: 'Refresh Queue & Appointments',
                 color: Colors.teal[700]),
           ],
         ),
         const SizedBox(height: 8),
-        _buildTableHeader(), // Make sure _buildTableHeader exists
-        _isLoadingQueueAndAppointments
-            ? const Center(child: CircularProgressIndicator(key: Key('liveQueueLoadingIndicator')))
-            : _combinedQueueForDisplayList.isEmpty
-                ? const Center(
-                    child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                        child: Text('No patients in queue or scheduled for today.',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                            textAlign: TextAlign.center)))
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(), // Important for nested scrolling
-                    itemCount: _combinedQueueForDisplayList.length,
-                    itemBuilder: (context, index) {
-                        final item = _combinedQueueForDisplayList[index];
-                        // Assuming item is always ActivePatientQueueItem due to list construction in _loadCombinedQueueData
-                        return _buildTableRow(item as ActivePatientQueueItem); // Make sure _buildTableRow exists and handles item
-                    },
-                  ),
+        _buildTableHeader(),
+        Container(
+          height: 250.0,
+          child: _isLoadingQueueAndAppointments
+              ? const Center(child: CircularProgressIndicator(key: Key('liveQueueLoadingIndicator')))
+              : _combinedQueueForDisplayList.isEmpty
+                  ? const Center(
+                      child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+                          child: Text('No patients in queue or scheduled for today.',
+                              style: TextStyle(fontSize: 16, color: Colors.grey),
+                              textAlign: TextAlign.center)))
+                  : ListView.builder(
+                      itemCount: _combinedQueueForDisplayList.length,
+                      itemBuilder: (context, index) {
+                          final item = _combinedQueueForDisplayList[index];
+                          return _buildTableRow(item as ActivePatientQueueItem);
+                      },
+                    ),
+        ),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -2252,7 +2384,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
             ),
           ],
         ),
-        const SizedBox(height: 16), // Optional: Add some padding at the bottom of the section
+        const SizedBox(height: 16),
       ],
     );
   }

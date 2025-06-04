@@ -4,13 +4,15 @@ import 'package:intl/intl.dart'; // For DateFormat.Hm()
 import 'package:flutter_application_1/models/patient.dart'; // ADDED - Real Patient model
 import 'package:flutter_application_1/models/user.dart'; // ADDED - For Doctor data (assuming doctors are Users)
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED
+import 'package:flutter_application_1/services/queue_service.dart'; // ADDED
+import 'package:flutter_application_1/services/database_helper.dart'; // ADDED
 import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart' show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
+import 'dart:convert'; // Required for jsonEncode for selectedServices in Appointment
 // Assuming you have models for Patient and Doctor
 // import 'package:flutter_application_1/models/patient.dart'; 
 // import 'package:flutter_application_1/models/doctor.dart'; 
 // import 'package:flutter_application_1/services/appointment_database_service.dart'; // Temporarily commented out
-// import 'package:flutter_application_1/services/database_helper.dart'; // Temporarily commented out
 // import 'package:flutter_application_1/services/auth_service.dart'; // For getting current user ID
 
 // Define ConsultationType for clarity
@@ -28,6 +30,21 @@ class ConsultationType {
 
   @override
   int get hashCode => name.hashCode;
+}
+
+// ADDED: ServiceItem class (similar to add_to_queue_screen)
+class ServiceItem {
+  final String name;
+  final String category;
+  final double price;
+  bool isSelected;
+
+  ServiceItem({
+    required this.name,
+    required this.category,
+    required this.price,
+    this.isSelected = false,
+  });
 }
 
 class AddAppointmentScreen extends StatefulWidget {
@@ -52,6 +69,7 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
   final _formKey = GlobalKey<FormState>();
   // late AppointmentDatabaseService _appointmentService; // Temporarily commented out
   // late AuthService _authService; // For getting current user ID - Uncomment if you use it
+  late QueueService _queueService; // ADDED
 
   // Form state
   Patient? _selectedPatient;
@@ -76,6 +94,27 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // ADDED: Available services list (similar to add_to_queue_screen)
+  // Consider moving this to a shared location or fetching from a service if it grows large or needs to be dynamic
+  final List<ServiceItem> _availableServices = [
+    ServiceItem(name: 'Consultation', category: 'Consultation', price: 500.0),
+    ServiceItem(name: 'Chest X-ray', category: 'Laboratory', price: 350.0),
+    ServiceItem(name: 'ECG', category: 'Laboratory', price: 650.0),
+    ServiceItem(name: 'Fasting Blood Sugar', category: 'Laboratory', price: 150.0),
+    ServiceItem(name: 'Total Cholesterol', category: 'Laboratory', price: 250.0),
+    ServiceItem(name: 'Triglycerides', category: 'Laboratory', price: 250.0),
+    ServiceItem(name: 'High Density Lipoprotein (HDL)', category: 'Laboratory', price: 250.0),
+    ServiceItem(name: 'Low Density Lipoprotein (LDL)', category: 'Laboratory', price: 200.0),
+    ServiceItem(name: 'Blood Uric Acid', category: 'Laboratory', price: 200.0),
+    ServiceItem(name: 'Creatinine', category: 'Laboratory', price: 200.0),
+  ];
+
+  // ADDED: State for selected services and total price
+  List<ServiceItem> _selectedServices = [];
+  double _totalPrice = 0.0;
+  final TextEditingController _otherPurposeController = TextEditingController(); // For "Other" purpose in service dialog
+  bool _showOtherPurposeFieldInDialog = false; // To manage visibility of "Other" field in dialog
+
   final List<ConsultationType> _consultationTypes = [
     ConsultationType(name: 'Consultation', durationMinutes: 30),
     ConsultationType(name: 'Follow-up', durationMinutes: 15),
@@ -83,7 +122,7 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
   ];
 
   // Placeholder data - replace with actual data fetching
-  List<Patient> _patients = []; // CHANGED - Initialize as empty, to be fetched
+  // List<Patient> _patients = []; // CHANGED - Initialize as empty, to be fetched // REMOVED
   // List<User> _doctors = []; // CHANGED - Initialize as empty, to be fetched, assuming doctors are Users
 
   // Blood types for the mini registration form
@@ -91,9 +130,18 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
     'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'
   ];
 
+  // Helper to convert TimeOfDay to minutes from midnight for easier comparison
+  int _timeOfDayToMinutes(TimeOfDay tod) => tod.hour * 60 + tod.minute;
+
+  // Helper to check if a day is selectable (not Sunday)
+  bool _isSelectable(DateTime day) {
+    return day.weekday != DateTime.sunday;
+  }
+
   @override
   void initState() {
     super.initState();
+    _queueService = QueueService(); // ADDED: Initialize QueueService
     // IMPORTANT: Initialize DatabaseHelper and AppointmentDatabaseService properly.
     // No longer directly using _appointmentService here, will use ApiService
     print("AddAppointmentScreen: Using ApiService for data operations.");
@@ -119,6 +167,43 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
           (_selectedTime.hour < now.hour || (_selectedTime.hour == now.hour && _selectedTime.minute < now.minute))) {
          _selectedTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
       }
+    }
+
+    final nowDateTime = DateTime.now();
+    final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+    final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+
+    if (widget.selectedDate != null) {
+      _selectedDate = widget.selectedDate!;
+    } else {
+       // If no date is passed, _selectedDate defaults to DateTime.now()
+       // Ensure date is not Sunday for initial default, if it is, advance to Monday
+      if (_selectedDate.weekday == DateTime.sunday) {
+        _selectedDate = _selectedDate.add(const Duration(days: 1));
+      }
+    }
+    
+    // Adjust initial _selectedTime based on working hours and selected date
+    if (!_isSelectable(_selectedDate)) { // If somehow current _selectedDate is Sunday (e.g. from widget.selectedDate)
+        _selectedTime = minWorkingTime; // Default to start, validation will catch Sunday
+    } else {
+        TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5))); // Default to 5 mins from now
+
+        if (DateUtils.isSameDay(_selectedDate, nowDateTime)) { // If selected date is today
+            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) { // Ensure it's not in the past
+                proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+            }
+
+            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(minWorkingTime)) {
+                _selectedTime = minWorkingTime;
+            } else if (_timeOfDayToMinutes(proposedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
+                _selectedTime = maxWorkingTime; // Clamp to end for today
+            } else {
+                _selectedTime = proposedTime;
+            }
+        } else { // If selected date is a future working day
+            _selectedTime = minWorkingTime; // Default to start of working day
+        }
     }
   }
 
@@ -167,20 +252,34 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _selectedDoctor = null;
       _selectedConsultationType = _consultationTypes.isNotEmpty ? _consultationTypes.first : null;
       // Reset date and time carefully, considering widget.selectedDate
-      final now = DateTime.now();
-      _selectedDate = widget.selectedDate ?? now;
+      final nowDateTime = DateTime.now();
+      _selectedDate = widget.selectedDate ?? nowDateTime;
       
-      TimeOfDay initialTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
-      if (DateUtils.isSameDay(_selectedDate, now)) {
-          if (initialTime.hour < now.hour || (initialTime.hour == now.hour && initialTime.minute < now.minute)) {
-            initialTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
-          }
-      } else if (_selectedDate.isBefore(now)) {
-        // If for some reason the date is past, reset to today
-        _selectedDate = now;
-        initialTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
+      if (!_isSelectable(_selectedDate)) { // If default date is Sunday, advance to Monday
+         _selectedDate = _selectedDate.add(Duration(days: DateTime.monday - _selectedDate.weekday));
+         if(_selectedDate.isBefore(nowDateTime) && !DateUtils.isSameDay(_selectedDate, nowDateTime)) { // if Monday is past, take next Monday
+            _selectedDate = _selectedDate.add(const Duration(days: 7));
+         }
       }
-       _selectedTime = initialTime;
+      
+      final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+      final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+
+      if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
+          TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+          if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
+             proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+          }
+          if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(minWorkingTime)) {
+            _selectedTime = minWorkingTime;
+          } else if (_timeOfDayToMinutes(proposedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
+            _selectedTime = maxWorkingTime;
+          } else {
+            _selectedTime = proposedTime;
+          }
+      } else { // Future working day
+          _selectedTime = minWorkingTime;
+      }
 
       _notesController.clear();
       _patientSearchController.clear(); // ADDED
@@ -189,6 +288,13 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
       // _doctorSearchResults = []; // REMOVED
       _errorMessage = null;
       _formKey.currentState?.reset(); // Also reset form validation state
+
+      // ADDED: Clear service selection state
+      _selectedServices.forEach((s) => s.isSelected = false);
+      _selectedServices.clear();
+      _totalPrice = 0.0;
+      _otherPurposeController.clear();
+      _showOtherPurposeFieldInDialog = false;
     });
   }
 
@@ -210,9 +316,11 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
         if (existing.doctorId == doctorId) {
           return "Doctor Conflict: Dr. $doctorId is booked from ${DateFormat.Hm().format(existingApptStart)} to ${DateFormat.Hm().format(existingApptEnd)}.";
         }
-        if (existing.patientId == patientId) {
-          return "Patient Conflict: You (Patient $patientId) are booked from ${DateFormat.Hm().format(existingApptStart)} to ${DateFormat.Hm().format(existingApptEnd)}.";
-        }
+        // Patient conflict check removed as per previous user instructions implicitly by focusing on doctor conflicts.
+        // Re-add if necessary:
+        // if (existing.patientId == patientId) {
+        //   return "Patient Conflict: Patient $patientId is booked from ${DateFormat.Hm().format(existingApptStart)} to ${DateFormat.Hm().format(existingApptEnd)}.";
+        // }
       }
     }
     return null; // No conflict
@@ -220,37 +328,134 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
   Future<void> _pickDate(BuildContext context) async {
     final DateTime now = DateTime.now();
-    final DateTime initialPickerDate = _selectedDate.isBefore(now) ? now : _selectedDate;
+    DateTime initialPickerDate = _selectedDate;
+    if (initialPickerDate.isBefore(now) && !DateUtils.isSameDay(initialPickerDate, now)) {
+      initialPickerDate = now;
+    }
+    if (!_isSelectable(initialPickerDate)) { // If current initial is Sunday, start picker on Monday
+        initialPickerDate = initialPickerDate.add(Duration(days: DateTime.monday - initialPickerDate.weekday));
+        if(initialPickerDate.isBefore(now) && !DateUtils.isSameDay(initialPickerDate, now)) {
+            initialPickerDate = initialPickerDate.add(const Duration(days: 7));
+        }
+    }
 
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: initialPickerDate, 
-      firstDate: DateTime(now.year, now.month, now.day), // Prevent selecting past dates
+      initialDate: initialPickerDate,
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      selectableDayPredicate: _isSelectable, // Disable Sundays
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        // If date changed to today, check if current _selectedTime is in the past
-        final currentTime = DateTime.now();
-        if (DateUtils.isSameDay(_selectedDate, currentTime) && 
-            (_selectedTime.hour < currentTime.hour || 
-             (_selectedTime.hour == currentTime.hour && _selectedTime.minute < currentTime.minute))) {
-          _selectedTime = TimeOfDay.fromDateTime(currentTime.add(const Duration(minutes: 5)));
+        // Adjust time if date changed
+        final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+        final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+        final nowDateTime = DateTime.now();
+
+        if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
+            TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
+               proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+            }
+            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(minWorkingTime)) {
+                _selectedTime = minWorkingTime;
+            } else if (_timeOfDayToMinutes(proposedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
+                _selectedTime = maxWorkingTime;
+            } else {
+                _selectedTime = proposedTime;
+            }
+        } else { // Future working day
+            _selectedTime = minWorkingTime; // Default to start of working day
         }
       });
     }
   }
 
   Future<void> _pickTime(BuildContext context) async {
+    TimeOfDay initialPickerTime = _selectedTime; // Default to current _selectedTime
+    final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+    final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+    final nowDateTime = DateTime.now();
+
+    if (_isSelectable(_selectedDate)) { // If it's a workday
+      if (DateUtils.isSameDay(_selectedDate, nowDateTime)) { // If today
+        TimeOfDay nowTimeForPicker = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 1))); // Base for "now"
+
+        // Default initialPickerTime to nowTimeForPicker, clamped to working hours
+        if (_timeOfDayToMinutes(nowTimeForPicker) < _timeOfDayToMinutes(minWorkingTime)) {
+          initialPickerTime = minWorkingTime;
+        } else if (_timeOfDayToMinutes(nowTimeForPicker) > _timeOfDayToMinutes(maxWorkingTime)) {
+          initialPickerTime = maxWorkingTime;
+        } else {
+          initialPickerTime = nowTimeForPicker;
+        }
+
+        // If _selectedTime is valid for today (within working hours and not past), prefer it.
+        bool isSelectedTimeValidForToday =
+            _timeOfDayToMinutes(_selectedTime) >= _timeOfDayToMinutes(minWorkingTime) &&
+            _timeOfDayToMinutes(_selectedTime) <= _timeOfDayToMinutes(maxWorkingTime) &&
+            _timeOfDayToMinutes(_selectedTime) >= _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime));
+
+        if (isSelectedTimeValidForToday) {
+          initialPickerTime = _selectedTime;
+        }
+
+      } else { // Future workday
+        // For future workdays, clamp _selectedTime to bounds for initial picker value
+        if (_timeOfDayToMinutes(_selectedTime) < _timeOfDayToMinutes(minWorkingTime)) {
+          initialPickerTime = minWorkingTime;
+        } else if (_timeOfDayToMinutes(_selectedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
+          initialPickerTime = maxWorkingTime; // Corrected typo from initialPikerTime
+        }
+        // If _selectedTime is already within bounds, it remains initialPickerTime
+      }
+    }
+    // If _selectedDate is Sunday, initialPickerTime remains _selectedTime; clamping and validation occur after picking or on submit.
+
     final TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialTime: _selectedTime,
+      initialTime: initialPickerTime,
+      builder: (BuildContext context, Widget? child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+          child: child!,
+        );
+      },
     );
-    if (picked != null && picked != _selectedTime) {
-      setState(() {
-        _selectedTime = picked;
-      });
+
+    if (picked != null) {
+      TimeOfDay newSelectedTime = picked;
+      String? adjustmentMessage;
+
+      if (_isSelectable(_selectedDate)) { // Only clamp if it's a working day
+        if (_timeOfDayToMinutes(picked) < _timeOfDayToMinutes(minWorkingTime)) {
+          newSelectedTime = minWorkingTime;
+          adjustmentMessage = 'Time adjusted: Earliest is 7:30 AM.';
+        } else if (_timeOfDayToMinutes(picked) > _timeOfDayToMinutes(maxWorkingTime)) {
+          newSelectedTime = maxWorkingTime;
+          adjustmentMessage = 'Time adjusted: Latest is 4:30 PM.';
+        }
+      }
+      // If it's a Sunday, _submitForm will validate and prevent scheduling.
+
+      if (newSelectedTime != _selectedTime) {
+        setState(() {
+          _selectedTime = newSelectedTime;
+        });
+      }
+
+      if (adjustmentMessage != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(adjustmentMessage),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.orangeAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -271,173 +476,196 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
       // --- Past Date/Time Check ---
       final DateTime now = DateTime.now();
-      final DateTime appointmentDateTime = DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        _selectedTime.hour,
-        _selectedTime.minute,
+      final DateTime appointmentStartDateTime = DateTime(
+        _selectedDate.year, _selectedDate.month, _selectedDate.day,
+        _selectedTime.hour, _selectedTime.minute,
       );
 
-      if (appointmentDateTime.isBefore(now.subtract(const Duration(minutes: 1)))) { // Allow for a tiny buffer e.g. 1 minute
-        setState(() {
-          _errorMessage = 'Cannot schedule appointments for past dates or times.';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_errorMessage!),
-            backgroundColor: Theme.of(context).colorScheme.error
-          )
-        );
+      if (appointmentStartDateTime.isBefore(now.subtract(const Duration(minutes: 1)))) {
+        setState(() { _errorMessage = 'Cannot schedule appointments for past dates or times.'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
         return;
       }
       // --- End Past Date/Time Check ---
 
+      // --- Working Hours and Day Validation ---
+      if (!_isSelectable(_selectedDate)) { // Check for Sunday
+        setState(() { _errorMessage = 'Appointments cannot be scheduled on Sundays.'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
+        return;
+      }
+
+      final DateTime workDayStartBoundary = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 7, 30);
+      final DateTime workDayEndBoundary = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, 16, 30);
+      final DateTime appointmentEndDateTime = appointmentStartDateTime.add(Duration(minutes: _selectedConsultationType!.durationMinutes));
+
+      if (appointmentStartDateTime.isBefore(workDayStartBoundary)) {
+        setState(() { _errorMessage = 'Appointments must start on or after 7:30 AM.'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
+        return;
+      }
+
+      if (appointmentEndDateTime.isAfter(workDayEndBoundary)) {
+        setState(() { _errorMessage = 'Appointments must end by 4:30 PM. Selected time or duration is too late.'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error, duration: Duration(seconds: 4),));
+        return;
+      }
+      // --- End Working Hours and Day Validation ---
+
+      if (_selectedPatient != null) {
+        bool isPatientInActiveQueueToday = await _queueService.isPatientCurrentlyActive(
+          patientId: _selectedPatient!.id,
+          patientName: _selectedPatient!.fullName,
+        );
+        if (isPatientInActiveQueueToday) {
+          setState(() {
+            _errorMessage = 'This patient (${_selectedPatient!.fullName}) is already in the active queue for today. Cannot schedule another appointment while they are actively in queue.';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error, duration: const Duration(seconds: 5))
+          );
+          return;
+        }
+      }
+
       String? conflictMessage = _getConflictMessage(
-          _selectedDoctor!.id, 
-          _selectedPatient!.id, 
-          _selectedDate, 
-          _selectedTime, 
+          _selectedDoctor!.id,
+          _selectedPatient!.id,
+          _selectedDate,
+          _selectedTime,
           _selectedConsultationType!.durationMinutes
       );
       if (conflictMessage != null) {
-        setState(() {
-          _errorMessage = conflictMessage;
-        });
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_errorMessage!),
-            backgroundColor: Theme.of(context).colorScheme.error
-          )
-        );
+        setState(() { _errorMessage = conflictMessage; });
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
         return;
       }
 
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+      setState(() { _isLoading = true; _errorMessage = null; });
 
       try {
-        String currentUserId = 'user_placeholder_id'; 
+        String currentUserId = 'user_placeholder_id';
+        final List<Map<String, dynamic>> servicesToStore = _selectedServices.map((service) => {
+          'name': service.name, 'category': service.category, 'price': service.price,
+        }).toList();
+        String combinedNotes = "";
+        if (_otherPurposeController.text.trim().isNotEmpty) {
+          combinedNotes = "Other Purpose/Details: ${_otherPurposeController.text.trim()}";
+        }
+
         Appointment newAppointment = Appointment(
-          id: DateTime.now().millisecondsSinceEpoch.toString(), // Temporary ID, DB might override
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
           patientId: _selectedPatient!.id,
           date: _selectedDate,
           time: _selectedTime,
-          doctorId: _selectedDoctor!.id, // Use User's ID
+          doctorId: _selectedDoctor!.id,
           consultationType: _selectedConsultationType!.name,
           durationMinutes: _selectedConsultationType!.durationMinutes,
-          status: 'Scheduled', // CHANGED - Real status
-          notes: _notesController.text.trim(),
-          createdById: currentUserId, // Placeholder, replace with actual logged-in user ID
+          status: 'Scheduled',
           createdAt: DateTime.now(),
+          selectedServices: servicesToStore.isNotEmpty ? servicesToStore : null,
+          totalPrice: _totalPrice > 0 ? _totalPrice : null,
+          paymentStatus: 'Pending',
         );
-
-        // print("Attempting to save appointment: ${newAppointment.toJson()}");
-        // Actual save is now handled by the parent AppointmentOverviewScreen's _handleAppointmentSaved method,
-        // which will call ApiService.saveAppointment.
-        // This screen just prepares the Appointment object and passes it up.
         
-        // Simulate preparation and pass to parent - no async delay here anymore for the actual save
         widget.onAppointmentSaved?.call(newAppointment);
-        _clearForm(); // Clear form after successfully preparing and passing up
-
-        // No SnackBar here for success, parent will handle it after actual save.
+        _clearForm();
         
       } catch (e) {
         if (mounted) {
-          setState(() {
-            _errorMessage = 'Failed to (simulated) save appointment: ${e.toString()}';
-          });
-           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_errorMessage!),
-              backgroundColor: Theme.of(context).colorScheme.error
-            )
-          );
+          setState(() { _errorMessage = 'Failed to save appointment: ${e.toString()}'; });
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
         }
       } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+        if (mounted) setState(() => _isLoading = false); }
+      } else {
+        setState(() { _errorMessage = 'Please fill all required fields correctly.'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_errorMessage!), backgroundColor: Theme.of(context).colorScheme.error));
       }
-    } else {
-      // Form validation failed (e.g. empty fields)
-      setState(() {
-          _errorMessage = 'Please fill all required fields correctly.';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_errorMessage!),
-          backgroundColor: Theme.of(context).colorScheme.error
-        )
-      );
     }
-  }
 
-  void _searchPatients(String query) async { // ADDED
-    if (_patientSearchDebounce?.isActive ?? false) _patientSearchDebounce!.cancel();
-    _patientSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
-      if (query.length < 2) {
-        if (mounted) {
-          setState(() {
-            _patientSearchResults = [];
-            _isSearchingPatient = false;
-          });
+    void _searchPatients(String query) async { // ADDED
+      if (_patientSearchDebounce?.isActive ?? false) _patientSearchDebounce!.cancel();
+      _patientSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
+        if (query.length < 2) {
+          if (mounted) {
+            setState(() {
+              _patientSearchResults = [];
+              _isSearchingPatient = false;
+            });
+          }
+          return;
         }
-        return;
-      }
-      if (mounted) setState(() => _isSearchingPatient = true);
-      try {
-        final results = await ApiService.searchPatients(query);
-        if (mounted) {
-          setState(() {
-            _patientSearchResults = results;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _patientSearchResults = [];
-            // Optionally show an error specific to search
-             print("Patient search error: $e");
-          });
-        }
-      } finally {
-        if (mounted) setState(() => _isSearchingPatient = false);
-      }
-    });
-  }
-
-  // void _searchDoctors(String query) async { ... } // REMOVED entire method
-
-  @override
-  void dispose() {
-    _notesController.dispose();
-    _patientSearchController.dispose(); 
-    _patientSearchDebounce?.cancel(); 
-    // _doctorSearchController.dispose(); // REMOVED
-    // _doctorSearchDebounce?.cancel(); // REMOVED
-    super.dispose();
-  }
-  
-  @override
-  void didUpdateWidget(covariant AddAppointmentScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.selectedDate != null && widget.selectedDate != _selectedDate) {
-      setState(() {
-        _selectedDate = widget.selectedDate!;
-        // If date changed to today, check if current _selectedTime is in the past
-        final currentTime = DateTime.now();
-        if (DateUtils.isSameDay(_selectedDate, currentTime) && 
-            (_selectedTime.hour < currentTime.hour || 
-             (_selectedTime.hour == currentTime.hour && _selectedTime.minute < currentTime.minute))) {
-          _selectedTime = TimeOfDay.fromDateTime(currentTime.add(const Duration(minutes: 5)));
+        if (mounted) setState(() => _isSearchingPatient = true);
+        try {
+          final results = await ApiService.searchPatients(query);
+          if (mounted) {
+            setState(() {
+              _patientSearchResults = results;
+            });
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() {
+              _patientSearchResults = [];
+              // Optionally show an error specific to search
+               print("Patient search error: $e");
+            });
+          }
+        } finally {
+          if (mounted) setState(() => _isSearchingPatient = false);
         }
       });
     }
-  }
+
+    @override
+    void dispose() {
+      _notesController.dispose();
+      _patientSearchController.dispose(); 
+      _patientSearchDebounce?.cancel(); 
+      _otherPurposeController.dispose(); // ADDED
+      super.dispose();
+    }
+    
+    @override
+    void didUpdateWidget(covariant AddAppointmentScreen oldWidget) {
+      super.didUpdateWidget(oldWidget);
+      if (widget.selectedDate != null && widget.selectedDate != _selectedDate) {
+        setState(() {
+          _selectedDate = widget.selectedDate!;
+          if (!_isSelectable(_selectedDate)) { // If new date is Sunday
+              // Optionally, show a message or automatically shift to Monday
+              // For now, _submitForm will catch this.
+              // Or, adjust _selectedDate to next working day if desired policy.
+          }
+          // Adjust time based on the new date and working hours
+          final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+          final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+          final nowDateTime = DateTime.now();
+
+          if (_isSelectable(_selectedDate)) {
+              if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
+                  TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+                  if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
+                     proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+                  }
+
+                  if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(minWorkingTime)) {
+                      _selectedTime = minWorkingTime;
+                  } else if (_timeOfDayToMinutes(proposedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
+                      _selectedTime = maxWorkingTime;
+                  } else {
+                      _selectedTime = proposedTime;
+                  }
+              } else { // Future working day
+                  _selectedTime = minWorkingTime;
+              }
+          } else { // It's a Sunday
+              _selectedTime = minWorkingTime; // Default, submit validation will catch
+          }
+        });
+      }
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -686,18 +914,70 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    TextFormField(
-                      controller: _notesController,
-                      decoration: InputDecoration(
-                        labelText: 'Notes (Optional)',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                        prefixIcon: const Icon(Icons.notes_outlined),
-                        alignLabelWithHint: true,
+                    // ADDED: Service Selection UI elements
+                    Text('Services / Purpose of Visit',
+                        style: TextStyle(
+                            fontSize: Theme.of(context).textTheme.titleMedium?.fontSize,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.teal[700])),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.medical_services_outlined, color: Colors.teal),
+                      label: Text('Select Services / Specify Purpose', style: TextStyle(color: Colors.teal[700])),
+                      onPressed: _openServiceSelectionDialog, // To be implemented
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[50],
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          textStyle: const TextStyle(fontSize: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.0),
+                            side: BorderSide(color: Colors.teal.withOpacity(0.5))
+                          )
                       ),
-                      maxLines: 3,
-                      textInputAction: TextInputAction.done,
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 10),
+                    if (_selectedServices.isNotEmpty)
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 4.0,
+                        children: _selectedServices
+                            .map((service) => Chip(
+                                  avatar: Icon(Icons.check_circle_outline, size: 16, color: Colors.teal[700]),
+                                  label: Text(
+                                      '${service.name} (₱${service.price.toStringAsFixed(2)})'),
+                                  backgroundColor: Colors.teal[100],
+                                  labelStyle: TextStyle(color: Colors.teal[800], fontSize: 13),
+                                  deleteIcon: Icon(Icons.cancel, size: 16, color: Colors.teal[600]),
+                                  onDeleted: () {
+                                    setState(() {
+                                      service.isSelected = false; // Ensure it's marked as not selected in the main list
+                                      _selectedServices.remove(service);
+                                      _totalPrice = _selectedServices.fold(0, (sum, item) => sum + item.price);
+                                    });
+                                  },
+                                ))
+                            .toList(),
+                      ),
+                    if (_otherPurposeController.text.isNotEmpty) // Display if "Other" purpose was filled
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                            "Other Purpose: ${_otherPurposeController.text}",
+                            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[700], fontSize: 13)),
+                      ),
+                    if (_selectedServices.isNotEmpty || _otherPurposeController.text.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Text(
+                          'Total Estimated Price: ₱${_totalPrice.toStringAsFixed(2)}',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700]),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    // END ADDED: Service Selection UI elements
 
                     SizedBox(
                       width: double.infinity,
@@ -782,6 +1062,152 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
         );
     }
   }
+
+  // ADDED: Service Selection Dialog (adapted from add_to_queue_screen.dart)
+  void _openServiceSelectionDialog() {
+    // Reset isSelected state for all available services before opening dialog
+    for (var service in _availableServices) {
+      service.isSelected = _selectedServices.any((selected) => selected.name == service.name);
+    }
+    TextEditingController dialogOtherController = TextEditingController(text: _otherPurposeController.text);
+    bool currentShowOtherField = _showOtherPurposeFieldInDialog;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            double currentDialogPrice = _availableServices
+                .where((s) => s.isSelected)
+                .fold(0, (sum, item) => sum + item.price);
+
+            // --- RE-INTRODUCE CATEGORY GROUPING ---
+            Map<String, List<ServiceItem>> groupedServices = {};
+            for (var service in _availableServices) {
+              (groupedServices[service.category] ??= []).add(service);
+            }
+            // Define desired category order - ensure all current categories are listed
+            // Current categories based on the _availableServices list are: 'Consultation', 'Laboratory'
+            List<String> categoryOrder = ['Consultation', 'Laboratory']; // Add other categories if they exist in _availableServices
+            // --- END RE-INTRODUCE CATEGORY GROUPING ---
+
+            return AlertDialog(
+              title: const Text('Select Services / Purpose of Visit'),
+              contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: <Widget>[
+                    // --- MODIFIED TO DISPLAY CATEGORIES AND SERVICES ---
+                    ...categoryOrder.where((cat) => groupedServices.containsKey(cat)).expand((category) => [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10.0, bottom: 4.0),
+                        child: Text(category, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal[700], fontSize: 16)),
+                      ),
+                      ...groupedServices[category]!.map((service) => CheckboxListTile(
+                            title: Text(
+                                '${service.name} (₱${NumberFormat("#,##0.00", "en_US").format(service.price)})',
+                                style: const TextStyle(fontSize: 14)),
+                            value: service.isSelected,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                service.isSelected = value!;
+                                currentDialogPrice = _availableServices
+                                    .where((s) => s.isSelected)
+                                    .fold(0, (sum, item) => sum + item.price);
+                              });
+                            },
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            activeColor: Colors.teal,
+                          )),
+                      const Divider(),
+                    ]),
+                    // --- END MODIFICATION ---
+                    
+                    // "Other Purpose" section remains largely the same
+                    CheckboxListTile(
+                      title: const Text("Other Purpose (Specify below)",
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal)),
+                      value: currentShowOtherField,
+                      onChanged: (bool? value) {
+                        setDialogState(() {
+                          currentShowOtherField = value!;
+                        });
+                      },
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: Colors.teal,
+                    ),
+                    if (currentShowOtherField)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
+                        child: TextFormField(
+                          controller: dialogOtherController,
+                          decoration: const InputDecoration(
+                              labelText: 'Specify other purpose or details',
+                              border: OutlineInputBorder(),
+                              hintText: 'e.g., Annual Check-up, Pre-employment',
+                              isDense: true
+                          ),
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Total Estimated: ₱${NumberFormat("#,##0.00", "en_US").format(currentDialogPrice)}',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.green[700]),
+                      ),
+                    ),
+                     const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.end,
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  child: const Text('Confirm'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _selectedServices = _availableServices.where((s) => s.isSelected).toList();
+                      _totalPrice = _selectedServices.fold(0, (sum, item) => sum + item.price);
+                      _showOtherPurposeFieldInDialog = currentShowOtherField;
+                      if (currentShowOtherField) {
+                        _otherPurposeController.text = dialogOtherController.text.trim();
+                      } else {
+                        _otherPurposeController.clear();
+                      }
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 // UPDATED: Dialog Patient Registration Form Widget using ReusablePatientFormFields
@@ -789,7 +1215,7 @@ class _DialogPatientRegistrationForm extends StatefulWidget {
   final Function(Patient) onRegistered;
   final List<String> bloodTypes;
 
-  const _DialogPatientRegistrationForm({required this.onRegistered, required this.bloodTypes});
+  const _DialogPatientRegistrationForm({super.key, required this.onRegistered, required this.bloodTypes});
 
   @override
   State<_DialogPatientRegistrationForm> createState() => _DialogPatientRegistrationFormState();
@@ -843,9 +1269,11 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
       setState(() => _isSaving = true);
       try {
         if (_dobController.text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Date of Birth is required.'), backgroundColor: Colors.red),
-          );
+          if (mounted) { // Check if widget is still in the tree
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Date of Birth is required.'), backgroundColor: Colors.red),
+            );
+          }
           setState(() => _isSaving = false);
           return;
         }
@@ -859,39 +1287,30 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
           address: _addressController.text.trim(), 
           bloodType: _bloodType, 
           allergies: _allergiesController.text.trim(),
-          // Adding data from new controllers
-          // Patient model doesn't have direct fields for all of these, adjust as per your Patient model
-          // For example, email, emergency contacts, medical history, current medications
-          // might be part of a larger notes field or structured data if your Patient model supports it.
-          // For now, I'll assume they map to existing optional fields or are for future expansion.
           // Ensure your Patient model can handle these or they are mapped appropriately.
-          // email: _emailController.text.trim(), // If Patient model has email
-          // emergencyContactName: _emergencyContactNameController.text.trim(), // if model supports
-          // emergencyContactNumber: _emergencyContactController.text.trim(), // if model supports
-          // medicalHistory: _medicalInfoController.text.trim(), // if model supports
-          // currentMedications: _currentMedicationsController.text.trim(), // if model supports
+          // For example, if Patient model has 'email', 'emergencyContactName', etc.
+          // email: _emailController.text.trim(), 
+          // emergencyContactName: _emergencyContactNameController.text.trim(),
+          // emergencyContactNumber: _emergencyContactController.text.trim(),
+          // medicalHistory: _medicalInfoController.text.trim(),
+          // currentMedications: _currentMedicationsController.text.trim(),
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
         
-        // Assuming Patient model has been updated or these fields are optional / map to notes
-        // Example: If patient has `otherMedicalInfo` field for notes
-        // final otherInfo = "Medications: ${_currentMedicationsController.text.trim()}\nHistory: ${_medicalInfoController.text.trim()}";
-        // final patientToSave = newPatient.copyWith(otherMedicalInfo: otherInfo);
-
-        final patientId = await ApiService.createPatient(newPatient); // Pass newPatient or patientToSave
+        final patientId = await ApiService.createPatient(newPatient);
         final registeredPatient = newPatient.copyWith(id: patientId);
         
         widget.onRegistered(registeredPatient);
 
       } catch (e) {
-        if (mounted) {
+        if (mounted) { // Check if widget is still in the tree
            ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Registration failed: ${e.toString()}'), backgroundColor: Colors.red),
           );
         }
       } finally {
-        if (mounted) {
+        if (mounted) { // Check if widget is still in the tree
           setState(() => _isSaving = false);
         }
       }
@@ -900,15 +1319,14 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
 
  @override
   Widget build(BuildContext context) {
-    // Define a custom TextTheme with smaller fonts for the dialog
     final originalTextTheme = Theme.of(context).textTheme;
-    const double dialogFontSize = 12.5; // Smaller font size
+    const double dialogFontSize = 12.5; 
 
     final dialogTextTheme = originalTextTheme.copyWith(
       bodyLarge: originalTextTheme.bodyLarge?.copyWith(fontSize: dialogFontSize),
-      bodyMedium: originalTextTheme.bodyMedium?.copyWith(fontSize: dialogFontSize), // Input text style
-      labelLarge: originalTextTheme.labelLarge?.copyWith(fontSize: dialogFontSize), // InputDecoration labelStyle
-      titleMedium: originalTextTheme.titleMedium?.copyWith(fontSize: dialogFontSize + 1), // For Dropdown items if needed
+      bodyMedium: originalTextTheme.bodyMedium?.copyWith(fontSize: dialogFontSize), 
+      labelLarge: originalTextTheme.labelLarge?.copyWith(fontSize: dialogFontSize), 
+      titleMedium: originalTextTheme.titleMedium?.copyWith(fontSize: dialogFontSize + 1), 
     );
 
     return Scaffold(
@@ -916,19 +1334,15 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
       body: Theme(
         data: Theme.of(context).copyWith(
           textTheme: dialogTextTheme,
-          // Also adjust input decoration theme for smaller content padding if necessary
           inputDecorationTheme: Theme.of(context).inputDecorationTheme.copyWith(
             labelStyle: TextStyle(fontSize: dialogFontSize),            
-            // Example: Reduce padding if fields look too tall with smaller font
-            // contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            // isDense: true, 
           )
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 0), // No padding for SingleChildScrollView itself
+          padding: const EdgeInsets.symmetric(vertical: 0.0, horizontal: 0), 
           child: Form(
             key: _formKey,
-            child: Padding( // Add padding around the form content instead
+            child: Padding( 
               padding: const EdgeInsets.all(8.0),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -939,7 +1353,7 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
                     dobController: _dobController,
                     contactController: _contactController,
                     emailController: _emailController,
-                    addressController: _addressController, 
+                    addressController: _addressController,
                     emergencyContactNameController: _emergencyContactNameController,
                     emergencyContactController: _emergencyContactController,
                     allergiesController: _allergiesController,
@@ -954,8 +1368,8 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
                       if (value != null) setState(() => _bloodType = value);
                     },
                     bloodTypes: widget.bloodTypes, 
-                    isEditMode: false, 
-                    formType: FormType.full, // Use FormType.full to show all fields
+                    isEditMode: false,
+                    formType: FormType.full,
                   ),
                   const SizedBox(height: 24),
                   _isSaving
@@ -968,7 +1382,7 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
                             backgroundColor: Colors.teal,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                            textStyle: TextStyle(fontSize: dialogFontSize + 1, fontWeight: FontWeight.bold) // Adjust button font size too
+                            textStyle: TextStyle(fontSize: dialogFontSize + 1, fontWeight: FontWeight.bold) 
                           ),
                         ),
                 ],

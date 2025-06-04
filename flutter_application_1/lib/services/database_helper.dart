@@ -30,7 +30,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 17; // Incremented version
+  static const int _databaseVersion = 23; // Incremented version from 22 to 23
 
   // Tables
   static const String tableUsers = 'users';
@@ -219,14 +219,20 @@ class DatabaseHelper {
     print(
         '================================================================================');
 
-    // DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs
-    // Ensure this is commented out for production/normal use
-    // final dbFile = File(_instanceDbPath!);
-    // if (await dbFile.exists()) {
-    //   await dbFile.delete();
-    //   print('DEVELOPMENT: Deleted existing database at $_instanceDbPath to ensure schema recreation.');
-    // }
-    // END DEVELOPMENT ONLY SECTION
+    // --- DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs --- 
+    if (_instanceDbPath != null && _instanceDbPath!.isNotEmpty) {
+      final dbFile = File(_instanceDbPath!);
+      if (await dbFile.exists()) {
+        try {
+          await dbFile.delete();
+          print('DEVELOPMENT HELPER: Deleted existing database at $_instanceDbPath to ensure schema recreation on every start.');
+        } catch (e) {
+          print('DEVELOPMENT HELPER: Failed to delete database at $_instanceDbPath. Error: $e');
+          // Optionally, decide if you want to throw an error or continue if deletion fails
+        }
+      }
+    }
+    // --- END DEVELOPMENT ONLY SECTION ---
 
     Database openedDb;
     try {
@@ -294,59 +300,89 @@ class DatabaseHelper {
   Future<void> _onCreate(Database db, int version) async {
     // Users table
     await db.execute('''
-      CREATE TABLE ${DatabaseHelper.tableUsers} (
+      CREATE TABLE $tableUsers (
         id TEXT PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        fullName TEXT NOT NULL,
-        role TEXT NOT NULL,
-        securityQuestion1 TEXT NOT NULL,
-        securityAnswer1 TEXT NOT NULL,
-        securityQuestion2 TEXT NOT NULL,
-        securityAnswer2 TEXT NOT NULL,
-        securityQuestion3 TEXT NOT NULL,
-        securityAnswer3 TEXT NOT NULL,
-        createdAt TEXT NOT NULL
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        fullName TEXT,
+        email TEXT,
+        contactNumber TEXT,
+        securityQuestion1 TEXT,
+        securityAnswer1 TEXT,
+        securityQuestion2 TEXT,
+        securityAnswer2 TEXT,
+        securityQuestion3 TEXT,
+        securityAnswer3 TEXT,
+        isActive INTEGER DEFAULT 1,
+        createdAt TEXT,
+        updatedAt TEXT 
       )
     ''');
+    print('DATABASE_HELPER: Created $tableUsers table');
 
     // Patients table
     await db.execute('''
-      CREATE TABLE ${DatabaseHelper.tablePatients} (
+      CREATE TABLE $tablePatients (
         id TEXT PRIMARY KEY,
-        fullName TEXT NOT NULL,
-        birthDate TEXT NOT NULL,
-        gender TEXT NOT NULL,
+        fullName TEXT,
+        birthDate TEXT,
+        gender TEXT,
         contactNumber TEXT,
         address TEXT,
         bloodType TEXT,
         allergies TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        medicalHistory TEXT,
+        emergencyContactName TEXT,
+        emergencyContactNumber TEXT,
+        registrationDate TEXT,
+        lastVisitDate TEXT,
+        isArchived INTEGER DEFAULT 0,
+        notes TEXT,
+        email TEXT, 
+        occupation TEXT, 
+        maritalStatus TEXT, 
+        nationality TEXT, 
+        preferredLanguage TEXT, 
+        photoUrl TEXT, 
+        insuranceProvider TEXT, 
+        insurancePolicyNumber TEXT, 
+        currentMedications TEXT, 
+        familyMedicalHistory TEXT, 
+        socialHistory TEXT, 
+        vaccinationHistory TEXT, 
+        primaryCarePhysician TEXT,
+        referralSource TEXT,
+        createdAt TEXT,
+        updatedAt TEXT 
       )
     ''');
+    print('DATABASE_HELPER: Created $tablePatients table');
 
-    // Appointments table (Updated Schema)
+    // Appointments table (Updated Schema - notes and createdById removed)
     await db.execute('''
-      CREATE TABLE ${DatabaseHelper.tableAppointments} (
+      CREATE TABLE $tableAppointments (
         id TEXT PRIMARY KEY,
-        patientId TEXT NOT NULL,
-        date TEXT NOT NULL,
-        time TEXT NOT NULL,
-        doctorId TEXT NOT NULL, 
-        serviceId TEXT,
-        status TEXT NOT NULL,
-        notes TEXT,
+        patientId TEXT,
+        date TEXT,
+        time TEXT,
+        doctorId TEXT,
         consultationType TEXT,
         durationMinutes INTEGER,
-        createdAt TEXT NOT NULL,
-        createdById TEXT NOT NULL, 
-        FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE,
-        FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id),
-        FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id),
-        FOREIGN KEY (createdById) REFERENCES ${DatabaseHelper.tableUsers} (id)
+        status TEXT,
+        createdAt TEXT,
+        originalAppointmentId TEXT, 
+        consultationStartedAt TEXT, 
+        servedAt TEXT,               
+        selectedServices TEXT,      
+        totalPrice REAL,            
+        paymentStatus TEXT,
+        updatedAt TEXT,
+        FOREIGN KEY (patientId) REFERENCES patients(id),
+        FOREIGN KEY (doctorId) REFERENCES users(id)
       )
     ''');
+    print('DATABASE_HELPER: Created $tableAppointments table (schema updated)');
 
     // Medical Records table
     await db.execute('''
@@ -491,6 +527,7 @@ class DatabaseHelper {
         servedAt TEXT,          -- New field
         removedAt TEXT,         -- New field
         consultationStartedAt TEXT, -- New field
+        originalAppointmentId TEXT,
         FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
         FOREIGN KEY (addedByUserId) REFERENCES $tableUsers (id) ON DELETE SET NULL
       )
@@ -505,350 +542,246 @@ class DatabaseHelper {
 
   // Database upgrade
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    print(
-        'DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion...');
+    print("DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
     if (oldVersion < 2) {
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityQuestion1', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityAnswer1', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityQuestion2', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityAnswer2', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityQuestion3', 'TEXT NOT NULL DEFAULT \'\'');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableUsers,
-          'securityAnswer3', 'TEXT NOT NULL DEFAULT \'\'');
+      // Example: Add a new column to users table if upgrading from version 1
+      await db.execute('ALTER TABLE $tableUsers ADD COLUMN new_column TEXT');
+      print("DATABASE_HELPER: Upgraded $tableUsers by adding new_column (from v1 to v2)");
     }
     if (oldVersion < 3) {
-      // Recreate appointments table with the new schema
-      await db
-          .execute('DROP TABLE IF EXISTS ${DatabaseHelper.tableAppointments}');
+      // Add isActive, createdAt, updatedAt to users table
+      try {
+        await db.execute('ALTER TABLE $tableUsers ADD COLUMN isActive INTEGER DEFAULT 1');
+        await db.execute('ALTER TABLE $tableUsers ADD COLUMN createdAt TEXT');
+        await db.execute('ALTER TABLE $tableUsers ADD COLUMN updatedAt TEXT');
+        print("DATABASE_HELPER: Added isActive, createdAt, updatedAt to $tableUsers (from v2 to v3)");
+      } catch (e) {
+        print("DATABASE_HELPER: Error adding columns to $tableUsers in v3 upgrade: $e. Columns might already exist.");
+      }
+       // Add new columns to patients table
+      try {
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN email TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN occupation TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN maritalStatus TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN nationality TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN preferredLanguage TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN photoUrl TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN insuranceProvider TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN insurancePolicyNumber TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN currentMedications TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN familyMedicalHistory TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN socialHistory TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN vaccinationHistory TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN primaryCarePhysician TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN referralSource TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN createdAt TEXT');
+        await db.execute('ALTER TABLE $tablePatients ADD COLUMN updatedAt TEXT');
+        print("DATABASE_HELPER: Added new columns to $tablePatients (from v2 to v3)");
+      } catch (e) {
+        print("DATABASE_HELPER: Error adding columns to $tablePatients in v3 upgrade: $e. Columns might already exist.");
+      }
+    }
+    // ... other version upgrades
+
+    if (oldVersion < 18) {
+       // Add originalAppointmentId to active_patient_queue
+      try {
+        List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableActivePatientQueue)');
+        bool exists = columns.any((col) => col['name'] == 'originalAppointmentId');
+        if (!exists) {
+          await db.execute('ALTER TABLE $tableActivePatientQueue ADD COLUMN originalAppointmentId TEXT');
+          print("DATABASE_HELPER: Added originalAppointmentId to $tableActivePatientQueue (upgrade to v18)");
+        } else {
+          print("DATABASE_HELPER: Column originalAppointmentId already exists in $tableActivePatientQueue (upgrade to v18)");
+        }
+      } catch (e) {
+        print("DATABASE_HELPER: Error adding originalAppointmentId to $tableActivePatientQueue in v18 upgrade: $e");
+      }
+    }
+    if (oldVersion < 19) {
+      // Add new columns to appointments table for v19
+      const List<String> newColumnsV19 = [
+        'originalAppointmentId TEXT',
+        'consultationStartedAt TEXT',
+        'servedAt TEXT',
+        'selectedServices TEXT',
+        'totalPrice REAL',
+        'paymentStatus TEXT'
+      ];
+      for (String columnDef in newColumnsV19) {
+        String columnName = columnDef.split(' ')[0];
+        try {
+          List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableAppointments)');
+          bool exists = columns.any((col) => col['name'] == columnName);
+          if (!exists) {
+            await db.execute('ALTER TABLE $tableAppointments ADD COLUMN $columnDef');
+            print("DATABASE_HELPER: Added column $columnName to $tableAppointments (upgrade to v19)");
+          } else {
+            print("DATABASE_HELPER: Column $columnName already exists in $tableAppointments (upgrade to v19)");
+          }
+        } catch (e) {
+          print("DATABASE_HELPER: Error adding column $columnName to $tableAppointments in v19 upgrade: $e");
+        }
+      }
+    }
+     if (oldVersion < 20) {
+      // Add selectedServices (TEXT) and totalPrice (REAL) to appointments table if they don't exist.
+      // This is more of a safeguard or correction if previous attempts were incomplete for some users.
+      const Map<String, String> columnsToAddV20 = {
+        'selectedServices': 'TEXT',
+        'totalPrice': 'REAL'
+      };
+
+      for (var entry in columnsToAddV20.entries) {
+        String columnName = entry.key;
+        String columnType = entry.value;
+        try {
+          List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableAppointments)');
+          bool exists = columns.any((col) => col['name'] == columnName);
+          if (!exists) {
+            await db.execute('ALTER TABLE $tableAppointments ADD COLUMN $columnName $columnType');
+            print("DATABASE_HELPER: Added column $columnName $columnType to $tableAppointments (upgrade to v20)");
+      } else {
+            print("DATABASE_HELPER: Column $columnName already exists in $tableAppointments (upgrade to v20)");
+          }
+        } catch (e) {
+          print("DATABASE_HELPER: Error adding column $columnName to $tableAppointments in v20 upgrade: $e. It might already exist or there's another schema issue.");
+        }
+      }
+    }
+    if (oldVersion < 21) { // Targetting upgrades to v21
+      // Ensure updatedAt column exists
+      try {
+        List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableAppointments)');
+        bool updatedAtExists = columns.any((col) => col['name'] == 'updatedAt');
+        if (!updatedAtExists) {
+          await db.execute('ALTER TABLE $tableAppointments ADD COLUMN updatedAt TEXT');
+          print("DATABASE_HELPER: Added column updatedAt TEXT to $tableAppointments (upgrade to v21)");
+        } else {
+          print("DATABASE_HELPER: Column updatedAt already exists in $tableAppointments (upgrade to v21)");
+        }
+      } catch (e) {
+        print("DATABASE_HELPER: Error adding column updatedAt to $tableAppointments in v21 upgrade: $e.");
+      }
+
+      // Ensure originalAppointmentId column exists as a fallback
+      try {
+        List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableAppointments)');
+        bool originalIdExists = columns.any((col) => col['name'] == 'originalAppointmentId');
+        if (!originalIdExists) {
+          await db.execute('ALTER TABLE $tableAppointments ADD COLUMN originalAppointmentId TEXT');
+          print("DATABASE_HELPER: Added column originalAppointmentId TEXT to $tableAppointments (upgrade to v21 - fallback check)");
+        } else {
+          print("DATABASE_HELPER: Column originalAppointmentId already exists in $tableAppointments (upgrade to v21 - fallback check)");
+        }
+      } catch (e) {
+        print("DATABASE_HELPER: Error adding column originalAppointmentId to $tableAppointments in v21 upgrade (fallback check): $e.");
+      }
+    }
+
+    if (oldVersion < 22) { // Upgrading to version 22
+      const List<Map<String, String>> columnsToAddV22 = [
+        {'name': 'securityQuestion1', 'type': 'TEXT'},
+        {'name': 'securityAnswer1', 'type': 'TEXT'},
+        {'name': 'securityQuestion2', 'type': 'TEXT'},
+        {'name': 'securityAnswer2', 'type': 'TEXT'},
+        {'name': 'securityQuestion3', 'type': 'TEXT'},
+        {'name': 'securityAnswer3', 'type': 'TEXT'},
+      ];
+
+      for (var colInfo in columnsToAddV22) {
+        String columnName = colInfo['name']!;
+        String columnType = colInfo['type']!;
+        try {
+          // Check if column exists before attempting to add it
+          List<Map<String, dynamic>> columns = await db.rawQuery('PRAGMA table_info($tableUsers)');
+          bool columnExists = columns.any((col) => col['name'] == columnName);
+
+          if (!columnExists) {
+            await db.execute('ALTER TABLE $tableUsers ADD COLUMN $columnName $columnType');
+            print("DATABASE_HELPER: Added column $columnName $columnType to $tableUsers (upgrade to v22)");
+          } else {
+            print("DATABASE_HELPER: Column $columnName already exists in $tableUsers (upgrade to v22)");
+          }
+        } catch (e) {
+          print("DATABASE_HELPER: Error adding column $columnName to $tableUsers in v22 upgrade: $e. It might already exist or there's another schema issue.");
+        }
+      }
+    }
+
+    if (oldVersion < 23) { // Upgrading to version 23 - Remove notes and createdById from appointments
+      print("DATABASE_HELPER: Upgrading $tableAppointments for v23 - removing 'notes' and 'createdById'.");
+      // 1. Create a temporary table with the new schema
       await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tableAppointments} (
+        CREATE TABLE appointments_temp (
           id TEXT PRIMARY KEY,
-          patientId TEXT NOT NULL,
-          date TEXT NOT NULL,
-          time TEXT NOT NULL,
-          doctorId TEXT NOT NULL, 
-          serviceId TEXT, 
-          status TEXT NOT NULL,
-          notes TEXT,
+          patientId TEXT,
+          date TEXT,
+          time TEXT,
+          doctorId TEXT,
           consultationType TEXT,
           durationMinutes INTEGER,
-          createdAt TEXT NOT NULL,
-          createdById TEXT NOT NULL, 
-          FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE,
-          FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id),
-          FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id),
-          FOREIGN KEY (createdById) REFERENCES ${DatabaseHelper.tableUsers} (id)
+          status TEXT,
+          createdAt TEXT,
+          originalAppointmentId TEXT, 
+          consultationStartedAt TEXT, 
+          servedAt TEXT,               
+          selectedServices TEXT,      
+          totalPrice REAL,            
+          paymentStatus TEXT,
+          updatedAt TEXT,
+          FOREIGN KEY (patientId) REFERENCES patients(id),
+          FOREIGN KEY (doctorId) REFERENCES users(id)
         )
       ''');
-      // Add new columns to medical_records table
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableMedicalRecords, 'appointmentId', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableMedicalRecords, 'serviceId', 'TEXT');
-      // If you needed to add FK constraints here to an existing table, it's more complex in SQLite.
-      // Typically involves renaming table, creating new table with FK, copying data, deleting old table.
-      // For TEXT columns added like this, the FKs in the CREATE TABLE statement (_onCreate) will apply to new DBs.
-      // For existing DBs, these columns are just added as TEXT. True FK enforcement would require the complex migration.
-    }
-    if (oldVersion < 4) {
-      // Create clinic_services table
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tableClinicServices} (
-          id TEXT PRIMARY KEY,
-          serviceName TEXT NOT NULL UNIQUE,
-          description TEXT,
-          category TEXT,
-          defaultPrice REAL
-        )
-      ''');
-      // Note: Foreign key constraints for serviceId in appointments and medical_records
-      // should ideally be added here if the tables already exist.
-      // However, adding FK constraints to existing tables/columns in SQLite is complex
-      // (often requires table recreation: create new, copy data, drop old, rename new).
-      // The definitions in _onCreate cover new databases. For existing ones, these will behave as plain TEXT columns
-      // unless a more complex migration is done.
-      // The existing _onCreate already has the FKs, so new DBs are fine.
-      // For existing DBs being upgraded, the serviceId columns were added in v3 as TEXT.
-      // To enforce FKs on them now for existing data, one would need to:
-      // 1. Read data from appointments/medical_records
-      // 2. Drop appointments/medical_records
-      // 3. Re-create them using the _onCreate (which includes the FK to clinic_services)
-      // 4. Re-insert data (this is complex and error-prone, skipped for this step-by-step)
-    }
-    if (oldVersion < 5) {
-      // Create user_activity_log table
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tableUserActivityLog} (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          userId TEXT NOT NULL,
-          actionDescription TEXT NOT NULL,
-          targetRecordId TEXT,
-          targetTable TEXT,
-          timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          details TEXT, 
-          FOREIGN KEY (userId) REFERENCES ${DatabaseHelper.tableUsers} (id)
-        )
-      ''');
-    }
-    if (oldVersion < 6) {
-      // Create billing tables
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tablePatientBills} (
-          id TEXT PRIMARY KEY,
-          patientId TEXT NOT NULL,
-          billDate TEXT NOT NULL,
-          totalAmount REAL NOT NULL,
-          status TEXT NOT NULL, 
-          notes TEXT,
-          FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE
-        )
-      ''');
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tableBillItems} (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          billId TEXT NOT NULL,
-          serviceId TEXT,
-          description TEXT NOT NULL,
-          quantity INTEGER NOT NULL DEFAULT 1,
-          unitPrice REAL NOT NULL,
-          itemTotal REAL NOT NULL, 
-          FOREIGN KEY (billId) REFERENCES ${DatabaseHelper.tablePatientBills} (id) ON DELETE CASCADE,
-          FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id)
-        )
-      ''');
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tablePayments} (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          billId TEXT,
-          patientId TEXT NOT NULL,
-          paymentDate TEXT NOT NULL,
-          amountPaid REAL NOT NULL,
-          paymentMethod TEXT NOT NULL, 
-          receivedByUserId TEXT NOT NULL,
-          notes TEXT,
-          FOREIGN KEY (billId) REFERENCES ${DatabaseHelper.tablePatientBills} (id) ON DELETE SET NULL,
-          FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id),
-          FOREIGN KEY (receivedByUserId) REFERENCES ${DatabaseHelper.tableUsers} (id)
-        )
-      ''');
-    }
-    if (oldVersion < 7) {
-      // Add indexes if upgrading from a version older than 7
-      await _createIndexes(db);
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Indexes.');
-    }
-    if (oldVersion < 8) {
-      // Create patient queue reports table (for daily history)
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tablePatientQueue} (
-          id TEXT PRIMARY KEY,
-          reportDate TEXT NOT NULL,
-          totalPatients INTEGER NOT NULL,
-          patientsServed INTEGER NOT NULL,
-          patientsWaiting INTEGER,          -- New Column
-          patientsInConsultation INTEGER, -- New Column
-          patientsRemoved INTEGER,          -- New Column
-          averageWaitTime TEXT,
-          peakHour TEXT,
-          queueData TEXT NOT NULL,
-          generatedAt TEXT NOT NULL,
-          exportedToPdf INTEGER DEFAULT 0
-        )
-      ''');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Patient Queue Reports table.');
-    }
-    if (oldVersion < 9) {
-      // Active Patient Queue table
-      await db.execute('''
-        CREATE TABLE ${DatabaseHelper.tableActivePatientQueue} (
-          queueEntryId TEXT PRIMARY KEY,
-          patientId TEXT,
-          patientName TEXT NOT NULL,
-          arrivalTime TEXT NOT NULL,
-          queueNumber INTEGER DEFAULT 0, -- Queue number for daily sequencing
-          gender TEXT,
-          age INTEGER,
-          conditionOrPurpose TEXT,
-          status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
-          createdAt TEXT NOT NULL,
-          addedByUserId TEXT,
-          servedAt TEXT,          -- New field
-          removedAt TEXT,         -- New field
-          consultationStartedAt TEXT, -- New field
-          FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE SET NULL,
-          FOREIGN KEY (addedByUserId) REFERENCES ${DatabaseHelper.tableUsers} (id) ON DELETE SET NULL
-        )
-      ''');
-      // Add indexes for the new table
-      await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_status ON ${DatabaseHelper.tableActivePatientQueue} (status)');
-      await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_arrival_time ON ${DatabaseHelper.tableActivePatientQueue} (arrivalTime)');
-      await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_patient_id ON ${DatabaseHelper.tableActivePatientQueue} (patientId)');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added Active Patient Queue table and its indexes.');
-    }
-    if (oldVersion < 10) {
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'servedAt', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'removedAt', 'TEXT');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
-          'consultationStartedAt', 'TEXT');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
-          'queueNumber', 'INTEGER DEFAULT 0');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added timestamp fields and queue number to Active Patient Queue table.');
-    }
-    if (oldVersion < 11) {
-      // Re-ensure queueNumber column exists, as it might have been missed in a previous upgrade.
-      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
-          'queueNumber', 'INTEGER DEFAULT 0');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Ensured queueNumber column in Active Patient Queue table.');
-    }
-    if (oldVersion < 12) {
-      await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
-          'totalPatientsInQueue', 'INTEGER');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePatientQueue, 'patientsServed', 'INTEGER');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePatientQueue, 'patientsRemoved', 'INTEGER');
-      await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
-          'averageWaitTimeMinutes', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added patient status count columns to ${DatabaseHelper.tablePatientQueue}.');
-    }
-    if (oldVersion < 13) {
-      if (oldVersion == 12) {
-        print(
-            "DATABASE_HELPER: Recreating ${DatabaseHelper.tablePatientQueue} to remove patientsWaiting and patientsInConsultation columns for upgrade from v12 to v13.");
-        // 1. Rename the old table
-        await db.execute(
-            'ALTER TABLE ${DatabaseHelper.tablePatientQueue} RENAME TO ${DatabaseHelper.tablePatientQueue}_old_v12');
-        print(
-            "DATABASE_HELPER: Renamed ${DatabaseHelper.tablePatientQueue} to ${DatabaseHelper.tablePatientQueue}_old_v12");
+      print("DATABASE_HELPER: Created appointments_temp table for v23 upgrade.");
 
-        // 2. Create the new table with the correct schema (v13)
-        await db.execute('''
-          CREATE TABLE ${DatabaseHelper.tablePatientQueue} (
-            id TEXT PRIMARY KEY,
-            reportDate TEXT NOT NULL UNIQUE,
-            totalPatientsInQueue INTEGER NOT NULL,
-            patientsServed INTEGER NOT NULL,
-            patientsRemoved INTEGER,
-            averageWaitTimeMinutes TEXT,
-            peakHour TEXT,
-            queueData TEXT,
-            generatedAt TEXT NOT NULL,
-            generatedByUserId TEXT, -- This column allows NULLs implicitly
-            FOREIGN KEY (generatedByUserId) REFERENCES ${DatabaseHelper.tableUsers} (id)
-          )
-        ''');
-        print(
-            "DATABASE_HELPER: Created new ${DatabaseHelper.tablePatientQueue} with updated schema (v13).");
-
-        // 3. Copy data from the old table to the new table.
-        // Assuming patient_queue_old_v12 (the v12 schema) has columns:
-        // id, reportDate, totalPatients, patientsServed, patientsWaiting, patientsInConsultation,
-        // patientsRemoved, averageWaitTime, peakHour, queueData, generatedAt.
-        // It appears generatedByUserId was NOT in the v12 schema.
-        // The columns patientsWaiting and patientsInConsultation are intentionally not copied.
-        await db.execute('''
-          INSERT INTO ${DatabaseHelper.tablePatientQueue} (
-            id, reportDate, totalPatientsInQueue, patientsServed, patientsRemoved, 
-            averageWaitTimeMinutes, peakHour, queueData, generatedAt, generatedByUserId
-          )
-          SELECT 
-            id, reportDate, 
-            totalPatients AS totalPatientsInQueue, 
-            patientsServed, 
-            patientsRemoved, 
-            averageWaitTime AS averageWaitTimeMinutes, 
-            peakHour, 
-            queueData, 
-            generatedAt, 
-            NULL AS generatedByUserId -- Provide NULL as this column likely doesn't exist in v12 table
-          FROM ${DatabaseHelper.tablePatientQueue}_old_v12
-        ''');
-        print(
-            "DATABASE_HELPER: Copied data from ${DatabaseHelper.tablePatientQueue}_old_v12 to new ${DatabaseHelper.tablePatientQueue}, mapping v12 column names and providing NULL for generatedByUserId.");
-
-        // 4. Drop the old table
-        await db
-            .execute('DROP TABLE ${DatabaseHelper.tablePatientQueue}_old_v12');
-        print(
-            "DATABASE_HELPER: Dropped old table ${DatabaseHelper.tablePatientQueue}_old_v12.");
-      } else {
-        // If upgrading from a version < 12, the "patientsWaiting" and "patientsInConsultation" columns
-        // would not have been added by the "oldVersion < 12" block (as they are commented out).
-        // So, for these cases, no specific action is needed for these two columns for v13.
-        // However, ensure the other columns from the "< 12" block are present if they weren't already.
-        await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
-            'totalPatientsInQueue', 'INTEGER');
-        await _addColumnIfNotExists(
-            db, DatabaseHelper.tablePatientQueue, 'patientsServed', 'INTEGER');
-        await _addColumnIfNotExists(
-            db, DatabaseHelper.tablePatientQueue, 'patientsRemoved', 'INTEGER');
-        await _addColumnIfNotExists(db, DatabaseHelper.tablePatientQueue,
-            'averageWaitTimeMinutes', 'TEXT');
-        await _addColumnIfNotExists(
-            db, DatabaseHelper.tablePatientQueue, 'peakHour', 'TEXT');
-        print(
-            "DATABASE_HELPER: Ensured report columns (excluding waiting/inConsultation) for ${DatabaseHelper.tablePatientQueue} for version < 12 upgrading to v13.");
-      }
-    }
-    if (oldVersion < 14) {
-      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue,
-          'selectedServices', 'TEXT');
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tableActivePatientQueue, 'totalPrice', 'REAL');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added selectedServices and totalPrice to ${DatabaseHelper.tableActivePatientQueue}.');
-    }
-    if (oldVersion < 15) {
-      // Step 1: Add the column as TEXT, allowing NULLs.
-      await _addColumnIfNotExists(
-          db, DatabaseHelper.tablePayments, 'referenceNumber', 'TEXT');
-      print(
-          'DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added referenceNumber (TEXT) to ${DatabaseHelper.tablePayments}.');
-
-      // Step 2: Create a UNIQUE INDEX on the new column.
-      // This enforces uniqueness for future inserts/updates.
-      // Note: If there's existing non-unique data in referenceNumber (which shouldn't be the case if it was just added),
-      // this index creation might fail. This assumes the column is new or already contains unique values (or mostly NULLs).
+      // 2. Copy data from the old table to the temporary table
+      // Make sure to select only the columns that exist in both old and new schemas for the copy.
+      // The `notes` and `createdById` columns will be omitted here.
       try {
-        await db.execute(
-            'CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_referenceNumber ON ${DatabaseHelper.tablePayments} (referenceNumber)');
-        print(
-            'DATABASE_HELPER: Created UNIQUE INDEX idx_payments_referenceNumber ON ${DatabaseHelper.tablePayments} (referenceNumber).');
+        await db.execute('''
+          INSERT INTO appointments_temp (
+            id, patientId, date, time, doctorId, consultationType, durationMinutes, 
+            status, createdAt, originalAppointmentId, consultationStartedAt, servedAt, 
+            selectedServices, totalPrice, paymentStatus, updatedAt
+          ) 
+          SELECT 
+            id, patientId, date, time, doctorId, consultationType, durationMinutes, 
+            status, createdAt, originalAppointmentId, consultationStartedAt, servedAt, 
+            selectedServices, totalPrice, paymentStatus, updatedAt
+          FROM $tableAppointments
+        ''');
+        print("DATABASE_HELPER: Copied data from $tableAppointments to appointments_temp for v23 upgrade.");
       } catch (e) {
-        print(
-            'DATABASE_HELPER: Error creating UNIQUE INDEX for referenceNumber. It might already exist or there might be duplicate data if column was partially populated: $e');
-        // If this fails, it might be because the index was already created in a previous failed attempt or there's pre-existing duplicate data (unlikely for a newly added column).
+        print("DATABASE_HELPER: Error copying data during v23 $tableAppointments upgrade: $e. This might happen if the old table structure was unexpected.");
+        // If copying fails, we might be in a state where the old table still exists.
+        // We should probably drop the temp table and not proceed with dropping the original.
+        await db.execute('DROP TABLE IF EXISTS appointments_temp');
+        print("DATABASE_HELPER: Dropped appointments_temp due to copy error.");
+        // Optionally rethrow or handle, but for now, we'll let the upgrade process report this.
+        // It's safer not to drop the original table if the copy failed.
+        return; // Stop this upgrade path
       }
-      print(
-          'DATABASE_HELPER: Application must ensure non-null and unique reference numbers for new entries into ${DatabaseHelper.tablePayments}.');
+      
+      // 3. Drop the old table
+      await db.execute('DROP TABLE $tableAppointments');
+      print("DATABASE_HELPER: Dropped old $tableAppointments table for v23 upgrade.");
+
+      // 4. Rename the temporary table to the original table name
+      await db.execute('ALTER TABLE appointments_temp RENAME TO $tableAppointments');
+      print("DATABASE_HELPER: Renamed appointments_temp to $tableAppointments for v23 upgrade.");
+
+      // 5. Re-create indexes for the appointments table (important after table recreation)
+      print("DATABASE_HELPER: Re-creating indexes for $tableAppointments after v23 upgrade.");
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_appointments_patientId ON $tableAppointments (patientId)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_appointments_doctorId ON $tableAppointments (doctorId)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_appointments_date ON $tableAppointments (date)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_appointments_status ON $tableAppointments (status)');
+      print("DATABASE_HELPER: Finished re-creating indexes for $tableAppointments after v23 upgrade.");
     }
-    if (oldVersion < 16) {
-      await _addColumnIfNotExists(db, DatabaseHelper.tableAppointments, 'consultationType', 'TEXT');
-      await _addColumnIfNotExists(db, DatabaseHelper.tableAppointments, 'durationMinutes', 'INTEGER');
-      print('DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added consultationType and durationMinutes to ${DatabaseHelper.tableAppointments}.');
-    }
-    if (oldVersion < 17) { // New upgrade step for paymentStatus
-      await _addColumnIfNotExists(db, DatabaseHelper.tableActivePatientQueue, 'paymentStatus', 'TEXT DEFAULT \'Pending\'');
-      print('DATABASE_HELPER: Upgraded database from v$oldVersion to v$newVersion - Added paymentStatus to ${DatabaseHelper.tableActivePatientQueue}.');
-    }
+
+    print("DATABASE_HELPER: Database upgrade process completed from $oldVersion to $newVersion.");
   }
 
   Future<void> _addColumnIfNotExists(DatabaseExecutor db, String tableName,
@@ -867,6 +800,10 @@ class DatabaseHelper {
 
     // Hash the default admin password
     final String hashedPassword = AuthService.hashPassword('admin123');
+    final String hashedAnswer1 = AuthService.hashSecurityAnswer('blue');
+    final String hashedAnswer2 = AuthService.hashSecurityAnswer('anytown');
+    final String hashedAnswer3 = AuthService.hashSecurityAnswer('alex');
+
 
     await db.insert(DatabaseHelper.tableUsers, {
       'id': 'admin-${DateTime.now().millisecondsSinceEpoch}',
@@ -875,12 +812,13 @@ class DatabaseHelper {
       'fullName': 'System Administrator',
       'role': 'admin',
       'securityQuestion1': 'What is your favorite color?',
-      'securityAnswer1': AuthService.hashSecurityAnswer('blue'),
+      'securityAnswer1': hashedAnswer1,
       'securityQuestion2': 'In what city were you born?',
-      'securityAnswer2': AuthService.hashSecurityAnswer('anytown'),
-      'securityQuestion3': 'What is your oldest sibling\'s middle name?',
-      'securityAnswer3': AuthService.hashSecurityAnswer('alex'),
-      'createdAt': now
+      'securityAnswer2': hashedAnswer2,
+      'securityQuestion3': "What is your oldest sibling's middle name?",
+      'securityAnswer3': hashedAnswer3,
+      'createdAt': now,
+      'isActive': 1
     });
   }
 
@@ -1310,8 +1248,6 @@ To view live changes in DB Browser:
         'CREATE INDEX IF NOT EXISTS idx_appointments_date ON $tableAppointments (date)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_appointments_status ON $tableAppointments (status)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_appointments_serviceId ON $tableAppointments (serviceId)');
 
     // Indexes for medical_records table
     await db.execute(
@@ -1564,17 +1500,24 @@ To view live changes in DB Browser:
   Future<List<ActivePatientQueueItem>> getActiveQueue(
       {List<String>? statuses}) async {
     final db = await database;
-    String? whereClause;
-    List<dynamic>? whereArgs;
+    List<String> whereClauses = [];
+    List<dynamic> whereArgs = [];
+
+    // Filter by today's date
+    final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    whereClauses.add("DATE(arrivalTime) = DATE(?)"); 
+    whereArgs.add(todayDate);
 
     if (statuses != null && statuses.isNotEmpty) {
-      whereClause = 'status IN (${statuses.map((_) => '?').join(',')})';
-      whereArgs = statuses;
+      whereClauses.add('status IN (${statuses.map((_) => '?').join(',')})');
+      whereArgs.addAll(statuses);
     }
+
+    final String finalWhereClause = whereClauses.join(' AND ');
 
     final List<Map<String, dynamic>> maps = await db.query(
       DatabaseHelper.tableActivePatientQueue,
-      where: whereClause,
+      where: finalWhereClause,
       whereArgs: whereArgs,
       orderBy: 'arrivalTime ASC',
     );

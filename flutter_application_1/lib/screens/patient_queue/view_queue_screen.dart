@@ -208,6 +208,9 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> {
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
 
+    // ADDED: Check if the item is from a scheduled appointment
+    final bool isFromAppointment = item.originalAppointmentId != null && item.originalAppointmentId!.isNotEmpty;
+
     final dataCells = [
       item.queueNumber.toString(), // Display Queue Number
       item.patientName,
@@ -221,10 +224,16 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> {
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: item.status == 'removed'
-            ? Colors.grey.shade200
-            : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white),
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+        color: isFromAppointment 
+            ? Colors.indigo[50] // Color for scheduled appointment-originated items
+            : (item.status == 'removed'
+                ? Colors.grey.shade200
+                : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
+        border: Border.all(
+            color: isFromAppointment ? Colors.indigo[200]! : Colors.grey.shade300,
+            width: isFromAppointment ? 1.5 : 1.0,
+        ),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
         // mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -239,7 +248,7 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> {
                   0; // Queue number fixed small size if needed via SizedBox or fixed width
 
             Widget cellChild =
-                Text(text, style: cellStyle, overflow: TextOverflow.ellipsis);
+                Text(text, style: cellStyle.copyWith(color: isFromAppointment ? Colors.indigo[700] : cellStyle.color), overflow: TextOverflow.ellipsis);
             if (idx == 0) {
               // Queue Number specific styling/sizing
               return Expanded(
@@ -247,7 +256,9 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> {
                   child: Center(
                       child: Text(text,
                           style: cellStyle.copyWith(
-                              fontWeight: FontWeight.bold))));
+                              fontWeight: FontWeight.bold,
+                              color: isFromAppointment ? Colors.indigo[700] : cellStyle.color
+                          ))));
             }
 
             return Expanded(

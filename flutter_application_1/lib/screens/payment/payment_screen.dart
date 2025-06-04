@@ -212,11 +212,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       await _dbHelper.insertPayment(paymentData);
 
-      await _queueService.updatePatientStatusInQueue(
-        processedPatientItem.queueEntryId,
-        'served',
-        servedAt: paymentDateTime,
-      );
+      bool paymentAndServeSuccess = await _queueService.markPaymentSuccessfulAndServe(processedPatientItem.queueEntryId);
 
       await _dbHelper.logUserActivity(
         _currentUserId!,

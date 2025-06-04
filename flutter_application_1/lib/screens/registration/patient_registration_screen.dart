@@ -808,61 +808,63 @@ class ReusablePatientFormFields extends StatelessWidget {
           Icons.contact_phone,
           Column(
             children: [
-              _buildStaticInputField( // Changed to single column for contact for mini form simplicity
-                controller: contactController,
-                label: 'Contact Number',
-                icon: Icons.phone,
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Required';
-                  if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) return 'Invalid number';
-                  return null;
-                },
-              ),
-              if (formType == FormType.mini && addressController != null) ...[ // Optional Address for mini
-                const SizedBox(height: 16),
-                 _buildStaticInputField(
+              // Conditionally render contact and email fields based on formType
+              if (formType == FormType.mini) ...[
+                _buildStaticInputField(
+                  controller: contactController,
+                  label: 'Contact Number',
+                  icon: Icons.phone,
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Required';
+                    if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) return 'Invalid number';
+                    return null;
+                  },
+                ),
+                if (addressController != null) ...[ // Optional Address for mini
+                  const SizedBox(height: 16),
+                  _buildStaticInputField(
                     controller: addressController!,
                     label: 'Address (Optional)',
                     icon: Icons.home,
                     maxLines: 2,
                   ),
-              ],
-              if (showAllFields && emailController != null && addressController != null) ...[ // Full form fields
-                const SizedBox(height: 16),
-                Row( // Email alongside contact for full form
-                     children: [
-                        Expanded( // Re-wrap contact in Expanded if email is present for row structure
-                            child: _buildStaticInputField(
-                                controller: contactController,
-                                label: 'Contact Number',
-                                icon: Icons.phone,
-                                keyboardType: TextInputType.phone,
-                                validator: (value) {
-                                     if (value == null || value.isEmpty) return 'Required';
-                                     if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) return 'Invalid number';
-                                     return null;
-                                },
-                            ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                            child: _buildStaticInputField(
-                                controller: emailController!,
-                                label: 'Email (Optional)',
-                                icon: Icons.email,
-                                keyboardType: TextInputType.emailAddress,
-                                validator: (value) {
-                                if (value != null && value.isNotEmpty) {
-                                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                    return 'Invalid email';
-                                    }
-                                }
-                                return null;
-                                },
-                            ),
-                        ),
-                     ],
+                ],
+              ] else if (showAllFields && emailController != null && addressController != null) ...[ 
+                // Full form: Contact and Email in a Row, then Address below
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStaticInputField(
+                        controller: contactController, // This is the single contact field for the Row
+                        label: 'Contact Number',
+                        icon: Icons.phone,
+                        keyboardType: TextInputType.phone,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Required';
+                          if (!RegExp(r'^[0-9]{10,}$').hasMatch(value)) return 'Invalid number';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildStaticInputField(
+                        controller: emailController!,
+                        label: 'Email (Optional)',
+                        icon: Icons.email,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) { // Simpler universal email regex
+                              return 'Invalid email';
+                            }
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 _buildStaticInputField(

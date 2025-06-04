@@ -168,7 +168,7 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
           totalPrice: null, // Not directly available from appointment
           status: 'waiting', // Or 'scheduled_pending_check_in' etc.
           createdAt: DateTime.now(),
-          addedByUserId: savedAppointmentFromDb.createdById, // Assuming createdById of appointment is the staff who scheduled it
+          // addedByUserId: savedAppointmentFromDb.createdById, // REMOVED createdById usage
         );
 
         await ApiService.addToActiveQueue(queueItem);
@@ -210,29 +210,41 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
   Widget _buildStatusChip(String status) {
     Color chipColor = Colors.grey;
     IconData iconData = Icons.info_outline;
+    String label = status; // ADDED: To allow modifying label for display
 
     switch (status.toLowerCase()) {
       case 'scheduled (simulated)': // Keep for old simulated data if any
       case 'scheduled':
         chipColor = Colors.blue.shade700;
         iconData = Icons.schedule_outlined;
+        label = 'Scheduled'; // Standardize label
         break;
       case 'confirmed':
         chipColor = Colors.green.shade700;
         iconData = Icons.check_circle_outline;
+        label = 'Confirmed'; // Standardize label
+        break;
+      case 'in consultation': // ADDED for appointments actively in consultation via queue
+        chipColor = Colors.orange.shade700;
+        iconData = Icons.medical_services_outlined; // Or Icons.hourglass_bottom_outlined
+        label = 'In Consult'; // Standardize label
         break;
       case 'cancelled':
         chipColor = Colors.red.shade700;
         iconData = Icons.cancel_outlined;
+        label = 'Cancelled'; // Standardize label
         break;
-      case 'completed':
+      case 'completed': // This status is set when served from queue
         chipColor = Colors.purple.shade700;
         iconData = Icons.done_all_outlined;
+        label = 'Completed'; // Standardize label
         break;
+      default: // Fallback for any other statuses
+        label = status.length > 10 ? '${status.substring(0,8)}...': status; // Truncate long unknown statuses
     }
     return Chip(
       avatar: Icon(iconData, color: Colors.white, size: 16),
-      label: Text(status, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)), // Use standardized label
       backgroundColor: chipColor,
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
     );
@@ -370,9 +382,9 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
                                         subtitleText += ')';
                                       }
                                       subtitleText += '\nDoctor: ${appointment.doctorId}'; 
-                                      if (appointment.notes != null && appointment.notes!.isNotEmpty) {
-                                        subtitleText += '\nNotes: ${appointment.notes}';
-                                      }
+                                      // if (appointment.notes != null && appointment.notes!.isNotEmpty) { // REMOVED notes display
+                                      //   subtitleText += '\nNotes: ${appointment.notes}';
+                                      // }
 
                                       return Card(
                                         elevation: 2.0,

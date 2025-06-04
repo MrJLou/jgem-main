@@ -97,6 +97,22 @@ class AppointmentDatabaseService {
     });
   }
 
+  // ADDED: Get a single appointment by its ID
+  Future<Appointment?> getAppointmentById(String id) async {
+    final db = await _dbHelper.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      DatabaseHelper.tableAppointments,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (maps.isNotEmpty) {
+      return Appointment.fromJson(maps.first);
+    }
+    return null;
+  }
+
   // REAL-TIME SYNC METHODS FOR APPOINTMENT/QUEUE (Subset of original)
   Future<void> updatePatientQueueFromSync(Map<String, dynamic> queueData) async {
     final db = await _dbHelper.database;

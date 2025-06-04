@@ -4,8 +4,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'database_helper.dart';
 import '../models/active_patient_queue_item.dart';
+import '../models/appointment.dart';
 import 'auth_service.dart';
 import 'dart:math';
+import 'api_service.dart';
+import 'dart:convert';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -120,6 +123,16 @@ class QueueService {
     final updatedItem =
         item.copyWith(status: 'removed', removedAt: DateTime.now());
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+    if (result > 0 && updatedItem.originalAppointmentId != null) {
+      try {
+        await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Cancelled');
+        print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+      } catch (e) {
+        print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
+        // Decide if this error should affect the return value of removeFromQueue
+      }
+    }
     return result > 0;
   }
 
@@ -237,14 +250,35 @@ class QueueService {
       if (result > 0) {
         print(
             'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
+
+        // ADDED: Propagate to original Appointment if exists
+        if (updatedItem.originalAppointmentId != null) {
+          try {
+            Appointment? originalAppointment = await _dbHelper.appointmentDbService.getAppointmentById(updatedItem.originalAppointmentId!);
+            if (originalAppointment != null) {
+              Appointment updatedOriginalAppointment = originalAppointment.copyWith(
+                status: newStatus == 'served' ? 'Completed' : (newStatus == 'in_consultation' ? 'In Consultation' : originalAppointment.status), // Also update appointment status
+                consultationStartedAt: updatedItem.consultationStartedAt ?? originalAppointment.consultationStartedAt,
+                servedAt: updatedItem.servedAt ?? originalAppointment.servedAt,
+                // selectedServices, totalPrice, paymentStatus are more tied to payment/finalization
+              );
+              await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
+              print('QueueService: Updated original appointment ${originalAppointment.id} due to queue status change.');
+            }
+          } catch (e) {
+            print('QueueService: Error updating original appointment after queue status change: $e');
+          }
+        }
+        // END ADDED
         return true;
+      } else {
+        print(
+            'QueueService: Failed to update patient $queueEntryId status in DB.');
+        return false;
       }
-      print(
-          'QueueService: Failed to update patient $queueEntryId to status $newStatus (DB update rows: $result)');
-      return false;
     } catch (e) {
       print(
-          'QueueService: Error updating patient status for $queueEntryId: $e');
+          "QueueService: Error in updatePatientStatusInQueue for $queueEntryId: $e");
       return false;
     }
   }
@@ -264,6 +298,16 @@ class QueueService {
       updatedItem = item.copyWith(status: 'served', servedAt: now);
     }
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+    if (result > 0 && updatedItem.originalAppointmentId != null) {
+      try {
+        await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Completed');
+        print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Completed.');
+      } catch (e) {
+        print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Completed: $e');
+        // Decide if this error should affect the return value of markPatientAsServed
+      }
+    }
     return result > 0;
   }
 
@@ -491,6 +535,66 @@ class QueueService {
     } catch (e) {
       print("QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
       // Depending on policy, you might want to rethrow or handle silently
+    }
+  }
+
+  /// Marks a patient as payment processed, updates status to Served, and original appointment to Completed.
+  Future<bool> markPaymentSuccessfulAndServe(String queueEntryId) async {
+    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+    if (item == null) {
+      print('QueueService: Item $queueEntryId not found for payment processing.');
+      return false;
+    }
+
+    if (item.status.toLowerCase() != 'in_consultation') {
+      print('QueueService: Item $queueEntryId is not In Consultation. Current status: ${item.status}. Cannot process payment unless in consultation.');
+      // Optionally show a message to the user or handle differently
+      // For now, just preventing the update if not 'in_consultation'
+      // Consider if 'waiting' patients should be allowed to pay and then be set to 'in_consultation' or 'served'
+      return false; 
+    }
+
+    final now = DateTime.now();
+    final ActivePatientQueueItem updatedItem = item.copyWith(
+      status: 'served',
+      paymentStatus: 'Paid',
+      servedAt: now,
+      // If consultationStartedAt is somehow null here, set it to now as well.
+      consultationStartedAt: item.consultationStartedAt ?? now,
+    );
+
+    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+    if (result > 0) {
+      print('QueueService: Item $queueEntryId marked as Paid and Served.');
+      if (updatedItem.originalAppointmentId != null) {
+        try {
+          // Fetch the original appointment
+          Appointment? originalAppointment = await _dbHelper.appointmentDbService.getAppointmentById(updatedItem.originalAppointmentId!);
+          if (originalAppointment != null) {
+            // Update it with the new details
+            Appointment updatedOriginalAppointment = originalAppointment.copyWith(
+              status: 'Completed',
+              paymentStatus: 'Paid',
+              servedAt: updatedItem.servedAt,
+              consultationStartedAt: updatedItem.consultationStartedAt ?? originalAppointment.consultationStartedAt,
+              selectedServices: updatedItem.selectedServices,
+              totalPrice: updatedItem.totalPrice ?? originalAppointment.totalPrice,
+            );
+            await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
+            print('QueueService: Original appointment ${updatedItem.originalAppointmentId} updated to Completed and payment details synced.');
+          } else {
+            print('QueueService: Original appointment ${updatedItem.originalAppointmentId} not found for updating after payment.');
+          }
+        } catch (e) {
+          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} after payment: $e');
+          // Decide if this error should affect the return value
+        }
+      }
+      return true;
+    } else {
+      print('QueueService: Failed to update item $queueEntryId after payment.');
+      return false;
     }
   }
 }

@@ -24,6 +24,7 @@ class ActivePatientQueueItem {
       removedAt; // Timestamp when patient status changes to 'removed'
   final DateTime?
       consultationStartedAt; // Timestamp when patient status changes to 'in_consultation'
+  final String? originalAppointmentId; // ADDED: To link back to the original appointment if applicable
   const ActivePatientQueueItem({
     required this.queueEntryId,
     this.patientId,
@@ -42,6 +43,7 @@ class ActivePatientQueueItem {
     this.servedAt,
     this.removedAt,
     this.consultationStartedAt,
+    this.originalAppointmentId, // ADDED
   });
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? services;
@@ -98,6 +100,7 @@ class ActivePatientQueueItem {
       consultationStartedAt: json['consultationStartedAt'] != null
           ? DateTime.parse(json['consultationStartedAt'] as String)
           : null,
+      originalAppointmentId: json['originalAppointmentId'] as String?, // ADDED
     );
   }
   Map<String, dynamic> toJson() {
@@ -121,6 +124,7 @@ class ActivePatientQueueItem {
       'servedAt': servedAt?.toIso8601String(),
       'removedAt': removedAt?.toIso8601String(),
       'consultationStartedAt': consultationStartedAt?.toIso8601String(),
+      'originalAppointmentId': originalAppointmentId, // ADDED
     };
   }
 
@@ -142,6 +146,7 @@ class ActivePatientQueueItem {
     DateTime? servedAt,
     DateTime? removedAt,
     DateTime? consultationStartedAt,
+    String? originalAppointmentId, // ADDED
   }) {
     return ActivePatientQueueItem(
       queueEntryId: queueEntryId ?? this.queueEntryId,
@@ -162,6 +167,7 @@ class ActivePatientQueueItem {
       removedAt: removedAt ?? this.removedAt,
       consultationStartedAt:
           consultationStartedAt ?? this.consultationStartedAt,
+      originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId, // ADDED
     );
   }
 }
