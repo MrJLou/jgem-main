@@ -661,7 +661,9 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               ),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                Navigator.of(context).pop(patient); 
+                if (!_isEditMode) {
+                  _resetForm(); 
+                }
               },
             ),
           ],

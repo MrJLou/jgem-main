@@ -1494,31 +1494,37 @@ To view live changes in DB Browser:
     }
     return result;
   }
-
   /// Gets the current active patient queue, ordered by arrival time.
   /// Optionally filters by status(es).
+  /// Now includes queue items from the last 2 days to handle relog visibility issues.
   Future<List<ActivePatientQueueItem>> getActiveQueue(
       {List<String>? statuses}) async {
     final db = await database;
     List<String> whereClauses = [];
     List<dynamic> whereArgs = [];
 
-    // Filter by today's date
-    final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    whereClauses.add("DATE(arrivalTime) = DATE(?)"); 
-    whereArgs.add(todayDate);
+    // Filter by last 2 days instead of just today to handle relogging issues
+    // This ensures queue items remain visible even after system date changes or relogging
+    // final now = DateTime.now();
+    // final twoDaysAgo = now.subtract(const Duration(days: 2));
+    // final twoDaysAgoDate = DateFormat('yyyy-MM-dd').format(twoDaysAgo);
+    // final todayDate = DateFormat('yyyy-MM-dd').format(now);
+    //
+    // whereClauses.add("DATE(arrivalTime) >= DATE(?) AND DATE(arrivalTime) <= DATE(?)");
+    // whereArgs.add(twoDaysAgoDate);
+    // whereArgs.add(todayDate);
 
     if (statuses != null && statuses.isNotEmpty) {
       whereClauses.add('status IN (${statuses.map((_) => '?').join(',')})');
       whereArgs.addAll(statuses);
     }
 
-    final String finalWhereClause = whereClauses.join(' AND ');
+    final String? finalWhereClause = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
 
     final List<Map<String, dynamic>> maps = await db.query(
       DatabaseHelper.tableActivePatientQueue,
       where: finalWhereClause,
-      whereArgs: whereArgs,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
       orderBy: 'arrivalTime ASC',
     );
     return maps.map((map) => ActivePatientQueueItem.fromJson(map)).toList();

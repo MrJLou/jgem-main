@@ -8,8 +8,7 @@ import '../models/appointment.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart'; // Added import
 import '../models/active_patient_queue_item.dart'; // Added import
-import 'package:flutter_application_1/services/patient_database_service.dart'; // ADDED
-import 'package:flutter_application_1/services/database_helper.dart'; // ADDED
+
 import 'user_management_screen.dart';
 import 'registration/registration_hub_screen.dart';
 import 'search/search_hub_screen.dart';
@@ -284,7 +283,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final apiAppointments = await ApiService.getAppointments(_selectedDate);
       if (mounted) {
-        setState(() => _appointments = apiAppointments ?? []);
+        setState(() => _appointments = apiAppointments);
       }
     } catch (e) {
       if (mounted) {
@@ -293,7 +292,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               content:
                   Text('Failed to load appointments: $e (local data shown)')),
         );
-        if (_appointments == null) {
+        if (_appointments.isEmpty) {
           setState(() => _appointments = []);
         }
       }
@@ -1224,7 +1223,6 @@ class LiveQueueDashboardView extends StatefulWidget {
 }
 
 class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
-  late Future<List<ActivePatientQueueItem>> _activeQueueFuture;
   final TextStyle cellStyle =
       const TextStyle(fontSize: 14, color: Colors.black87);
   DateTime _calendarSelectedDate = DateTime.now();
@@ -1232,7 +1230,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   List<Appointment> _allAppointmentsForCalendar = []; // Holds all appointments for calendar
   List<Appointment> _dailyAppointmentsForDisplay = [];
   
-  List<dynamic> _combinedQueueForDisplayList = [];
+  // Separate state for walk-in queue and appointments
+  List<ActivePatientQueueItem> _walkInQueueItems = [];
+  List<Appointment> _appointmentsForSelectedDate = [];
   bool _isLoadingQueueAndAppointments = true;
 
   @override
@@ -1245,34 +1245,28 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     });
     print('DEBUG: LiveQueueDashboardView initState END');
   }
-
   // ADDED: Method to load all appointments for the calendar view
   Future<void> _loadAppointments() async {
     if (!mounted) return;
-    // print('DEBUG: LiveQueueDashboardView _loadAppointments START');
-    // setState(() {
-    //   _isLoadingAppointments = true; // You might want a separate loading state for this
-    // });
+    print('DEBUG: LiveQueueDashboardView _loadAppointments START');
     try {
       final appointments = await ApiService.getAllAppointments();
       if (mounted) {
         setState(() {
           _allAppointmentsForCalendar = appointments;
           _filterDailyAppointments(); // Filter for the initially selected date
-          // _isLoadingAppointments = false;
           print('DEBUG: LiveQueueDashboardView _loadAppointments SUCCESS - Loaded ${appointments.length} appointments.');
         });
       }
     } catch (e) {
       print('DEBUG: LiveQueueDashboardView _loadAppointments ERROR: $e');
-      // if (mounted) {
-      //   setState(() {
-      //     _isLoadingAppointments = false;
-      //   });
-      // }
+      if (mounted) {
+        setState(() {
+          _allAppointmentsForCalendar = [];
+        });
+      }
     }
   }
-
   Future<void> _loadCombinedQueueData(DateTime selectedDateForQueue) async {
     print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START for date: ${DateFormat.yMd().format(selectedDateForQueue)}');
     if (!mounted) {
@@ -1287,79 +1281,56 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       final now = DateTime.now();
       final isToday = selectedDateForQueue.year == now.year &&
                       selectedDateForQueue.month == now.month &&
-                      selectedDateForQueue.day == now.day;
-
-      List<ActivePatientQueueItem> activeQueueItems = [];
+                      selectedDateForQueue.day == now.day;      // Load walk-in patients (only for today)
+      List<ActivePatientQueueItem> walkInQueueItems = [];
       if (isToday) {
-        activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
-        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${activeQueueItems.length} active items for today.');
-      } else {
-        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Not today, so no active items fetched.');
+        // Get all active queue items and filter out those that originated from appointments
+        final allActiveItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+        walkInQueueItems = allActiveItems.where((item) => 
+          item.originalAppointmentId == null || 
+          item.originalAppointmentId!.isEmpty ||
+          item.originalAppointmentId!.trim().isEmpty
+        ).toList();
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today.');
+        print('DEBUG: Total active items: ${allActiveItems.length}, Walk-in items: ${walkInQueueItems.length}');
+        // Debug: Print items that have originalAppointmentId
+        final appointmentOriginatedItems = allActiveItems.where((item) => 
+          item.originalAppointmentId != null && 
+          item.originalAppointmentId!.isNotEmpty &&
+          item.originalAppointmentId!.trim().isNotEmpty
+        ).toList();
+        print('DEBUG: Items originated from appointments: ${appointmentOriginatedItems.length}');
       }
-      
-      // _allAppointmentsForCalendar should be populated by _loadAppointments now
-      final scheduledAppointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
-        return appt.date.year == selectedDateForQueue.year &&
-               appt.date.month == selectedDateForQueue.month &&
-               appt.date.day == selectedDateForQueue.day &&
-               appt.status == 'Scheduled';
+        // Load appointments for the selected date (not converted to queue items)
+      final appointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
+        final appointmentDate = DateTime(appt.date.year, appt.date.month, appt.date.day);
+        final selectedDate = DateTime(selectedDateForQueue.year, selectedDateForQueue.month, selectedDateForQueue.day);
+        return appointmentDate.isAtSameMomentAs(selectedDate);
       }).toList();
 
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Found ${scheduledAppointmentsForSelectedDate.length} scheduled appointments for ${DateFormat.yMd().format(selectedDateForQueue)}.');
-
-      List<ActivePatientQueueItem> scheduledAppointmentsAsQueueItems = scheduledAppointmentsForSelectedDate.map((appt) {
-        // CORRECTED: Manual instantiation of ActivePatientQueueItem
-        return ActivePatientQueueItem(
-          queueEntryId: 'appt_${appt.id}', // Prefix to identify as originally scheduled
-          patientId: appt.patientId,
-          // CORRECTED: Simpler patient name placeholder, or fetch if available/needed elsewhere
-          patientName: 'Patient: ${appt.patientId.substring(0, appt.patientId.length > 5 ? 5 : appt.patientId.length)}...', 
-          arrivalTime: DateTime(appt.date.year, appt.date.month, appt.date.day, appt.time.hour, appt.time.minute),
-          queueNumber: 0, 
-          status: 'Scheduled', // Explicitly set status for display in queue
-          conditionOrPurpose: appt.consultationType ?? 'Appointment',
-          paymentStatus: 'Pending', // Default, as it's not an active queue item yet
-          createdAt: appt.createdAt ?? DateTime.now(),
-          originalAppointmentId: appt.id,
-          // Populate other fields like gender, age if available on Appointment and needed for ActivePatientQueueItem
-        );
-      }).toList();
-      
-      scheduledAppointmentsAsQueueItems.removeWhere((scheduledItem) => 
-        activeQueueItems.any((activeItem) => activeItem.originalAppointmentId == scheduledItem.originalAppointmentId)
-      );
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData After removing duplicates, ${scheduledAppointmentsAsQueueItems.length} scheduled items remain for queue display.');
-
-
-      List<dynamic> combinedList = [];
-      combinedList.addAll(activeQueueItems);
-      combinedList.addAll(scheduledAppointmentsAsQueueItems);
-      
-      combinedList.sort((a, b) {
-        bool aIsActive = a.status == 'waiting' || a.status == 'in_consultation';
-        bool bIsActive = b.status == 'waiting' || b.status == 'in_consultation';
-
-        if (aIsActive && !bIsActive) return -1;
-        if (!aIsActive && bIsActive) return 1;
-
-        if (aIsActive && bIsActive) {
-          if (a.queueNumber != null && b.queueNumber != null && a.queueNumber != b.queueNumber) {
-            return a.queueNumber!.compareTo(b.queueNumber!);
-          }
-          return a.arrivalTime.compareTo(b.arrivalTime);
-        } else { 
-            DateTime aDateTime = DateTime(a.date.year, a.date.month, a.date.day, a.time.hour, a.time.minute);
-            DateTime bDateTime = DateTime(b.date.year, b.date.month, b.date.day, b.time.hour, b.time.minute);
-            return aDateTime.compareTo(bDateTime);
-        }
+      // Sort appointments by time
+      appointmentsForSelectedDate.sort((a, b) {
+        final aTime = a.time.hour * 60 + a.time.minute;
+        final bTime = b.time.hour * 60 + b.time.minute;
+        return aTime.compareTo(bTime);
       });
 
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Found ${appointmentsForSelectedDate.length} appointments for ${DateFormat.yMd().format(selectedDateForQueue)}.');
+
+      // Sort walk-in queue items
+      walkInQueueItems.sort((a, b) {
+        if (a.queueNumber != b.queueNumber) {
+          return a.queueNumber.compareTo(b.queueNumber);
+        }
+        return a.arrivalTime.compareTo(b.arrivalTime);
+      });
 
       if (mounted) {
         setState(() {
-          _combinedQueueForDisplayList = combinedList;
+          _walkInQueueItems = walkInQueueItems;
+          _appointmentsForSelectedDate = appointmentsForSelectedDate;
           _isLoadingQueueAndAppointments = false;
-          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData _combinedQueueForDisplayList updated with ${combinedList.length} items.');
+          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Updated with ${walkInQueueItems.length} walk-ins and ${appointmentsForSelectedDate.length} appointments.');
         });
       }
     } catch (e) {
@@ -1388,90 +1359,66 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       // print('DEBUG: LiveQueueDashboardView _filterDailyAppointments Found ${_dailyAppointmentsForDisplay.length} appointments for display.');
     });
   }
-
-  Widget _buildQueueTitle() {
-    final now = DateTime.now();
-    final isToday = _calendarSelectedDate.year == now.year &&
-                    _calendarSelectedDate.month == now.month &&
-                    _calendarSelectedDate.day == now.day;
-    
-    String title;
-    if (isToday) {
-      title = 'Live Patient Queue (Today)';
-    } else {
-      title = 'Patient Queue for ${DateFormat.yMMMd().format(_calendarSelectedDate)}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Text(
-        title,
-        style: TextStyle( // REMOVED const
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.teal[700],
-        ),
-      ),
-    );
-  }
-
   void _refreshAllData() {
     _loadCombinedQueueData(_calendarSelectedDate);
-  }
-
-  void _refreshActiveQueueForNextPatient() async {
-    final activeQueueItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
-    setState(() {
-      _activeQueueFuture = Future.value(activeQueueItems);
-    });
-     _loadCombinedQueueData(_calendarSelectedDate);
-  }
-
-  Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
+  }  Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
     if (!mounted) return;
-    setState(() { /* Potentially set a loading state for this specific item */ });
-
+    
     try {
       final originalAppointment = _allAppointmentsForCalendar.firstWhere(
         (appt) => appt.id == appointmentId,
       );
 
-      // Find the corresponding display item to check its current paymentStatus if needed
-      // This representation is what's shown in the queue with the default 'Pending' or an updated status.
-      final displayItemInQueue = _combinedQueueForDisplayList.firstWhere(
-          (item) => item is ActivePatientQueueItem && item.queueEntryId == 'appt_${originalAppointment.id}',
-          orElse: () => null, // Should ideally exist if button is pressed
-      ) as ActivePatientQueueItem?;
-
-      if (displayItemInQueue != null && displayItemInQueue.paymentStatus != 'Paid' && displayItemInQueue.paymentStatus != 'Waived') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Payment is ${displayItemInQueue.paymentStatus} for ${originalAppointment.patientId}. Activating anyway.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        // Depending on policy, you might prevent activation here:
-        // if (strictPolicy) { setState(() {}); return; }
+      // Get patient details for better display name
+      String patientDisplayName = 'PT: ${originalAppointment.patientId}';
+      try {
+        final patientDetails = await ApiService.getPatientById(originalAppointment.patientId);
+        if (patientDetails != null) {
+          patientDisplayName = patientDetails.fullName;
+        }
+      } catch (e) {
+        print('DEBUG: Could not fetch patient details for ${originalAppointment.patientId}: $e');
       }
 
+      // Create a new active queue item for the scheduled appointment with all appointment data
       final newQueueItem = ActivePatientQueueItem(
         queueEntryId: 'active_${DateTime.now().millisecondsSinceEpoch}',
         patientId: originalAppointment.patientId,
-        patientName: 'PT: ${originalAppointment.patientId}', 
+        patientName: patientDisplayName, 
         arrivalTime: DateTime.now(),
         queueNumber: 0, 
         status: 'in_consultation',
-        paymentStatus: displayItemInQueue?.paymentStatus ?? 'Pending', // Carry over displayed payment status
+        paymentStatus: originalAppointment.paymentStatus ?? 'Pending',
         conditionOrPurpose: originalAppointment.consultationType ?? 'Scheduled Consultation',
+        selectedServices: originalAppointment.selectedServices, // Transfer services from appointment
+        totalPrice: originalAppointment.totalPrice, // Transfer total price from appointment
         createdAt: DateTime.now(),
         originalAppointmentId: originalAppointment.id,
       );
 
+      // Add to active queue and update appointment status
       bool addedToActiveQueue = await widget.queueService.addPatientToQueue(newQueueItem); 
 
       if (addedToActiveQueue) {
+        // Update the appointment status to "In Consultation"
         await ApiService.updateAppointmentStatus(appointmentId, 'In Consultation');
+        
+        // Update the local appointment list immediately to reflect the status change
+        setState(() {
+          final appointmentIndex = _allAppointmentsForCalendar.indexWhere((appt) => appt.id == appointmentId);
+          if (appointmentIndex != -1) {
+            _allAppointmentsForCalendar[appointmentIndex] = _allAppointmentsForCalendar[appointmentIndex].copyWith(status: 'In Consultation');
+          }
+          
+          // Update the selected date appointments list as well
+          final selectedDateIndex = _appointmentsForSelectedDate.indexWhere((appt) => appt.id == appointmentId);
+          if (selectedDateIndex != -1) {
+            _appointmentsForSelectedDate[selectedDateIndex] = _appointmentsForSelectedDate[selectedDateIndex].copyWith(status: 'In Consultation');
+          }
+          
+          // Update daily appointments for display
+          _filterDailyAppointments();
+        });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1480,7 +1427,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
               backgroundColor: Colors.green,
             ),
           );
-          _loadCombinedQueueData(_calendarSelectedDate); // Refresh the list
+          // Refresh the queue data to show the patient in the consultation queue
+          _loadCombinedQueueData(_calendarSelectedDate);
         }
       } else {
         if (mounted) {
@@ -1502,88 +1450,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() { /* Clear loading state for the item if set */ });
-      }
     }
-  }
-
-  Future<void> _callNextScheduled() async {
-    if (!mounted) return;
-
-    final scheduledPatients = _combinedQueueForDisplayList
-        .where((item) => item is ActivePatientQueueItem && item.status == 'Scheduled')
-        .cast<ActivePatientQueueItem>()
-        .toList();
-
-    if (scheduledPatients.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No appointments currently scheduled for today or all have been processed.'),
-            backgroundColor: Colors.amber));
-      }
-      return;
-    }
-    // Sort by appointment time (which is stored in arrivalTime for these pseudo-items)
-    scheduledPatients.sort((a, b) => a.arrivalTime.compareTo(b.arrivalTime));
-    final nextScheduled = scheduledPatients.first;
-
-    // The queueEntryId for these is 'appt_ORIGINAL_ID'
-    if (nextScheduled.queueEntryId.startsWith('appt_')) {
-      String originalAppointmentId = nextScheduled.queueEntryId.substring(5); // Remove 'appt_'
-      await _activateAndCallScheduledPatient(originalAppointmentId);
-    } else {
-      // This case should ideally not happen if data is consistent
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Error: Selected scheduled item has an invalid ID format.'),
-            backgroundColor: Colors.red));
-      }
-    }
-  }
-
-  Future<void> _nextPatient() async {
-    if (!mounted) return;
-    try {
-      final queue = await widget.queueService.getActiveQueueItems(statuses: ['waiting']);
-      
-      if (queue.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No walk-in patients currently waiting.'),
-            backgroundColor: Colors.amber));
-        return;
-      }
-
-      queue.sort((a, b) => (a.queueNumber ?? 0).compareTo(b.queueNumber ?? 0));
-      
-      final nextPatientToCall = queue.first;
-
-      bool success = await widget.queueService
-          .markPatientAsInConsultation(nextPatientToCall.queueEntryId);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success
-              ? '${nextPatientToCall.patientName} is now In Consultation.'
-              : 'Failed to move ${nextPatientToCall.patientName}.'),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-      if (success) {
-        _refreshAllData(); 
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error processing next walk-in patient: $e'),
-          backgroundColor: Colors.red));
-    }
-  }
-
-  static String _getDisplayStatus(String status) {
+  }  static String _getDisplayStatus(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
       case 'in_consultation': return 'In Consultation';
@@ -2162,6 +2030,127 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     );
   }
 
+  Widget _buildLiveQueueDisplaySection() {
+    final now = DateTime.now();
+    final isToday = _calendarSelectedDate.year == now.year &&
+                    _calendarSelectedDate.month == now.month &&
+                    _calendarSelectedDate.day == now.day;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section title
+            Row(
+              children: [
+                Icon(Icons.queue, color: Colors.teal[700]),
+                const SizedBox(width: 8),
+                Text(
+                  isToday ? 'Live Patient Queue (Today)' : 'Patient Queue for ${DateFormat.yMMMd().format(_calendarSelectedDate)}',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[700],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            if (_isLoadingQueueAndAppointments)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              // Walk-in patients section (only for today)
+              if (isToday) ...[
+                Row(
+                  children: [
+                    Icon(Icons.people, size: 20, color: Colors.blue[700]),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Walk-in Patients (${_walkInQueueItems.length})',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[700],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (_walkInQueueItems.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'No walk-in patients in queue',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ),
+                  )
+                else ...[
+                  _buildTableHeader(),
+                  ...{
+                    for (var item in _walkInQueueItems)
+                      _buildTableRow(item)
+                  },
+                ],
+                const SizedBox(height: 24),
+              ],
+              
+              // Scheduled appointments section
+              Row(
+                children: [
+                  Icon(Icons.event, size: 20, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Scheduled Appointments (${_appointmentsForSelectedDate.length})',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[700],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_appointmentsForSelectedDate.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'No appointments scheduled for this date',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ),
+                )
+              else ...[
+                _buildAppointmentTableHeader(),
+                ...{
+                  for (var appointment in _appointmentsForSelectedDate)
+                    _buildAppointmentTableRow(appointment)
+                },
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTableHeader() {
     final headers = ['No.', 'Name', 'Arrival', 'Condition', 'Payment', 'Status & Actions'];
     return Container(
@@ -2295,97 +2284,215 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: () {
-                          if (item.paymentStatus != 'Paid' && item.paymentStatus != 'Waived') {
-                          }
+                          // It seems the payment status check was commented out, re-evaluating if needed or how to handle.
+                          // if (item.paymentStatus != 'Paid' && item.paymentStatus != 'Waived') {
+                          // }
                           _activateAndCallScheduledPatient(originalAppointmentId);
                         },
                     ), 
                   )
-                : TableCellWidget(
-                    child: Text(_getDisplayStatus(item.status),
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _getStatusColor(item.status),
-                            fontSize: cellStyle.fontSize),
-                        textAlign: TextAlign.center)),
+                : (item.status == 'waiting' || item.status == 'in_consultation')
+                  ? Padding( // ADDED: Action buttons for non-scheduled waiting/in_consultation items
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: PopupMenuButton<String>(
+                        tooltip: "Change Status",
+                        icon: Icon(Icons.more_vert, color: _getStatusColor(item.status)),
+                        onSelected: (String newStatus) {
+                           _updateQueueItemStatus(item, newStatus);
+                        },
+                        itemBuilder: (BuildContext context) {
+                          List<String> possibleStatuses = [];
+                          if (item.status == 'waiting') {
+                            possibleStatuses.addAll(['in_consultation', 'served', 'removed']);
+                          } else if (item.status == 'in_consultation') {
+                            possibleStatuses.addAll(['waiting', 'served', 'removed']);
+                          }
+                          // Add other states if necessary or refine logic
+                          return possibleStatuses.map((String statusValue) {
+                            return PopupMenuItem<String>(
+                              value: statusValue,
+                              child: Text(_getDisplayStatus(statusValue)),
+                            );
+                          }).toList();
+                        },
+                        // Optionally, display current status next to the button or style the button itself.
+                        // For now, the icon color reflects the status.
+                      ),
+                    )
+                  : TableCellWidget( // Fallback to just displaying status for served/removed or other states
+                      child: Text(_getDisplayStatus(item.status),
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _getStatusColor(item.status),
+                              fontSize: cellStyle.fontSize),
+                          textAlign: TextAlign.center)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLiveQueueDisplaySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('Live Patient Queue (Today)',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal[700])),
-            IconButton(
-                icon: const Icon(Icons.refresh, size: 20),
-                onPressed: _refreshAllData,
-                tooltip: 'Refresh Queue & Appointments',
-                color: Colors.teal[700]),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _buildTableHeader(),
-        Container(
-          height: 250.0,
-          child: _isLoadingQueueAndAppointments
-              ? const Center(child: CircularProgressIndicator(key: Key('liveQueueLoadingIndicator')))
-              : _combinedQueueForDisplayList.isEmpty
-                  ? const Center(
-                      child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                          child: Text('No patients in queue or scheduled for today.',
-                              style: TextStyle(fontSize: 16, color: Colors.grey),
-                              textAlign: TextAlign.center)))
-                  : ListView.builder(
-                      itemCount: _combinedQueueForDisplayList.length,
-                      itemBuilder: (context, index) {
-                          final item = _combinedQueueForDisplayList[index];
-                          return _buildTableRow(item as ActivePatientQueueItem);
-                      },
-                    ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.directions_walk, size: 18),
-              label: const Text('Next Walk-In'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal[600],
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  textStyle:
-                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              onPressed: _nextPatient, 
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.event_available, size: 18),
-              label: const Text('Call Scheduled'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange[600],
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  textStyle:
-                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              onPressed: _callNextScheduled, 
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-      ],
+  Widget _buildAppointmentTableHeader() {
+    final headers = ['Time', 'Patient ID', 'Doctor', 'Type', 'Status', 'Actions'];
+    return Container(
+      color: Colors.deepOrange[600],
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: headers.map((text) {
+          int flex = 1;
+          if (text == 'Type') flex = 2;
+          if (text == 'Actions') flex = 2;
+          
+          return Expanded(
+              flex: flex,
+              child: TableCellWidget(
+                  text: text,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)));
+        }).toList(),
+      ),
     );
+  }
+  Widget _buildAppointmentTableRow(Appointment appointment) {
+    final timeString = appointment.time.format(context);
+    
+    final dataCells = [
+      timeString,
+      appointment.patientId,
+      appointment.doctorId,
+      appointment.consultationType ?? 'Consultation',
+      appointment.status,
+    ];    // Check if the appointment is already activated (in consultation or completed)
+    bool isActivated = appointment.status.toLowerCase() == 'in consultation' || 
+                      appointment.status.toLowerCase() == 'completed' ||
+                      appointment.status.toLowerCase() == 'served' ||
+                      appointment.status.toLowerCase() == 'removed' ||
+                      appointment.status.toLowerCase() == 'cancelled';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: isActivated ? Colors.green[50] : Colors.orange[50],
+        border: Border.all(
+          color: isActivated ? Colors.green[200]! : Colors.orange[200]!, 
+          width: 1.0
+        ),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          ...dataCells.asMap().entries.map((entry) {
+            int idx = entry.key;
+            String text = entry.value.toString();
+            int flex = 1;
+            if (idx == 3) flex = 2; // Type column
+            
+            return Expanded(
+                flex: flex,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: TableCellWidget(
+                    child: Text(text, 
+                        style: TextStyle(
+                          fontSize: 13, 
+                          color: isActivated ? Colors.green[800] : Colors.deepOrange[800]
+                        ), 
+                        overflow: TextOverflow.ellipsis, 
+                        textAlign: TextAlign.center),
+                  ),
+                ));
+          }).toList(),
+          Expanded(
+            flex: 2, // Actions column
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: isActivated 
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      appointment.status.toLowerCase() == 'in consultation' 
+                        ? 'In Progress' 
+                        : 'Completed',
+                      style: TextStyle(
+                        fontSize: 12, 
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.bold
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : ElevatedButton.icon(
+                    icon: Icon(Icons.play_circle_outline, size: 16),
+                    label: Text("Activate", style: TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepOrange[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () => _activateAndCallScheduledPatient(appointment.id),
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ADDED: Method to handle status updates for general queue items (walk-ins or non-scheduled)
+  Future<void> _updateQueueItemStatus(ActivePatientQueueItem item, String newStatus) async {
+    if (!mounted) return;
+    setState(() {
+      // Potentially set a specific loading state for this item if UI needs it
+      _isLoadingQueueAndAppointments = true; // General loading indicator for now
+    });
+
+    try {
+      bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("${item.patientName}'s status updated to ${_getDisplayStatus(newStatus)}."),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadCombinedQueueData(_calendarSelectedDate); // Refresh the entire queue view for the selected date
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Failed to update status for ${item.patientName}."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        print("Error updating queue item status: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error updating status: ${e.toString()}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingQueueAndAppointments = false;
+        });
+      }
+    }
   }
 }

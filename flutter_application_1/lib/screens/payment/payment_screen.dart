@@ -33,7 +33,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _lastProcessedReferenceNumber;
   double _lastProcessedChange = 0.0;
   
-  bool _isSummaryExpanded = false; // State for the expansion tile (no longer used for ExpansionTile)
+  // Removed unused _isSummaryExpanded field
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
@@ -82,11 +82,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       final patients =
           await _dbHelper.getActiveQueue(statuses: ['in_consultation']);
-      print("Fetched 'in_consultation' patients BEFORE filtering:");
+      print("PaymentScreen: Fetched ${patients.length} 'in_consultation' patients BEFORE filtering:");
       for (var p in patients) {
+        String patientType = (p.originalAppointmentId != null && p.originalAppointmentId!.isNotEmpty) 
+            ? "APPOINTMENT" : "WALK-IN";
         print(
-            "  Patient Name: ${p.patientName}, Patient ID: ${p.patientId}, totalPrice: ${p.totalPrice}, selectedServices: ${p.selectedServices}, conditionOrPurpose: ${p.conditionOrPurpose}");
+            "  [$patientType] Patient Name: ${p.patientName}, Patient ID: ${p.patientId}, totalPrice: ${p.totalPrice}, selectedServices: ${p.selectedServices?.length ?? 0} services, conditionOrPurpose: ${p.conditionOrPurpose}");
       }
+      
       final validPatients = patients
           .where((p) =>
               p.patientId != null &&
@@ -94,6 +97,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
               p.totalPrice != null &&
               p.totalPrice! > 0)
           .toList();
+      
+      print("PaymentScreen: After filtering, ${validPatients.length} patients are valid for payment:");
+      for (var p in validPatients) {
+        String patientType = (p.originalAppointmentId != null && p.originalAppointmentId!.isNotEmpty) 
+            ? "APPOINTMENT" : "WALK-IN";
+        print("  [$patientType] Valid: ${p.patientName} - ₱${p.totalPrice}");
+      }
 
       setState(() {
         _inConsultationPatients = validPatients;
@@ -213,6 +223,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       await _dbHelper.insertPayment(paymentData);
 
       bool paymentAndServeSuccess = await _queueService.markPaymentSuccessfulAndServe(processedPatientItem.queueEntryId);
+      
+      if (!paymentAndServeSuccess) {
+        throw Exception('Failed to mark patient as served in queue');
+      }
 
       await _dbHelper.logUserActivity(
         _currentUserId!,
@@ -311,7 +325,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             leading: CircleAvatar(
               backgroundColor: Colors.teal[700],
               child: Text(
-                patient.queueNumber?.toString() ?? '?',
+                patient.queueNumber.toString(),
                 style:
                     TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
@@ -319,7 +333,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             title: Text(patient.patientName,
                 style: TextStyle(fontWeight: FontWeight.w500)),
             subtitle: Text(
-                'ID: ${patient.patientId?.substring(0, 8) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
+                'ID: ${patient.patientId?.substring(0, patient.patientId!.length > 8 ? 8 : patient.patientId!.length) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
             trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}',
                 style: TextStyle(
                     color: Colors.green[700], fontWeight: FontWeight.bold)),

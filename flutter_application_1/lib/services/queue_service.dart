@@ -334,9 +334,9 @@ class QueueService {
   Future<bool> markPatientAsDone(String queueEntryId) async {
     return await updatePatientStatusInQueue(queueEntryId, 'done');
   }
-
   /// Generate daily queue report from the active queue data for a specific date.
   /// The report will reflect the state of the queue *at the time of generation* for that day.
+  /// Enhanced to include appointment data for more comprehensive reporting.
   Future<Map<String, dynamic>> generateDailyReport(
       {DateTime? reportDate}) async {
     final dateToReport = reportDate ?? DateTime.now();
@@ -345,16 +345,39 @@ class QueueService {
     final endOfDay = DateTime(dateToReport.year, dateToReport.month,
         dateToReport.day, 23, 59, 59, 999);
 
+    // Fetch queue items for the specified date range
     List<ActivePatientQueueItem> reportItems;
-    // Always fetch from the DB for the specified date range to ensure accuracy for past dates
     reportItems =
         await _dbHelper.getActiveQueueByDateRange(startOfDay, endOfDay);
+
+    // Fetch appointments for the same date to include in the report
+    List<Appointment> dayAppointments = [];
+    try {
+      dayAppointments = await _dbHelper.getAppointmentsByDate(dateToReport);
+    } catch (e) {
+      print('QueueService: Error fetching appointments for report: $e');
+    }
+
+    // Separate queue items by origin (appointment vs walk-in)
+    final appointmentOriginatedItems = reportItems.where((item) => 
+        item.originalAppointmentId != null && item.originalAppointmentId!.isNotEmpty).toList();
+    final walkInItems = reportItems.where((item) => 
+        item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty).toList();
 
     final totalProcessed = reportItems.length;
     final servedPatients =
         reportItems.where((p) => p.status == 'served').toList();
     final servedCount = servedPatients.length;
     final removedCount = reportItems.where((p) => p.status == 'removed').length;
+
+    // Calculate appointment statistics
+    final totalScheduledAppointments = dayAppointments.length;
+    final completedAppointments = dayAppointments.where((appt) => 
+        appt.status.toLowerCase() == 'completed' || appt.status.toLowerCase() == 'served').length;
+    final cancelledAppointments = dayAppointments.where((appt) => 
+        appt.status.toLowerCase() == 'cancelled').length;
+    final noShowAppointments = dayAppointments.where((appt) => 
+        appt.status.toLowerCase() == 'no show').length;
 
     String averageWaitTimeDisplay = "N/A";
     if (servedPatients.isNotEmpty) {
@@ -373,9 +396,7 @@ class QueueService {
             microseconds: totalWait.inMicroseconds ~/ waitTimes.length);
         averageWaitTimeDisplay = _formatDuration(avgWait);
       }
-    }
-
-    String peakHour =
+    }    String peakHour =
         _findPeakHour(reportItems.map((item) => item.arrivalTime).toList());
 
     final report = {
@@ -387,6 +408,16 @@ class QueueService {
       'peakHour': peakHour,
       'queueData': reportItems.map((item) => item.toJson()).toList(),
       'generatedAt': DateTime.now().toIso8601String(),
+      // Enhanced appointment statistics
+      'appointmentStats': {
+        'totalScheduledAppointments': totalScheduledAppointments,
+        'completedAppointments': completedAppointments,
+        'cancelledAppointments': cancelledAppointments,
+        'noShowAppointments': noShowAppointments,
+        'appointmentOriginatedQueueItems': appointmentOriginatedItems.length,
+        'walkInQueueItems': walkInItems.length,
+      },
+      'appointmentData': dayAppointments.map((appt) => appt.toJson()).toList(),
     };
     return report;
   }
@@ -490,9 +521,46 @@ class QueueService {
                 'Average Wait Time (Served):',
                 '${reportData['averageWaitTimeMinutes'] ?? reportData['averageWaitTime'] ?? 'N/A'}',
                 estiloTexto,
-                estiloValor),
-            _buildPdfStatRow('Peak Hour:', '${reportData['peakHour'] ?? 'N/A'}',
+                estiloValor),            _buildPdfStatRow('Peak Hour:', '${reportData['peakHour'] ?? 'N/A'}',
                 estiloTexto, estiloValor),
+            pw.SizedBox(height: 20),
+            
+            // Add appointment statistics section
+            pw.Text('Appointment Statistics:', style: estiloSubtitulo),
+            pw.SizedBox(height: 10),
+            _buildPdfStatRow(
+                'Total Scheduled Appointments:',
+                '${reportData['appointmentStats']?['totalScheduledAppointments'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Completed Appointments:',
+                '${reportData['appointmentStats']?['completedAppointments'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Cancelled Appointments:',
+                '${reportData['appointmentStats']?['cancelledAppointments'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'No-Show Appointments:',
+                '${reportData['appointmentStats']?['noShowAppointments'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            pw.SizedBox(height: 10),
+            pw.Text('Queue Origin Breakdown:', style: estiloSubtitulo),
+            pw.SizedBox(height: 10),
+            _buildPdfStatRow(
+                'Appointment-Originated Queue Items:',
+                '${reportData['appointmentStats']?['appointmentOriginatedQueueItems'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
+            _buildPdfStatRow(
+                'Walk-In Queue Items:',
+                '${reportData['appointmentStats']?['walkInQueueItems'] ?? 'N/A'}',
+                estiloTexto,
+                estiloValor),
             pw.SizedBox(height: 20),
           ];
           return content;
