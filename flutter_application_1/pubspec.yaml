@@ -55,6 +55,7 @@ dependencies:
   shelf_router: ^1.1.4
   shelf_static: ^1.1.2
   table_calendar: ^3.0.9
+  open_filex: ^4.3.2
   
 dev_dependencies:
   flutter_test:

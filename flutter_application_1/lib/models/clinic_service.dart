@@ -4,6 +4,7 @@ class ClinicService {
   final String? description;
   final String? category;
   final double? defaultPrice;
+  final int selectionCount;
 
   ClinicService({
     required this.id,
@@ -11,6 +12,7 @@ class ClinicService {
     this.description,
     this.category,
     this.defaultPrice,
+    this.selectionCount = 0,
   });
 
   factory ClinicService.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class ClinicService {
       description: json['description'] as String?,
       category: json['category'] as String?,
       defaultPrice: (json['defaultPrice'] as num?)?.toDouble(),
+      selectionCount: json['selectionCount'] as int? ?? 0,
     );
   }
 
@@ -30,6 +33,7 @@ class ClinicService {
       'description': description,
       'category': category,
       'defaultPrice': defaultPrice,
+      'selectionCount': selectionCount,
     };
   }
 
@@ -39,6 +43,7 @@ class ClinicService {
     String? description,
     String? category,
     double? defaultPrice,
+    int? selectionCount,
   }) {
     return ClinicService(
       id: id ?? this.id,
@@ -46,6 +51,7 @@ class ClinicService {
       description: description ?? this.description,
       category: category ?? this.category,
       defaultPrice: defaultPrice ?? this.defaultPrice,
+      selectionCount: selectionCount ?? this.selectionCount,
     );
   }
 }

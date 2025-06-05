@@ -223,7 +223,21 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProv
           return _buildEmptyListMessage('live queue items');
         }
         final queue = snapshot.data!;
-        queue.sort((a, b) {
+
+        // Filter the queue before displaying
+        final filteredQueue = queue.where((item) {
+          bool isActive = item.status == 'waiting' || item.status == 'in_consultation';
+          bool isFinalizedWalkIn = (item.status == 'served' || item.status == 'removed') &&
+                                   (item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty);
+          return isActive || isFinalizedWalkIn;
+        }).toList();
+
+        if (filteredQueue.isEmpty) {
+          return _buildEmptyListMessage('active live queue items for today');
+        }
+
+        // Sort the filteredQueue
+        filteredQueue.sort((a, b) {
           if (a.status == 'in_consultation' && b.status != 'in_consultation') return -1;
           if (a.status != 'in_consultation' && b.status == 'in_consultation') return 1;
           if (a.queueNumber != 0 && b.queueNumber != 0) {
@@ -239,9 +253,9 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProv
               _buildLiveQueueTableHeader(),
               Expanded(
                 child: ListView.builder(
-                  itemCount: queue.length,
+                  itemCount: filteredQueue.length,
                   itemBuilder: (context, index) {
-                    return _buildLiveQueueTableRow(queue[index]);
+                    return _buildLiveQueueTableRow(filteredQueue[index]);
                   },
                 ),
               ),

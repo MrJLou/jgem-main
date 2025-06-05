@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For formatting price
+import '../../services/api_service.dart'; // Added ApiService import
+import '../../models/clinic_service.dart'; // Added ClinicService import
 import '../../services/real_time_sync_service.dart';
 import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
@@ -9,19 +11,19 @@ import '../../models/patient.dart'; // Assuming Patient model might be used, tho
 import '../../models/appointment.dart';
 
 // Define Service data structure
-class ServiceItem {
-  final String name;
-  final String category;
-  final double price;
-  bool isSelected; // To track selection in the dialog
+// class ServiceItem { // Removed ServiceItem class
+//   final String name;
+//   final String category;
+//   final double price;
+//   bool isSelected; // To track selection in the dialog
 
-  ServiceItem({
-    required this.name,
-    required this.category,
-    required this.price,
-    this.isSelected = false,
-  });
-}
+//   ServiceItem({
+//     required this.name,
+//     required this.category,
+//     required this.price,
+//     this.isSelected = false,
+//   });
+// }
 
 class AddToQueueScreen extends StatefulWidget {
   final QueueService queueService;
@@ -47,29 +49,11 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   late AppointmentDatabaseService _appointmentDbService;
   bool _isAddingToQueue = false;
 
-  // Predefined services
-  final List<ServiceItem> _availableServices = [
-    ServiceItem(name: 'Consultation', category: 'Consultation', price: 500.0),
-    ServiceItem(name: 'Chest X-ray', category: 'Laboratory', price: 350.0),
-    ServiceItem(name: 'ECG', category: 'Laboratory', price: 650.0),
-    ServiceItem(
-        name: 'Fasting Blood Sugar', category: 'Laboratory', price: 150.0),
-    ServiceItem(
-        name: 'Total Cholesterol', category: 'Laboratory', price: 250.0),
-    ServiceItem(name: 'Triglycerides', category: 'Laboratory', price: 250.0),
-    ServiceItem(
-        name: 'High Density Lipoprotein (HDL)',
-        category: 'Laboratory',
-        price: 250.0),
-    ServiceItem(
-        name: 'Low Density Lipoprotein (LDL)',
-        category: 'Laboratory',
-        price: 200.0), // Corrected HDL to LDL based on common tests
-    ServiceItem(name: 'Blood Uric Acid', category: 'Laboratory', price: 200.0),
-    ServiceItem(name: 'Creatinine', category: 'Laboratory', price: 200.0),
-  ];
+  // Predefined services - Will be fetched from DB
+  List<ClinicService> _availableServices = []; // Changed to List<ClinicService>
+  List<ClinicService> _selectedServices = []; // Changed to List<ClinicService>
+  Map<String, bool> _serviceSelectionState = {}; // To track selection in the dialog
 
-  List<ServiceItem> _selectedServices = [];
   double _totalPrice = 0.0;
   bool _showOtherConditionField = false;
 
@@ -81,7 +65,28 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Future<void> _fetchAvailableServices() async {
-    // Implementation of _fetchAvailableServices method
+    try {
+      final services = await ApiService.getAllClinicServices();
+      if (mounted) {
+        setState(() {
+          _availableServices = services;
+          // Initialize selection state for the dialog
+          _serviceSelectionState = {
+            for (var service in _availableServices) service.id: false
+          };
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load services: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      print('Error fetching available services: $e');
+    }
   }
 
   int? _calculateAge(String birthDateString) {
@@ -300,7 +305,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           final now = DateTime.now();
 
           String conditionSummary =
-              _selectedServices.map((s) => s.name).join(', ');
+              _selectedServices.map((s) => s.serviceName).join(', ');
           if (_showOtherConditionField &&
               _otherConditionController.text.trim().isNotEmpty) {
             if (conditionSummary.isNotEmpty) {
@@ -314,9 +319,11 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
 
           final List<Map<String, dynamic>> servicesForQueue = _selectedServices
               .map((service) => {
-                    'name': service.name,
-                    'category': service.category,
-                    'price': service.price,
+                    'id': service.id, // Store ID for reference
+                    'name': service.serviceName,
+                    'category': service.category ?? 'Uncategorized',
+                    'price': service.defaultPrice ?? 0.0,
+                    // selectionCount is not directly needed for queue item, but for DB update
                   })
               .toList();
 
@@ -338,6 +345,20 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           };
 
           await widget.queueService.addPatientDataToQueue(newPatientQueueData);
+
+          // ---- Increment service usage count ----
+          if (_selectedServices.isNotEmpty) {
+            final List<String> selectedServiceIds = _selectedServices.map((s) => s.id).toList();
+            try {
+              await ApiService.incrementServiceUsage(selectedServiceIds);
+              print('Successfully incremented usage for services: $selectedServiceIds');
+            } catch (e) {
+              print('Error incrementing service usage: $e');
+              // Optionally show a non-blocking warning to the user or log more formally
+            }
+          }
+          // ---- End Increment service usage count ----
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('$finalPatientNameToUse added to queue!'),
@@ -353,9 +374,12 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           // _conditionController.clear(); // Removed
           _otherConditionController.clear();
           setState(() {
-            _selectedServices
-                .forEach((s) => s.isSelected = false); // Reset selection states
+            // _selectedServices // Reset selection states - handled by _serviceSelectionState
+            //     .forEach((s) => s.isSelected = false); 
             _selectedServices.clear();
+             _serviceSelectionState = { // Reset selection states
+              for (var service in _availableServices) service.id: _selectedServices.any((s) => s.id == service.id)
+            };
             _totalPrice = 0.0;
             _showOtherConditionField = false;
           }); // Trigger rebuild to update queue list display
@@ -393,14 +417,12 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   // Method to open the service selection dialog
   void _openServiceSelectionDialog() {
     // Reset isSelected state for all available services before opening dialog
-    for (var service in _availableServices) {
-      service.isSelected = _selectedServices.any((selected) => selected.name == service.name);
-    }
+    // Use a temporary map to manage selections within the dialog
+    Map<String, bool> currentDialogSelectionState = Map.from(_serviceSelectionState);
+    
     // Preserve the current "Other" text and selection state for the dialog
-    // In add_to_queue_screen, this is _otherConditionController
-    TextEditingController dialogOtherController = TextEditingController(text: _otherConditionController.text); 
-    // In add_to_queue_screen, this is _showOtherConditionField
-    bool currentShowOtherField = _showOtherConditionField; 
+    TextEditingController dialogOtherController = TextEditingController(text: _otherConditionController.text);
+    bool currentShowOtherField = _showOtherConditionField;
 
     showDialog(
       context: context,
@@ -409,14 +431,18 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             double currentDialogPrice = _availableServices
-                .where((s) => s.isSelected)
-                .fold(0, (sum, item) => sum + item.price);
+                .where((s) => currentDialogSelectionState[s.id] == true)
+                .fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
 
-            Map<String, List<ServiceItem>> groupedServices = {};
+            Map<String, List<ClinicService>> groupedServices = {};
             for (var service in _availableServices) {
-              (groupedServices[service.category] ??= []).add(service);
+              (groupedServices[service.category ?? 'Uncategorized'] ??= []).add(service);
             }
+            // Ensure 'Consultation' and 'Laboratory' appear first if they exist, then others.
             List<String> categoryOrder = ['Consultation', 'Laboratory'];
+            List<String> allCategories = groupedServices.keys.toList();
+            categoryOrder.addAll(allCategories.where((cat) => !categoryOrder.contains(cat)));
+
 
             return AlertDialog(
               title: const Text('Select Services / Purpose of Visit'),
@@ -424,6 +450,11 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               content: SingleChildScrollView(
                 child: ListBody(
                   children: <Widget>[
+                    if (_availableServices.isEmpty)
+                      const Center(child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text("No services available. Please add services in settings."),
+                      )),
                     ...categoryOrder.where((cat) => groupedServices.containsKey(cat)).expand((category) => [
                       Padding(
                         padding: const EdgeInsets.only(top: 10.0, bottom: 4.0),
@@ -431,15 +462,15 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                       ),
                       ...groupedServices[category]!.map((service) => CheckboxListTile(
                             title: Text(
-                                '${service.name} (₱${NumberFormat("#,##0.00", "en_US").format(service.price)})',
+                                '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
                                 style: const TextStyle(fontSize: 14)),
-                            value: service.isSelected,
+                            value: currentDialogSelectionState[service.id] ?? false,
                             onChanged: (bool? value) {
                               setDialogState(() {
-                                service.isSelected = value!;
+                                currentDialogSelectionState[service.id] = value!;
                                 currentDialogPrice = _availableServices
-                                    .where((s) => s.isSelected)
-                                    .fold(0, (sum, item) => sum + item.price);
+                                    .where((s) => currentDialogSelectionState[s.id] == true)
+                                    .fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
                               });
                             },
                             dense: true,
@@ -512,13 +543,14 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                   ),
                   onPressed: () {
                     setState(() {
-                      _selectedServices = _availableServices.where((s) => s.isSelected).toList();
-                      _totalPrice = _selectedServices.fold(0, (sum, item) => sum + item.price);
-                      _showOtherConditionField = currentShowOtherField; // Update state variable
+                      _serviceSelectionState = Map.from(currentDialogSelectionState);
+                      _selectedServices = _availableServices.where((s) => _serviceSelectionState[s.id] == true).toList();
+                      _totalPrice = _selectedServices.fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
+                      _showOtherConditionField = currentShowOtherField;
                       if (currentShowOtherField) {
-                        _otherConditionController.text = dialogOtherController.text.trim(); // Update state controller
+                        _otherConditionController.text = dialogOtherController.text.trim();
                       } else {
-                        _otherConditionController.clear(); // Clear state controller
+                        _otherConditionController.clear();
                       }
                     });
                     Navigator.of(dialogContext).pop();
@@ -671,7 +703,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                                   children: _selectedServices
                                       .map((service) => Chip(
                                             label: Text(
-                                                '${service.name} (₱${service.price.toStringAsFixed(2)})'),
+                                                '${service.serviceName} (₱${(service.defaultPrice ?? 0.0).toStringAsFixed(2)})'),
                                             backgroundColor: Colors.teal[100],
                                             labelStyle: TextStyle(
                                                 color: Colors.teal[800]),

@@ -429,6 +429,16 @@ class ApiService {
     }
   }
 
+  static Future<List<ClinicService>> getAllClinicServices() async {
+    try {
+      final servicesData = await _dbHelper.getAllClinicServices();
+      return servicesData.map((data) => ClinicService.fromJson(data)).toList();
+    } catch (e) {
+      print('ApiService: Failed to get all clinic services: $e');
+      throw Exception('Failed to load all clinic services: $e');
+    }
+  }
+
   // LAN Synchronization Methods
   static Future<bool> synchronizeDatabase() async {
     try {
@@ -671,6 +681,18 @@ class ApiService {
       return await _dbHelper.getUsers();
     } catch (e) {
       throw Exception('Failed to load users: $e');
+    }
+  }
+
+  static Future<void> incrementServiceUsage(List<String> serviceIds) async {
+    if (serviceIds.isEmpty) return;
+    try {
+      await _dbHelper.incrementServiceSelectionCounts(serviceIds);
+    } catch (e) {
+      print('ApiService: Failed to increment service usage counts: $e');
+      // Depending on requirements, you might want to throw this exception
+      // or handle it silently if it's not critical for the user flow.
+      // For now, just printing.
     }
   }
 }

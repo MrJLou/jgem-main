@@ -370,14 +370,24 @@ class QueueService {
     final servedCount = servedPatients.length;
     final removedCount = reportItems.where((p) => p.status == 'removed').length;
 
-    // Calculate appointment statistics
-    final totalScheduledAppointments = dayAppointments.length;
-    final completedAppointments = dayAppointments.where((appt) => 
-        appt.status.toLowerCase() == 'completed' || appt.status.toLowerCase() == 'served').length;
-    final cancelledAppointments = dayAppointments.where((appt) => 
-        appt.status.toLowerCase() == 'cancelled').length;
-    final noShowAppointments = dayAppointments.where((appt) => 
-        appt.status.toLowerCase() == 'no show').length;
+    // Calculate appointment statistics for THE REPORT DATE ONLY
+    int totalScheduledAppointmentsForReportDate = 0;
+    int completedAppointmentsForReportDate = 0;
+    int cancelledAppointmentsForReportDate = 0;
+
+    if (dayAppointments.isNotEmpty) {
+        totalScheduledAppointmentsForReportDate = dayAppointments.length;
+        completedAppointmentsForReportDate = dayAppointments.where((appt) => 
+            (appt.status.toLowerCase() == 'completed' || appt.status.toLowerCase() == 'served') &&
+            isSameDay(appt.date, dateToReport) // Double check, though getAppointmentsByDate should ensure this
+        ).length;
+        cancelledAppointmentsForReportDate = dayAppointments.where((appt) => 
+            appt.status.toLowerCase() == 'cancelled' &&
+            isSameDay(appt.date, dateToReport) // Double check
+        ).length;
+    }
+    // final noShowAppointments = dayAppointments.where((appt) => 
+    //     appt.status.toLowerCase() == 'no show').length;
 
     String averageWaitTimeDisplay = "N/A";
     if (servedPatients.isNotEmpty) {
@@ -408,16 +418,16 @@ class QueueService {
       'peakHour': peakHour,
       'queueData': reportItems.map((item) => item.toJson()).toList(),
       'generatedAt': DateTime.now().toIso8601String(),
-      // Enhanced appointment statistics
+      // Enhanced appointment statistics for the report date
       'appointmentStats': {
-        'totalScheduledAppointments': totalScheduledAppointments,
-        'completedAppointments': completedAppointments,
-        'cancelledAppointments': cancelledAppointments,
-        'noShowAppointments': noShowAppointments,
-        'appointmentOriginatedQueueItems': appointmentOriginatedItems.length,
-        'walkInQueueItems': walkInItems.length,
+        'totalScheduledAppointmentsForReportDate': totalScheduledAppointmentsForReportDate,
+        'completedAppointmentsToday': completedAppointmentsForReportDate, // Renamed for clarity in report
+        'cancelledAppointmentsToday': cancelledAppointmentsForReportDate, // Renamed for clarity in report
+        // 'noShowAppointments': noShowAppointments, // Kept commented if not immediately needed
+        'appointmentOriginatedQueueItems': appointmentOriginatedItems.length, // From active queue items for the day
+        'walkInQueueItems': walkInItems.length, // From active queue items for the day
       },
-      'appointmentData': dayAppointments.map((appt) => appt.toJson()).toList(),
+      'appointmentData': dayAppointments.map((appt) => appt.toJson()).toList(), // Full appointment data for the day
     };
     return report;
   }
@@ -530,22 +540,17 @@ class QueueService {
             pw.SizedBox(height: 10),
             _buildPdfStatRow(
                 'Total Scheduled Appointments:',
-                '${reportData['appointmentStats']?['totalScheduledAppointments'] ?? 'N/A'}',
+                '${reportData['appointmentStats']?['totalScheduledAppointmentsForReportDate'] ?? 'N/A'}',
                 estiloTexto,
                 estiloValor),
             _buildPdfStatRow(
                 'Completed Appointments:',
-                '${reportData['appointmentStats']?['completedAppointments'] ?? 'N/A'}',
+                '${reportData['appointmentStats']?['completedAppointmentsToday'] ?? 'N/A'}',
                 estiloTexto,
                 estiloValor),
             _buildPdfStatRow(
                 'Cancelled Appointments:',
-                '${reportData['appointmentStats']?['cancelledAppointments'] ?? 'N/A'}',
-                estiloTexto,
-                estiloValor),
-            _buildPdfStatRow(
-                'No-Show Appointments:',
-                '${reportData['appointmentStats']?['noShowAppointments'] ?? 'N/A'}',
+                '${reportData['appointmentStats']?['cancelledAppointmentsToday'] ?? 'N/A'}',
                 estiloTexto,
                 estiloValor),
             pw.SizedBox(height: 10),
@@ -664,6 +669,13 @@ class QueueService {
       print('QueueService: Failed to update item $queueEntryId after payment.');
       return false;
     }
+  }
+
+  // Helper function to check if two DateTime objects represent the same day.
+  bool isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+           date1.month == date2.month &&
+           date1.day == date2.day;
   }
 }
 

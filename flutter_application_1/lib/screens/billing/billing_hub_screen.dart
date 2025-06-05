@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'invoice_screen.dart'; // Import the InvoiceScreen
 // Import specific screens if they exist, e.g.:
 // import 'create_invoice_screen.dart';
 // import 'billing_history_screen.dart';
@@ -81,7 +82,12 @@ class BillingHubScreen extends StatelessWidget {
                       title: 'Create Invoice',
                       subtitle: 'Generate new patient invoices',
                       color: Colors.teal[700]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => InvoiceScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(

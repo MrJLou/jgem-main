@@ -58,16 +58,16 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         bool overwrite = await showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text('Report Exists'),
+                title: const Text('Report Exists'),
                 content: Text(
                     'A report for $reportDateString already exists. Overwrite it?'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: Text('Cancel')),
+                      child: const Text('Cancel')),
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: Text('Overwrite')),
+                      child: const Text('Overwrite')),
                 ],
               ),
             ) ??
@@ -104,16 +104,16 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
       bool exportNow = await showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text('Export Report'),
+              title: const Text('Export Report'),
               content: Text(
                   'Do you want to export the generated report for $reportDateString to PDF now?'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: Text('Later')),
+                    child: const Text('Later')),
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: Text('Export Now')),
+                    child: const Text('Export Now')),
               ],
             ),
           ) ??
@@ -133,16 +133,16 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         bool clearQueue = await showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text('Clear Active Queue?'),
-                content: Text(
+                title: const Text('Clear Active Queue?'),
+                content: const Text(
                     'Today\'s report has been saved. Do you want to clear the current active queue to prepare for the next operational day?'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: Text('No, Keep It')),
+                      child: const Text('No, Keep It')),
                   ElevatedButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: Text('Yes, Clear Now')),
+                      child: const Text('Yes, Clear Now')),
                 ],
               ),
             ) ??
@@ -205,7 +205,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
                   const SizedBox(height: 10),
                   Text(
                       'Total Queue Entries Processed: ${typedQueueData.length}',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   // Removed the detailed list of patients
                 ],
               ),
@@ -213,11 +213,11 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Close')),
+                  child: const Text('Close')),
               ElevatedButton.icon(
-                icon: Icon(Icons.picture_as_pdf, color: Colors.white),
+                icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                 label:
-                    Text('Export PDF', style: TextStyle(color: Colors.white)),
+                    const Text('Export PDF', style: TextStyle(color: Colors.white)),
                 onPressed: () {
                   Navigator.of(context).pop(); // Close dialog first
                   // Ensure the report passed to _exportReport has queueData as List<Map> not String
@@ -257,7 +257,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         SnackBar(
             content: Text('Report exported to: $filePath'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 5)),
+            duration: const Duration(seconds: 5)),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -277,12 +277,12 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         backgroundColor: Colors.teal[700],
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh, color: Colors.white),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadReports,
             tooltip: 'Refresh Reports',
           ),
           IconButton(
-            icon: Icon(Icons.date_range, color: Colors.white),
+            icon: const Icon(Icons.date_range, color: Colors.white),
             onPressed: () => _pickDateForReport(context),
             tooltip: 'Select Date for New Report',
           )
@@ -293,16 +293,16 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton.icon(
-              icon: Icon(Icons.save_alt, color: Colors.white),
+              icon: const Icon(Icons.save_alt, color: Colors.white),
               label: Text(
                   'Generate & Save Report for ${DateFormat('yyyy-MM-dd').format(_selectedDateForNewReport)}',
-                  style: TextStyle(color: Colors.white)),
+                  style: const TextStyle(color: Colors.white)),
               onPressed: () =>
                   _generateAndSaveReportForDate(_selectedDateForNewReport),
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal[600],
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             ),
           ),
           Expanded(
@@ -335,7 +335,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
                         title: Text('Report Date: ${report['reportDate']}'),
                         subtitle: Text(
                             'Patients in Queue: ${report['totalPatientsInQueue'] ?? report['totalPatients'] ?? 'N/A'} - Served: ${report['patientsServed'] ?? 'N/A'}'), // Handle old and new field names
-                        trailing: Icon(Icons.arrow_forward_ios),
+                        trailing: const Icon(Icons.arrow_forward_ios),
                         onTap: () => _viewAndExportReport(report),
                       ),
                     );

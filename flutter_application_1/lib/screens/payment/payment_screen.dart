@@ -1,12 +1,13 @@
 import 'dart:convert'; // Added for jsonEncode
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/active_patient_queue_item.dart';
+// import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // No longer directly selected
+import 'package:flutter_application_1/models/patient.dart'; // For displaying patient details
 import 'package:flutter_application_1/services/database_helper.dart';
-import 'package:flutter_application_1/services/queue_service.dart';
+import 'package:flutter_application_1/services/queue_service.dart'; // May still be used if payment affects queue
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
-import 'package:shared_preferences/shared_preferences.dart'; // Added for persistence
+// import 'package:shared_preferences/shared_preferences.dart'; // No longer using shared_prefs for last payment summary
 
 // Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
 // import 'transaction_history_screen.dart';
@@ -22,21 +23,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isPaymentProcessed = false;
   double _change = 0.0;
   String? _generatedReferenceNumber;
-
-  List<ActivePatientQueueItem> _inConsultationPatients = [];
-  ActivePatientQueueItem? _selectedPatientQueueItem;
-  bool _isLoadingPatients = true;
   String? _currentUserId;
   
-  // State for the last processed payment summary (will be loaded from SharedPreferences)
-  ActivePatientQueueItem? _lastProcessedPatientItem;
-  String? _lastProcessedReferenceNumber;
-  double _lastProcessedChange = 0.0;
-  
-  // Removed unused _isSummaryExpanded field
+  // New state variables for invoice search workflow
+  final TextEditingController _invoiceNumberController = TextEditingController();
+  Map<String, dynamic>? _searchedInvoiceDetails; // To hold bill, items, and patient data
+  bool _isLoadingInvoice = false; 
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  final QueueService _queueService = QueueService();
+  final QueueService _queueService = QueueService(); // Keep for now, might be needed if payment serves a patient
   final Uuid _uuid = Uuid();
 
   // Keys for SharedPreferences
@@ -48,8 +43,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     _loadCurrentUserId();
-    _fetchInConsultationPatients();
-    _loadLastProcessedPaymentSummary(); // Load persisted summary
+    // _fetchInConsultationPatients(); // Removed old patient fetching
+    // _loadLastProcessedPaymentSummary(); // Removed old summary loading
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -70,111 +65,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  Future<void> _fetchInConsultationPatients() async {
+  // This method is no longer fetching a list of patients for selection.
+  // It can be repurposed or removed. For now, let's clear its old logic.
+  // Or, it could be used to reset the payment screen to initial state.
+  void _resetPaymentScreen() {
     setState(() {
-      _isLoadingPatients = true;
-      // _selectedPatientQueueItem = null; // Don't reset selection if list is just refreshing
+      _invoiceNumberController.clear();
       _amountPaidController.clear();
+      _searchedInvoiceDetails = null;
       _isPaymentProcessed = false;
       _change = 0.0;
       _generatedReferenceNumber = null;
+      _isLoadingInvoice = false;
     });
-    try {
-      final patients =
-          await _dbHelper.getActiveQueue(statuses: ['in_consultation']);
-      print("PaymentScreen: Fetched ${patients.length} 'in_consultation' patients BEFORE filtering:");
-      for (var p in patients) {
-        String patientType = (p.originalAppointmentId != null && p.originalAppointmentId!.isNotEmpty) 
-            ? "APPOINTMENT" : "WALK-IN";
-        print(
-            "  [$patientType] Patient Name: ${p.patientName}, Patient ID: ${p.patientId}, totalPrice: ${p.totalPrice}, selectedServices: ${p.selectedServices?.length ?? 0} services, conditionOrPurpose: ${p.conditionOrPurpose}");
-      }
-      
-      final validPatients = patients
-          .where((p) =>
-              p.patientId != null &&
-              p.patientId!.isNotEmpty &&
-              p.totalPrice != null &&
-              p.totalPrice! > 0)
-          .toList();
-      
-      print("PaymentScreen: After filtering, ${validPatients.length} patients are valid for payment:");
-      for (var p in validPatients) {
-        String patientType = (p.originalAppointmentId != null && p.originalAppointmentId!.isNotEmpty) 
-            ? "APPOINTMENT" : "WALK-IN";
-        print("  [$patientType] Valid: ${p.patientName} - ₱${p.totalPrice}");
       }
 
-      setState(() {
-        _inConsultationPatients = validPatients;
-        _isLoadingPatients = false;
-        // If a selected patient is no longer in the valid list, clear selection.
-        if (_selectedPatientQueueItem != null &&
-            !validPatients.any((p) =>
-                p.queueEntryId == _selectedPatientQueueItem!.queueEntryId)) {
-          _selectedPatientQueueItem = null;
-        } else if (_selectedPatientQueueItem == null &&
-            validPatients.isNotEmpty) {
-          // Optionally, auto-select the first patient if none is selected
-          // _selectedPatientQueueItem = validPatients.first;
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _isLoadingPatients = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error fetching patients: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _loadLastProcessedPaymentSummary() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? patientItemJson = prefs.getString(_lastPatientItemKey);
-    final String? refNum = prefs.getString(_lastPaymentRefKey);
-    final double? changeAmount = prefs.getDouble(_lastChangeKey);
-
-    if (patientItemJson != null && refNum != null && changeAmount != null) {
-      try {
-        final patientItem = ActivePatientQueueItem.fromJson(jsonDecode(patientItemJson) as Map<String, dynamic>);
-        setState(() {
-          _lastProcessedPatientItem = patientItem;
-          _lastProcessedReferenceNumber = refNum;
-          _lastProcessedChange = changeAmount;
-        });
-      } catch (e) {
-        print("Error loading last payment summary from SharedPreferences: $e");
-        // Clear potentially corrupted data
-        await prefs.remove(_lastPatientItemKey);
-        await prefs.remove(_lastPaymentRefKey);
-        await prefs.remove(_lastChangeKey);
-      }
-    }
-  }
-
-  Future<void> _saveLastProcessedPaymentSummary() async {
-    if (_lastProcessedPatientItem != null && _lastProcessedReferenceNumber != null) {
-      final prefs = await SharedPreferences.getInstance();
-      try {
-        final patientItemJson = jsonEncode(_lastProcessedPatientItem!.toJson());
-        await prefs.setString(_lastPatientItemKey, patientItemJson);
-        await prefs.setString(_lastPaymentRefKey, _lastProcessedReferenceNumber!);
-        await prefs.setDouble(_lastChangeKey, _lastProcessedChange);
-      } catch (e) {
-        print("Error saving last payment summary to SharedPreferences: $e");
-      }
-    }
-  }
+  // Removed _loadLastProcessedPaymentSummary, _saveLastProcessedPaymentSummary, _clearLastProcessedPaymentSummary
+  // Removed _buildInConsultationPatientList, _buildProcessedPaymentSummarySection 
 
   void _processPayment() async {
-    if (_selectedPatientQueueItem == null) {
+    // This method will be significantly updated later to use _searchedInvoiceDetails
+    if (_searchedInvoiceDetails == null) { // Updated condition
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Please select a patient from the list.'),
+            content: Text('Please search and load an invoice first.'),
             backgroundColor: Colors.orange),
       );
       return;
@@ -188,8 +102,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;    
+    final double totalBillAmount = (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final String billId = billData['id'] as String;
+    final String? patientId = billData['patientId'] as String?;
+    final patientData = _searchedInvoiceDetails!['patient'] as Map<String, dynamic>?; // Could be null
+    final String patientName = patientData?['fullName'] as String? ?? 'N/A';
+    
+    // Find queueEntryId if this payment should mark a patient as served
+    // This part needs careful consideration. If payment is for an old invoice,
+    // the patient might not be in the active queue anymore.
+    // For now, we assume if the invoice is from an active queue item originally,
+    // that queue item's ID *might* be stored with the bill or needs a different lookup.
+    // This is a simplification for now and might need adjustment based on how queueEntryId is linked to bills.
+    String? queueEntryIdForServing; 
+    // Example: if (billData.containsKey('originalQueueEntryId')) { 
+    //   queueEntryIdForServing = billData['originalQueueEntryId']; 
+    // }
+
     final double? amountPaid = double.tryParse(_amountPaidController.text);
-    final double totalBillAmount = _selectedPatientQueueItem!.totalPrice ?? 0.0;
 
     if (amountPaid == null || amountPaid < totalBillAmount) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -202,42 +133,42 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
-    // Capture the selected patient item before it's potentially cleared
-    final processedPatientItem = _selectedPatientQueueItem!;
-
     try {
       final referenceNumber = 'PAY-${_uuid.v4().substring(0, 8).toUpperCase()}';
       final paymentDateTime = DateTime.now();
 
       final paymentData = {
-        'patientId': processedPatientItem.patientId!,
+        'billId': billId, // Crucial for updating bill status
+        'patientId': patientId, // patientId from the bill
         'referenceNumber': referenceNumber,
         'paymentDate': paymentDateTime.toIso8601String(),
         'amountPaid': amountPaid,
         'paymentMethod': 'Cash', // Assuming cash for now
         'receivedByUserId': _currentUserId!,
-        'notes':
-            'Payment for services: ${processedPatientItem.conditionOrPurpose}',
+        'notes': 'Payment for Invoice #: ${billData['invoiceNumber']}',
+        'totalBillAmount': totalBillAmount, // Store the actual bill amount at time of payment
       };
 
-      await _dbHelper.insertPayment(paymentData);
-
-      bool paymentAndServeSuccess = await _queueService.markPaymentSuccessfulAndServe(processedPatientItem.queueEntryId);
+      await _dbHelper.insertPayment(paymentData); // This now also updates bill status
       
+      // If payment needs to mark a patient as served in the queue:
+      if (queueEntryIdForServing != null && queueEntryIdForServing.isNotEmpty) {
+        bool paymentAndServeSuccess = await _queueService.markPaymentSuccessfulAndServe(queueEntryIdForServing);
       if (!paymentAndServeSuccess) {
-        throw Exception('Failed to mark patient as served in queue');
+           print('Warning: Payment recorded and bill updated, but failed to update queue status for $queueEntryIdForServing');
+          // Not throwing an error here, as DB transaction for payment is most critical.
+        }
       }
 
       await _dbHelper.logUserActivity(
         _currentUserId!,
-        'Processed payment for patient ${processedPatientItem.patientName} (Ref: $referenceNumber)',
-        targetRecordId: processedPatientItem.patientId,
-        targetTable: DatabaseHelper.tablePayments,
+        'Processed payment for invoice ${billData['invoiceNumber']} for patient $patientName (Ref: $referenceNumber)',
+        targetRecordId: billId, // Target the bill record
+        targetTable: DatabaseHelper.tablePatientBills,
         details: jsonEncode({
-          'queueEntryId': processedPatientItem.queueEntryId,
+          'paymentReference': referenceNumber,
           'amountPaid': amountPaid,
           'totalBill': totalBillAmount,
-          'services': processedPatientItem.selectedServices,
         }),
       );
 
@@ -245,17 +176,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _isPaymentProcessed = true;
         _change = amountPaid - totalBillAmount;
         _generatedReferenceNumber = referenceNumber;
-
-        // Store details for the summary view
-        _lastProcessedPatientItem = processedPatientItem;
-        _lastProcessedReferenceNumber = referenceNumber;
-        _lastProcessedChange = _change;
-        
-        _selectedPatientQueueItem = null; // Clear selection after processing
         _amountPaidController.clear();
+        // No longer clearing _selectedPatientQueueItem as it's not used in the same way
+        // Consider resetting _searchedInvoiceDetails or parts of it to prevent re-payment without new search
+        _searchedInvoiceDetails = null; // Reset after payment to force new search
+        _invoiceNumberController.clear();
       });
-      
-      await _saveLastProcessedPaymentSummary(); // Save summary to SharedPreferences
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -264,7 +190,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           backgroundColor: Colors.teal,
         ),
       );
-      _fetchInConsultationPatients(); // Refresh list
+      // No need to call _fetchInConsultationPatients() anymore
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -293,68 +219,101 @@ class _PaymentScreenState extends State<PaymentScreen> {
   //   );
   // }
 
-  Widget _buildInConsultationPatientList() {
-    if (_isLoadingPatients) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_inConsultationPatients.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            'No patients currently "In Consultation" and eligible for payment.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-          ),
-        ),
+  // Placeholder for the new search method
+  Future<void> _searchInvoice() async {
+    final String invoiceNum = _invoiceNumberController.text.trim();
+    if (invoiceNum.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter an invoice number.'), backgroundColor: Colors.orange),
       );
+      return;
     }
 
-    return ListView.builder(
-      itemCount: _inConsultationPatients.length,
-      itemBuilder: (context, index) {
-        final patient = _inConsultationPatients[index];
-        final bool isSelected =
-            _selectedPatientQueueItem?.queueEntryId == patient.queueEntryId;
-        return Card(
-          elevation: isSelected ? 4 : 1,
-          color: isSelected ? Colors.teal[100] : Colors.white,
-          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: ListTile(
-            dense: true,
-            leading: CircleAvatar(
-              backgroundColor: Colors.teal[700],
-              child: Text(
-                patient.queueNumber.toString(),
-                style:
-                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            title: Text(patient.patientName,
-                style: TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: Text(
-                'ID: ${patient.patientId?.substring(0, patient.patientId!.length > 8 ? 8 : patient.patientId!.length) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
-            trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: Colors.green[700], fontWeight: FontWeight.bold)),
-            selected: isSelected,
-            onTap: () {
-              setState(() {
-                _selectedPatientQueueItem = patient;
-                _amountPaidController.clear();
-                _isPaymentProcessed = false;
-                _change = 0.0;
-                _generatedReferenceNumber = null;
-              });
-            },
-          ),
+    setState(() {
+      _isLoadingInvoice = true;
+      _searchedInvoiceDetails = null; // Clear previous details
+      _isPaymentProcessed = false;    // Reset payment status
+      _amountPaidController.clear();
+      _generatedReferenceNumber = null;
+      _change = 0.0;
+    });
+
+    try {
+      final details = await _dbHelper.getPatientBillByInvoiceNumber(invoiceNum);
+      if (details != null) {
+        setState(() {
+          _searchedInvoiceDetails = details;
+        });
+        final billStatus = (_searchedInvoiceDetails!['bill'] as Map<String, dynamic>)['status'] as String?;
+        if (billStatus == 'Paid') {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Invoice $invoiceNum has already been paid.'), backgroundColor: Colors.blueAccent),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invoice $invoiceNum not found.'), backgroundColor: Colors.red),
         );
-      },
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error searching invoice: ${e.toString()}'), backgroundColor: Colors.red),
+      );
+    }
+    setState(() {
+      _isLoadingInvoice = false;
+    });
+  }
+
+  Widget _buildInvoiceSearchPane() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Find Invoice",
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal[800]),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _invoiceNumberController,
+            decoration: InputDecoration(
+              labelText: 'Enter Invoice Number',
+              hintText: 'e.g., INV-XXXXXX',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              prefixIcon: Icon(Icons.receipt_long_outlined),
+            ),
+            onSubmitted: (_) => _searchInvoice(), // Allow search on submit
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: _isLoadingInvoice 
+              ? Center(child: Padding(padding: const EdgeInsets.all(8.0), child: CircularProgressIndicator())) 
+              : ElevatedButton.icon(
+                  icon: Icon(Icons.search),
+                  label: Text('Search Invoice'),
+                  onPressed: _searchInvoice,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal[700],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+          ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildPaymentDetailsSection() {
-    if (_selectedPatientQueueItem == null) {
+    // This will be updated to use _searchedInvoiceDetails
+    if (_searchedInvoiceDetails == null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -362,26 +321,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircleAvatar(
-                radius: 45, // Adjusted radius
-                backgroundColor: Colors.teal[50], // Light teal background for icon
+                radius: 45,
+                backgroundColor: Colors.teal[50],
                 child: Icon(
-                  Icons.person_search_outlined, // Kept original icon, but can be Icons.search
-                  size: 45, // Adjusted icon size
-                  color: Colors.teal[400], // Slightly lighter teal for icon
+                  Icons.search_outlined, // Changed icon
+                  size: 45,
+                  color: Colors.teal[400],
                 ),
               ),
               const SizedBox(height: 20),
               Text(
-                'View Payment Details',
+                'Search for Invoice',
                 style: TextStyle(
-                  fontSize: 19, // Adjusted font size
-                  fontWeight: FontWeight.w600, // Adjusted weight
-                  color: Colors.grey[700], // Darker grey for title
+                  fontSize: 19,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
                 ),
               ),
               const SizedBox(height: 10),
               Text(
-                'Select a patient from the list on the left to view payment details.',
+                'Enter an invoice number in the left pane to load details for payment.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
@@ -390,13 +349,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
       );
     }
-
-    final patient = _selectedPatientQueueItem!;
-    final totalAmount = patient.totalPrice ?? 0.0;
-    final services = patient.selectedServices ?? [];
+    // ... more detailed implementation will follow using _searchedInvoiceDetails ...
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;    
+    final patientData = _searchedInvoiceDetails!['patient'] as Map<String, dynamic>?;
+    final List<Map<String, dynamic>> billItems = (_searchedInvoiceDetails!['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final String patientName = patientData?['fullName'] as String? ?? 'N/A';
+    final double totalAmount = (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
 
     return SingleChildScrollView(
-      // Ensure right pane is scrollable if content overflows
       padding: const EdgeInsets.all(16.0),
       child: Card(
         elevation: 2,
@@ -407,82 +367,57 @@ class _PaymentScreenState extends State<PaymentScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Payment for: ${patient.patientName}',
+                'Payment for Invoice: ${billData['invoiceNumber']}',
                 style: TextStyle(
-                    fontSize: 20, // Increased font size
+                    fontSize: 20, 
                     fontWeight: FontWeight.bold,
                     color: Colors.teal[800]),
               ),
-              const SizedBox(height: 10), // Increased spacing
-              Text('Patient ID: ${patient.patientId ?? "N/A"}',
-                  style: TextStyle(fontSize: 15)),
-              Text('Queue Number: ${patient.queueNumber}',
-                  style: TextStyle(fontSize: 15)),
-              const Divider(height: 25), // Increased spacing
-              const Text('Services/Items:',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600)), // Increased font size
+              if (billData['status'] == 'Paid')
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('Status: PAID', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[700])),
+                )
+              else
+                 Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('Status: ${billData['status']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange[700])),
+                ),
+              const SizedBox(height: 10),
+              Text('Patient: $patientName', style: TextStyle(fontSize: 15)),
+              if (patientData != null && patientData['id'] != null)
+                 Text('Patient ID: ${patientData['id']}', style: TextStyle(fontSize: 15)),
+              const Divider(height: 25),
+              const Text('Services/Items:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 5),
-              if (services.isEmpty &&
-                  (patient.conditionOrPurpose == null ||
-                      patient.conditionOrPurpose!.isEmpty))
+              if (billItems.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text('No specific services listed.',
-                      style:
-                          TextStyle(fontStyle: FontStyle.italic, fontSize: 15)),
+                  child: Text('No specific services listed for this bill.', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15)),
                 )
-              else if (services.isNotEmpty)
-                ...services.map((service) {
-                  final serviceName = service['name'] ?? 'Unknown Service';
-                  final price = service['price'] as double? ?? 0.0;
+              else
+                ...billItems.map((item) {
+                  final itemName = item['description'] as String? ?? 'Unknown Service';
+                  final itemQty = item['quantity'] as int? ?? 1;
+                  final itemPrice = (item['unitPrice'] as num?)?.toDouble() ?? 0.0;
+                  final itemTotal = (item['itemTotal'] as num?)?.toDouble() ?? (itemPrice * itemQty);
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text(serviceName, style: TextStyle(fontSize: 15)),
-                    trailing: Text('₱${price.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 15)),
+                    title: Text('$itemName (Qty: $itemQty)', style: TextStyle(fontSize: 15)),
+                    trailing: Text('₱${itemTotal.toStringAsFixed(2)}', style: TextStyle(fontSize: 15)),
                   );
-                }).toList()
-              else if (patient.conditionOrPurpose != null &&
-                  patient.conditionOrPurpose!.isNotEmpty)
-                // Fallback to conditionOrPurpose if services list is empty but conditionOrPurpose exists
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(patient.conditionOrPurpose!,
-                      style: TextStyle(fontSize: 15)),
-                  trailing: Text('₱${totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 15)),
-                ),
-
-              if (services.isNotEmpty &&
-                  patient.conditionOrPurpose != null &&
-                  patient.conditionOrPurpose!.toLowerCase().contains('other:'))
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                      'Other: ${patient.conditionOrPurpose!.substring(patient.conditionOrPurpose!.toLowerCase().indexOf('other:') + 6).trim()}',
-                      style: const TextStyle(
-                          fontStyle: FontStyle.italic, fontSize: 15)),
-                ),
-              const Divider(height: 25), // Increased spacing
+                }).toList(),
+              const Divider(height: 25),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Total Amount Due:',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold)), // Increased font size
-                  Text('₱${totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                          fontSize: 20, // Increased font size
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal[700])),
+                  const Text('Total Amount Due:', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                  Text('₱${totalAmount.toStringAsFixed(2)}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal[700])),
                 ],
               ),
               const SizedBox(height: 20),
+              if (billData['status'] != 'Paid') ...[
               TextFormField(
                 controller: _amountPaidController,
                 style: TextStyle(fontSize: 15),
@@ -490,25 +425,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   labelText: 'Enter Amount Paid (Cash)',
                   hintText: 'e.g., ${totalAmount.toStringAsFixed(2)}',
                   prefixText: '₱ ',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   prefixIcon: Icon(Icons.money, color: Colors.green[700]),
                 ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter amount paid.';
-                  }
+                    if (value == null || value.isEmpty) return 'Please enter amount paid.';
                   final pVal = double.tryParse(value);
                   if (pVal == null) return 'Invalid amount.';
-                  if (pVal < totalAmount) {
-                    return 'Amount is less than total due.';
-                  }
+                    if (pVal < totalAmount) return 'Amount is less than total due.';
                   return null;
                 },
               ),
-              const SizedBox(height: 25), // Increased spacing
+                const SizedBox(height: 25),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -518,153 +447,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.teal[700],
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 15), // Increased padding
-                    textStyle: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold), // Increased font size
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
               ),
-              if (_isPaymentProcessed && _generatedReferenceNumber != null) ...[
+              ],
+              if (_isPaymentProcessed && _generatedReferenceNumber != null && billData['status'] == 'Paid') ...[
                 const Divider(height: 30),
-                Text('Payment Successful!',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[700])),
+                Text('Payment Successful!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green[700])),
                 const SizedBox(height: 8),
-                SelectableText(
-                    'Reference Number: $_generatedReferenceNumber', // Made reference selectable
-                    style: const TextStyle(fontSize: 16)),
-                Text('Change Due: ₱${_change.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 16)),
+                SelectableText('Payment Reference: $_generatedReferenceNumber', style: const TextStyle(fontSize: 16)),
+                Text('Change Due: ₱${_change.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 10),
+                 ElevatedButton.icon(
+                  icon: Icon(Icons.refresh_outlined), 
+                  label: Text("New Payment"), 
+                  onPressed: _resetPaymentScreen,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent)
+                )
               ],
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildProcessedPaymentSummarySection() {
-    if (_lastProcessedReferenceNumber == null || _lastProcessedPatientItem == null) {
-      return Container(); // Nothing to show if no payment processed yet or patient info missing
-    }
-
-    final patient = _lastProcessedPatientItem!;
-    // final paymentDate = DateTime.now(); // Use the actual stored payment date if available
-
-    return GestureDetector(
-      onTap: () => _showLastPaymentDetailsDialog(patient, _lastProcessedReferenceNumber!, _lastProcessedChange),
-      child: Card(
-        elevation: 2,
-        margin: const EdgeInsets.all(16.0), // Keep margin for the card itself
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min, // Make card height fit content
-            children: [
-              Text(
-                'Last Payment: ${_lastProcessedReferenceNumber ?? "N/A"}',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal[800]),
-              ),
-              const SizedBox(height: 4),
-              Text('Patient: ${patient.patientName}', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'Tap to view details',
-                    style: TextStyle(fontSize: 12, color: Colors.teal[600], fontStyle: FontStyle.italic),
-                  ),
-                  Icon(Icons.touch_app, size: 16, color: Colors.teal[600]),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showLastPaymentDetailsDialog(ActivePatientQueueItem patient, String referenceNumber, double changeGiven) {
-    final paymentDate = DateTime.now(); // Or use actual stored date if available
-    final totalBill = patient.totalPrice ?? 0.0;
-    final amountPaid = totalBill + changeGiven;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Payment Details: $referenceNumber', style: TextStyle(color: Colors.teal[800])),
-          content: SingleChildScrollView( // Ensure dialog content is scrollable
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildSummaryDetailRow('Payment Date:', DateFormat('dd MMM yyyy, hh:mm a').format(paymentDate)),
-                _buildSummaryDetailRow('Patient Name:', patient.patientName),
-                _buildSummaryDetailRow('Patient ID:', patient.patientId?.substring(0,8) ?? 'N/A'),
-                const Divider(),
-                _buildSummaryDetailRow('Services:', patient.conditionOrPurpose ?? 'N/A'),
-                // You can add more detailed service breakdown here if available from patient.selectedServices
-                const Divider(),
-                _buildSummaryDetailRow('Total Bill:', '₱${totalBill.toStringAsFixed(2)}'),
-                _buildSummaryDetailRow('Amount Paid:', '₱${amountPaid.toStringAsFixed(2)}'),
-                _buildSummaryDetailRow('Change Given:', '₱${changeGiven.toStringAsFixed(2)}', isHighlighted: true),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Close', style: TextStyle(color: Colors.teal[700])),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        );
-      },
-    );
-  }
-
-  // Helper widget for summary details, similar to payment_search_screen
-  Widget _buildSummaryDetailRow(String label, String value, {bool isHighlighted = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120, // Adjusted width for summary
-            child: Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
-                fontSize: 13, // Slightly smaller font for summary
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 13,
-                color: isHighlighted ? Colors.teal[700] : Colors.black87,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -672,10 +478,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200], // Adjusted background for better contrast with cards
+      backgroundColor: Colors.grey[200],
       appBar: AppBar(
         title: const Text(
-          'Process Payment',
+          'Process Payment by Invoice', // Updated title
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -686,26 +492,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () {
-              _selectedPatientQueueItem =
-                  null; // Clear selection on manual refresh
-              _fetchInConsultationPatients();
-            },
-            tooltip: 'Refresh Patient List',
+            onPressed: _resetPaymentScreen, // Use reset for the refresh button
+            tooltip: 'Clear / New Payment',
           )
         ],
       ),
-      body: Padding( // Add padding around the main Row
+      body: Padding(
         padding: const EdgeInsets.all(8.0),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start, // Align panes to the top
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left Pane: Patient List
+            // Left Pane: Invoice Search
             Expanded(
               flex: 1,
               child: Container(
-                margin: const EdgeInsets.only(right: 8.0), // Add margin between panes
-                decoration: BoxDecoration( // Copied from patient_registration_screen.dart
+                margin: const EdgeInsets.only(right: 8.0),
+                decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12.0),
                   boxShadow: [
@@ -713,39 +515,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       color: Colors.grey.withOpacity(0.3),
                       spreadRadius: 1,
                       blurRadius: 3,
-                      offset: const Offset(0, 2), // changes position of shadow
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0), // Padding for the header text
-                      child: Text(
-                        "Patients In Consultation",
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal[800]),
-                      ),
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    Expanded(child: _buildInConsultationPatientList()), // This already has its own padding/card for items
-                  ],
-                ),
+                child: _buildInvoiceSearchPane(), // New pane for searching
               ),
             ),
-            // Right Pane: Split into Upper (Payment Details) and Lower (Summary)
+            // Right Pane: Payment Details
             Expanded(
               flex: 2,
-              child: Column(
-                children: [
-                  Expanded(
-                    flex: 3, // Upper part for payment processing
                     child: Container(
-                      margin: const EdgeInsets.only(bottom: 8.0), // Add margin between upper and lower right panes
-                      decoration: BoxDecoration( // Copied from patient_registration_screen.dart
+                decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12.0),
                         boxShadow: [
@@ -757,28 +538,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ],
                       ),
-                      child: _buildPaymentDetailsSection(), // This widget returns a SingleChildScrollView with a Card
-                    ),
-                  ),
-                  Expanded(
-                    flex: 1, // Lower part for payment summary
-                    child: Container(
-                       decoration: BoxDecoration( // Copied from patient_registration_screen.dart
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.0),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.3),
-                            spreadRadius: 1,
-                            blurRadius: 3,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: _buildProcessedPaymentSummarySection(), // This widget returns a Card
-                    ),
-                  ),
-                ],
+                // The _buildPaymentDetailsSection now returns a SingleChildScrollView with a Card
+                // if details are loaded, or a placeholder. So no need for Column/Expanded here for summary.
+                child: _buildPaymentDetailsSection(), 
               ),
             ),
           ],
