@@ -237,7 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           screenToShow = const AppointmentOverviewScreen();
         } else if (key == 'Registration') {
           if (widget.accessLevel == 'medtech') {
-            screenToShow = PatientRegistrationScreen();
+            screenToShow = const PatientRegistrationScreen();
           } else {
             if (screenBuilder != null) {
               screenToShow = screenBuilder(widget.accessLevel);
@@ -1281,56 +1281,26 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       final now = DateTime.now();
       final isToday = selectedDateForQueue.year == now.year &&
                       selectedDateForQueue.month == now.month &&
-                      selectedDateForQueue.day == now.day;
-
-      // Fetch all active queue items (statuses: ['waiting', 'in_consultation'])
-      List<ActivePatientQueueItem> allActiveDbItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
-      print('DEBUG: Fetched ${allActiveDbItems.length} total active items from DB service.');
-
-      // If we are viewing "today's" live queue, filter these items to only include those that arrived today.
-      List<ActivePatientQueueItem> relevantActiveItemsForTodayView;
-      if (isToday) {
-        relevantActiveItemsForTodayView = allActiveDbItems.where((item) {
-          return item.arrivalTime.year == now.year &&
-                 item.arrivalTime.month == now.month &&
-                 item.arrivalTime.day == now.day;
-        }).toList();
-        print('DEBUG: Filtered to ${relevantActiveItemsForTodayView.length} active items for TODAY.');
-      } else {
-        // If not viewing "today", the concept of a "live walk-in queue" is less relevant.
-        // The primary display will be scheduled appointments for that past/future date.
-        // However, if there *were* active queue items logged for that specific date,
-        // they might be shown if your UI logic supports it. For now, let's assume
-        // the "walk-in" section is primarily for `isToday == true`.
-        // If `selectedDateForQueue` is not today, `_walkInQueueItems` should be empty
-        // or handled based on a different logic (e.g. historical view if supported)
-        relevantActiveItemsForTodayView = []; // Or filter by selectedDateForQueue if historical live queue is intended
-      }
-
-      // Load walk-in patients (only for today from relevantActiveItemsForTodayView)
+                      selectedDateForQueue.day == now.day;      // Load walk-in patients (only for today)
       List<ActivePatientQueueItem> walkInQueueItems = [];
       if (isToday) {
-        walkInQueueItems = relevantActiveItemsForTodayView.where((item) {
-          bool hasOriginalId = item.originalAppointmentId != null && item.originalAppointmentId!.trim().isNotEmpty;
-          
-          if (hasOriginalId) return false; // Not a walk-in if linked to an appointment
-
-          bool looksScheduledByCondition = item.conditionOrPurpose != null &&
-              (item.conditionOrPurpose!.toLowerCase().startsWith('scheduled') ||
-               item.conditionOrPurpose!.toLowerCase().contains('appointment') ||
-               item.conditionOrPurpose!.toLowerCase().contains('schedul'));
-
-          if (looksScheduledByCondition) {
-            print('DEBUG: Filtering out item from walk-ins because its condition suggests it was scheduled but it lacks an originalAppointmentId: ${item.patientName}, Condition: ${item.conditionOrPurpose}');
-            return false; 
-          }
-          return true;
-        }).toList();
+        // Get all active queue items and filter out those that originated from appointments
+        final allActiveItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+        walkInQueueItems = allActiveItems.where((item) => 
+          item.originalAppointmentId == null || 
+          item.originalAppointmentId!.isEmpty ||
+          item.originalAppointmentId!.trim().isEmpty
+        ).toList();
         print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today.');
+        print('DEBUG: Total active items: ${allActiveItems.length}, Walk-in items: ${walkInQueueItems.length}');
+        // Debug: Print items that have originalAppointmentId
+        final appointmentOriginatedItems = allActiveItems.where((item) => 
+          item.originalAppointmentId != null && 
+          item.originalAppointmentId!.isNotEmpty &&
+          item.originalAppointmentId!.trim().isNotEmpty
+        ).toList();
+        print('DEBUG: Items originated from appointments: ${appointmentOriginatedItems.length}');
       }
-      // Note: The `activatedScheduledActive` items would also come from `relevantActiveItemsForTodayView`
-      // if you have a combined "live queue" that includes them. The current structure separates them.
-
         // Load appointments for the selected date (not converted to queue items)
       final appointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
         final appointmentDate = DateTime(appt.date.year, appt.date.month, appt.date.day);
@@ -1623,7 +1593,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 color: Colors.teal[700]),
           ),
           const SizedBox(height: 10),
-          Container(
+          SizedBox(
             height: 180,
             child: ListView(
               scrollDirection: Axis.horizontal,
@@ -2132,24 +2102,6 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     for (var item in _walkInQueueItems)
                       _buildTableRow(item)
                   },
-                  // ADD "Next Patient" button here if _walkInQueueItems is not empty and there's a waiting patient
-                  if (_walkInQueueItems.any((item) => item.status == 'waiting'))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-                      child: Center(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.skip_next_rounded),
-                          label: const Text('Call Next Waiting Patient'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[600],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: _callNextWaitingPatient,
-                        ),
-                      ),
-                    ),
                 ],
                 const SizedBox(height: 24),
               ],
@@ -2323,12 +2275,12 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 ? Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4.0),
                     child: ElevatedButton.icon(
-                        icon: Icon(Icons.play_circle_outline, size: 16),
-                        label: Text("Activate", style: TextStyle(fontSize: 12)),
+                        icon: const Icon(Icons.play_circle_outline, size: 16),
+                        label: const Text("Activate", style: TextStyle(fontSize: 12)),
                         style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.teal[600],
                             foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: () {
@@ -2339,33 +2291,41 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                         },
                     ), 
                   )
-                : (item.status == 'waiting') // Simplified: Only show status for 'waiting', 'in_consultation' will be handled by "Next Patient" button.
-                  ? Padding(
+                : (item.status == 'waiting' || item.status == 'in_consultation')
+                  ? Padding( // ADDED: Action buttons for non-scheduled waiting/in_consultation items
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: PopupMenuButton<String>(
+                        tooltip: "Change Status",
+                        icon: Icon(Icons.more_vert, color: _getStatusColor(item.status)),
+                        onSelected: (String newStatus) {
+                           _updateQueueItemStatus(item, newStatus);
+                        },
+                        itemBuilder: (BuildContext context) {
+                          List<String> possibleStatuses = [];
+                          if (item.status == 'waiting') {
+                            possibleStatuses.addAll(['in_consultation', 'served', 'removed']);
+                          } else if (item.status == 'in_consultation') {
+                            possibleStatuses.addAll(['waiting', 'served', 'removed']);
+                          }
+                          // Add other states if necessary or refine logic
+                          return possibleStatuses.map((String statusValue) {
+                            return PopupMenuItem<String>(
+                              value: statusValue,
+                              child: Text(_getDisplayStatus(statusValue)),
+                            );
+                          }).toList();
+                        },
+                        // Optionally, display current status next to the button or style the button itself.
+                        // For now, the icon color reflects the status.
+                      ),
+                    )
+                  : TableCellWidget( // Fallback to just displaying status for served/removed or other states
                       child: Text(_getDisplayStatus(item.status),
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: _getStatusColor(item.status),
                               fontSize: cellStyle.fontSize),
-                          textAlign: TextAlign.center),
-                    )
-                  : (item.status == 'in_consultation') // Display status for in_consultation
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Text(_getDisplayStatus(item.status),
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getStatusColor(item.status),
-                                fontSize: cellStyle.fontSize),
-                            textAlign: TextAlign.center),
-                      )
-                    : TableCellWidget( // Fallback for 'served', 'removed' or other states
-                        child: Text(_getDisplayStatus(item.status),
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getStatusColor(item.status),
-                                fontSize: cellStyle.fontSize),
-                            textAlign: TextAlign.center)),
+                          textAlign: TextAlign.center)),
           ),
         ],
       ),
@@ -2469,12 +2429,12 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     ),
                   )
                 : ElevatedButton.icon(
-                    icon: Icon(Icons.play_circle_outline, size: 16),
-                    label: Text("Activate", style: TextStyle(fontSize: 12)),
+                    icon: const Icon(Icons.play_circle_outline, size: 16),
+                    label: const Text("Activate", style: TextStyle(fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.deepOrange[600],
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     onPressed: () => _activateAndCallScheduledPatient(appointment.id),
@@ -2495,7 +2455,6 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     });
 
     try {
-      // Use the existing QueueService method
       bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);
 
       if (success) {
@@ -2534,37 +2493,6 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           _isLoadingQueueAndAppointments = false;
         });
       }
-    }
-  }
-
-  // ADDED: Method to call the next waiting patient
-  Future<void> _callNextWaitingPatient() async {
-    if (!mounted) return;
-
-    ActivePatientQueueItem? waitingPatient;
-    try {
-      waitingPatient = _walkInQueueItems.firstWhere(
-        (item) => item.status == 'waiting',
-      );
-    } catch (e) {
-      // Handles StateError if no element is found
-      waitingPatient = null;
-    }
-
-    if (waitingPatient != null) {
-      print('DEBUG: Calling next patient: ${waitingPatient.patientName} (ID: ${waitingPatient.queueEntryId})');
-      // Call the _updateQueueItemStatus method, which now uses QueueService.updatePatientStatusInQueue
-      await _updateQueueItemStatus(waitingPatient, 'in_consultation');
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("No more patients waiting in the walk-in queue."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      print('DEBUG: No waiting patients found in _callNextWaitingPatient.');
     }
   }
 }
