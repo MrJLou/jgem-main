@@ -15,40 +15,118 @@ class PreviousConsultationScreen extends StatefulWidget {
 class _PreviousConsultationScreenState
     extends State<PreviousConsultationScreen> {
   final TextEditingController _patientIdController = TextEditingController();
-  List<Map<String, String>> _consultations = [];
+  List<Map<String, dynamic>> _consultations = [];
+  bool _isLoading = false;
+  String? _errorMessage;
 
-  void _fetchConsultationRecords(String patientId) {
+  void _fetchConsultationRecords(String patientId) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    // Simulate API delay
+    await Future.delayed(Duration(milliseconds: 800));
+
     final mockData = [
-      {'date': '2023-10-15', 'details': 'General Checkup'},
-      {'date': '2023-09-20', 'details': 'Flu Symptoms'},
-      {'date': '2023-08-10', 'details': 'Follow-up Visit'},
+      {
+        'date': '2024-03-15',
+        'doctor': 'Dr. Sarah Johnson',
+        'details': 'General Checkup',
+        'symptoms': 'Routine health assessment',
+        'prescription': 'Vitamin D supplements',
+        'followUp': '3 months',
+        'status': 'Completed'
+      },
+      {
+        'date': '2024-02-20',
+        'doctor': 'Dr. Michael Chen',
+        'details': 'Flu Symptoms',
+        'symptoms': 'Fever, cough, fatigue',
+        'prescription': 'Antiviral medication',
+        'followUp': '1 week',
+        'status': 'Completed'
+      },
+      {
+        'date': '2024-01-10',
+        'doctor': 'Dr. Emily Brown',
+        'details': 'Follow-up Visit',
+        'symptoms': 'Post-treatment evaluation',
+        'prescription': 'Continue current medication',
+        'followUp': 'As needed',
+        'status': 'Completed'
+      },
     ];
 
     setState(() {
       _consultations = mockData;
+      _isLoading = false;
     });
   }
 
-  void _showConsultationDetails(
-      BuildContext context, Map<String, String> consultation) {
+  void _showConsultationDetails(BuildContext context, Map<String, dynamic> consultation) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Consultation Details'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
           children: [
-            Text('Date: ${consultation['date']}'),
-            SizedBox(height: 8),
-            Text('Details: ${consultation['details']}'),
+            Icon(Icons.medical_services, color: Color(0xFF1ABC9C)),
+            SizedBox(width: 10),
+            Text(
+              'Consultation Details',
+              style: TextStyle(color: Color(0xFF1ABC9C)),
+            ),
           ],
+        ),
+        content: Container(
+          width: MediaQuery.of(context).size.width * 0.4,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow('Date', consultation['date']),
+              _buildDetailRow('Doctor', consultation['doctor']),
+              _buildDetailRow('Symptoms', consultation['symptoms']),
+              _buildDetailRow('Prescription', consultation['prescription']),
+              _buildDetailRow('Follow-up', consultation['followUp']),
+              _buildDetailRow('Status', consultation['status']),
+          ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: Navigator.of(context).pop,
-            child: Text('Close'),
+            child: Text('Close', style: TextStyle(color: Color(0xFF1ABC9C))),
           )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: Colors.grey[800]),
+            ),
+          ),
         ],
       ),
     );
@@ -59,53 +137,86 @@ class _PreviousConsultationScreenState
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
-        title: Text('Previous Consultations'),
-        backgroundColor: const Color(0xFF1ABC9C),
+        elevation: 0,
+        title: Text(
+          'Previous Consultations',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.teal[700],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.help_outline),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Help'),
+                  content: Text('Enter a patient ID to view their consultation history. The records will show all previous medical consultations and their details.'),
+                  actions: [
+                    TextButton(
+                      onPressed: Navigator.of(context).pop,
+                      child: Text('Got it'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
+      body: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.teal[700],
+            ),
+            padding: EdgeInsets.fromLTRB(24, 20, 24, 40),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Patient ID',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-
-            // INPUT FIELD
-            Center(
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.25,
-                child: Container(
+                Container(
+                  height: 60,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFF1ABC9C),
-                      width: 1,
-                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: Offset(0, 5),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ],
+                  ),
                   child: TextField(
                     controller: _patientIdController,
+                    style: TextStyle(fontSize: 18),
                     decoration: InputDecoration(
                       hintText: 'Enter Patient ID',
-                      hintStyle: TextStyle(color: Colors.grey[600]),
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 18,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.person_search,
+                        color: Color(0xFF1ABC9C),
+                        size: 28,
+                      ),
                       border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 25,
+                        vertical: 20,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // FETCH BUTTON
+                SizedBox(height: 20),
             Center(
               child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.25,
+                    width: MediaQuery.of(context).size.width * 0.5,
+                    height: 60,
                 child: ElevatedButton(
                   onPressed: () {
                     final patientId = _patientIdController.text.trim();
@@ -113,51 +224,95 @@ class _PreviousConsultationScreenState
                       _fetchConsultationRecords(patientId);
                     }
                   },
-                  child: const Text('Fetch Records',
-                      style: TextStyle(color: Colors.white)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search,
+                            color: Color(0xFF1ABC9C),
+                            size: 28,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Search Records',
+                            style: TextStyle(
+                              color: Color(0xFF1ABC9C),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1ABC9C),
+                        backgroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
                   ),
                 ),
               ),
             ),
-
-            const SizedBox(height: 24),
-
-            // RESULTS CONTAINER
+              ],
+            ),
+          ),
             Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 1000),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1ABC9C),
-                      borderRadius: BorderRadius.circular(12),
+            child: _isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1ABC9C)),
+                        ),
+                        SizedBox(height: 16),
+                        Text('Fetching records...'),
+                      ],
                     ),
-                    padding: const EdgeInsets.all(16),
-                    child: _consultations.isEmpty
-                        ? const Center(child: Text('No records found'))
+                  )
+                : _errorMessage != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 48, color: Colors.red[300]),
+                            SizedBox(height: 16),
+                            Text(_errorMessage!,
+                                style: TextStyle(color: Colors.red[300])),
+                          ],
+                        ),
+                      )
+                    : _consultations.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.search,
+                                    size: 48, color: Colors.grey[400]),
+                                SizedBox(height: 16),
+                                Text('Enter a patient ID to view records',
+                                    style: TextStyle(color: Colors.grey[600])),
+                              ],
+                            ),
+                          )
                         : ListView.builder(
+                            padding: EdgeInsets.all(24),
                             itemCount: _consultations.length,
                             itemBuilder: (context, index) {
                               final consultation = _consultations[index];
                               return ConsultationCard(
                                 date: consultation['date']!,
+                                doctor: consultation['doctor']!,
                                 details: consultation['details']!,
-                                onTap: () => _showConsultationDetails(
-                                    context, consultation),
+                                status: consultation['status']!,
+                                onTap: () =>
+                                    _showConsultationDetails(context, consultation),
                               );
                             },
-                          ),
-                  ),
-                ),
               ),
             ),
           ],
-        ),
       ),
     );
   }
@@ -166,13 +321,17 @@ class _PreviousConsultationScreenState
 // Individual consultation card with hover + click effects
 class ConsultationCard extends StatefulWidget {
   final String date;
+  final String doctor;
   final String details;
+  final String status;
   final VoidCallback onTap;
 
   const ConsultationCard({
     Key? key,
     required this.date,
+    required this.doctor,
     required this.details,
+    required this.status,
     required this.onTap,
   }) : super(key: key);
 
@@ -202,37 +361,91 @@ class _ConsultationCardState extends State<ConsultationCard> {
           padding: EdgeInsets.all(16),
           transform: Matrix4.identity()..scale(_isPressed ? 0.98 : 1.0),
           decoration: BoxDecoration(
-            color: _isHovering || _isPressed
-                ? Colors.white.withOpacity(0.9)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: _isHovering
-                ? [BoxShadow(blurRadius: 4, color: Colors.black12)]
-                : [],
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                color: _isHovering
+                    ? Colors.black.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.05),
+                blurRadius: _isHovering ? 10 : 5,
+                offset: Offset(0, _isHovering ? 5 : 2),
+              ),
+            ],
           ),
-          child: Row(
-            children: [
-              Icon(Icons.history, color: Color(0xFF1ABC9C)),
-              SizedBox(width: 12),
-              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.calendar_today,
+                          size: 16, color: Color(0xFF1ABC9C)),
+                      SizedBox(width: 8),
                     Text(
-                      'Consultation on ${widget.date}',
+                        widget.date,
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF1ABC9C).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      widget.status,
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
                         color: Color(0xFF1ABC9C),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 12),
+              Text(
+                widget.doctor,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1ABC9C),
+                      ),
+                    ),
+              SizedBox(height: 4),
                     Text(
                       widget.details,
-                      style: TextStyle(color: Colors.grey[700]),
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
                     ),
-                  ],
+              SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'View Details',
+                    style: TextStyle(
+                      color: Color(0xFF1ABC9C),
+                      fontWeight: FontWeight.w500,
                 ),
               ),
-              Icon(Icons.arrow_forward_ios, size: 16),
+                  SizedBox(width: 4),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: Color(0xFF1ABC9C),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
