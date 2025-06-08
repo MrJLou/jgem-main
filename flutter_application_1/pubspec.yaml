@@ -56,6 +56,7 @@ dependencies:
   shelf_static: ^1.1.2
   table_calendar: ^3.0.9
   open_filex: ^4.3.2
+  pie_chart: ^5.4.0
   
 dev_dependencies:
   flutter_test:
