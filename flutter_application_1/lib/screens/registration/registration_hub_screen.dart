@@ -88,7 +88,7 @@ class RegistrationHubScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => PatientRegistrationScreen(),
+                          builder: (context) => const PatientRegistrationScreen(),
                         ),
                       ),
                     ),

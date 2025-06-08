@@ -312,9 +312,10 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
   }
 
   Widget _buildStatusModificationArea() {
-    if (_searchedQueueItem == null)
+    if (_searchedQueueItem == null) {
       return const SizedBox
           .shrink(); // Should not happen if this widget is built
+    }
 
     // This widget will be displayed after a patient is "found"
     return Column(
@@ -385,7 +386,7 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
 // Helper extension for String capitalization
 extension StringExtension on String {
   String capitalizeFirst() {
-    if (this.isEmpty) return "";
-    return "${this[0].toUpperCase()}${this.substring(1)}";
+    if (isEmpty) return "";
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

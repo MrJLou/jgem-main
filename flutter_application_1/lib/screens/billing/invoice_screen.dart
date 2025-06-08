@@ -20,6 +20,8 @@ import 'package:flutter/services.dart' show rootBundle; // Added for loading ima
 enum InvoiceFlowStep { patientSelection, invoiceGenerated, paymentProcessing, paymentComplete }
 
 class InvoiceScreen extends StatefulWidget {
+  const InvoiceScreen({super.key});
+
   @override
   _InvoiceScreenState createState() => _InvoiceScreenState();
 }
@@ -44,7 +46,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
   final AuthService _authService = AuthService();
-  final Uuid _uuid = Uuid();
+  static const Uuid _uuid = Uuid();
 
   @override
   void initState() {
@@ -213,7 +215,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     final processedPatientItem = _selectedPatientQueueItem!;
     final displayInvNum = _generatedInvoiceNumber!;
     final invDate = _invoiceDate!;
-    final dueDate = invDate.add(Duration(days: 30)); // Example due date
+    final dueDate = invDate.add(const Duration(days: 30)); // Example due date
 
     // Prepare billItemsJson from _currentBillItems (which are BillItem objects)
     // The recordInvoiceAndPayment expects List<Map<String, dynamic>> that matches patient.selectedServices structure
@@ -344,7 +346,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     final double totalAmount = subtotal; // Since discount and tax are 0/removed
 
     final boldStyle = pw.TextStyle(fontWeight: pw.FontWeight.bold);
-    final normalStyle = const pw.TextStyle(); // Default style
+    const normalStyle = pw.TextStyle(); // Default style
 
     // Load the logo
     pw.ImageProvider? logoImageProvider;
@@ -428,7 +430,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                 return pw.Container(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: pw.BoxDecoration(
-                     border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+                     border: const pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
                      color: items.indexOf(item) % 2 == 0 ? PdfColors.grey100 : PdfColors.white,
                   ),
                   child: pw.Row(
@@ -440,7 +442,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
               pw.SizedBox(height: 20),
 
               // Totals Section
@@ -493,7 +495,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               
               // Terms & Conditions / Thank You
               pw.Text('TERMS & CONDITIONS:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.blueGrey700)),
-              pw.Text('Payment is due within 30 days. Please make payments to Example Clinic.', style: pw.TextStyle(fontSize: 9)),
+              pw.Text('Payment is due within 30 days. Please make payments to Example Clinic.', style: const pw.TextStyle(fontSize: 9)),
               pw.SizedBox(height: 15),
               pw.Text('THANK YOU FOR YOUR BUSINESS!', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.black)),
               
@@ -618,11 +620,11 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               child: Text(
                 patient.queueNumber.toString(),
                 style:
-                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
             title: Text(patient.patientName,
-                style: TextStyle(fontWeight: FontWeight.w500)),
+                style: const TextStyle(fontWeight: FontWeight.w500)),
             subtitle: Text(
                 'ID: ${patient.patientId?.substring(0, patient.patientId!.length > 8 ? 8 : patient.patientId!.length) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
             trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}',
@@ -645,7 +647,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   Widget _buildInvoiceView() {
     if (_selectedPatientQueueItem == null || _invoiceDate == null || _generatedInvoiceNumber == null) {
       // This case should ideally not be reached if _currentStep is managed correctly
-      return Center(child: Text("Error: Invoice data is missing for view."));
+      return const Center(child: Text("Error: Invoice data is missing for view."));
     }
     final patient = _selectedPatientQueueItem!;
     double subtotal = _currentBillItems.fold(0.0, (sum, item) => sum + item.itemTotal);
@@ -662,14 +664,14 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container( 
-                padding: EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(8.0),
                 decoration: BoxDecoration(border: Border.all(color: Colors.grey)),
                 child: Text("Your Company Logo", style: TextStyle(color: Colors.grey[700])),
               ),
               Text("Invoice", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue[800])),
             ],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -679,12 +681,12 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   children: [
                     Text("BILLED TO:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
                     Text(patient.patientName),
-                    Text("Street Address Line 01"), 
-                    Text("Street Address Line 02"), 
+                    const Text("Street Address Line 01"), 
+                    const Text("Street Address Line 02"), 
                   ],
                 ),
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -692,17 +694,17 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                     Text("INVOICE DETAILS:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
                     Text("Invoice #: ${_generatedInvoiceNumber ?? 'N/A'}"),
                     Text("Date of Issue: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!)}"),
-                    Text("Due Date: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!.add(Duration(days: 30)))}"), 
+                    Text("Due Date: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!.add(const Duration(days: 30)))}"), 
                   ],
                 ),
               ),
             ],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Container(
             color: Colors.blue[800],
-            padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-            child: Row(
+            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+            child: const Row(
               children: [
                 Expanded(flex: 3, child: Text("ITEM/SERVICE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                 Expanded(flex: 4, child: Text("DESCRIPTION", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
@@ -716,7 +718,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             color: Colors.yellow[100],
             child: ListView.builder(
               shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(),
               itemCount: _currentBillItems.length,
               itemBuilder: (context, index) {
                 final item = _currentBillItems[index];
@@ -724,7 +726,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0),
                   child: Row(
                     children: [
-                      Expanded(flex: 3, child: Text(item.description.length > 15 ? item.description.substring(0,15)+"..." : item.description )),
+                      Expanded(flex: 3, child: Text(item.description.length > 15 ? "${item.description.substring(0,15)}..." : item.description )),
                       Expanded(flex: 4, child: Text(item.description)),
                       Expanded(flex: 1, child: Text(item.quantity.toString(), textAlign: TextAlign.right)),
                       Expanded(flex: 2, child: Text(item.unitPrice.toStringAsFixed(2), textAlign: TextAlign.right)),
@@ -736,7 +738,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             ),
           ),
           Divider(color: Colors.blue[800], thickness: 2),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -746,7 +748,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text("TERMS", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
-                    Text("Text here"), 
+                    const Text("Text here"), 
                   ],
                 ),
               ),
@@ -757,17 +759,17 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                     _buildTotalRow("Subtotal", subtotal),
                     _buildTotalRow("Discount", discount, isDiscount: true),
                     _buildTotalRow("Tax (0%)", taxAmount), // Label updated to show 0%
-                    Divider(),
+                    const Divider(),
                     _buildTotalRow("TOTAL", total, isTotal: true),
                   ],
                 ),
               ),
             ],
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Text("CONDITIONS/INSTRUCTIONS", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
-          Text("Text here"), 
-          SizedBox(height: 20),
+          const Text("Text here"), 
+          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -784,7 +786,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                     await _printPdfInvoice(pdfBytes);
                   }
                 }, 
-                child: Text("Print Invoice")
+                child: const Text("Print Invoice")
               ),
                ElevatedButton(
                 onPressed: () async {
@@ -799,22 +801,22 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                      await _savePdfInvoice(pdfBytes, _generatedInvoiceNumber!);
                   }
                 }, 
-                child: Text("Save PDF")
+                child: const Text("Save PDF")
               ),
             ],
           ),
-          SizedBox(height:10),
+          const SizedBox(height:10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              icon: Icon(Icons.payment),
-              label: Text("Proceed to Payment"),
+              icon: const Icon(Icons.payment),
+              label: const Text("Proceed to Payment"),
               onPressed: () {
                 setState(() {
                   _currentStep = InvoiceFlowStep.paymentProcessing;
                 });
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white, padding: EdgeInsets.symmetric(vertical:12), textStyle: TextStyle(fontSize: 16)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical:12), textStyle: const TextStyle(fontSize: 16)),
             ),
           )
         ],
@@ -824,7 +826,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
   Widget _buildPaymentProcessingView() {
     if (_selectedPatientQueueItem == null || _generatedInvoiceNumber == null) {
-       return Center(child: Text("Error: Patient or invoice details missing for payment."));
+       return const Center(child: Text("Error: Patient or invoice details missing for payment."));
     }
     double subtotal = _currentBillItems.fold(0.0, (sum, item) => sum + item.itemTotal);
     double discount = 0.0; // Assuming discount is 0 for now, can be fetched if needed
@@ -837,14 +839,14 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text("Process Payment for Invoice: $_generatedInvoiceNumber", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal[700])),
-          SizedBox(height: 10),
-          Text("Patient: ${_selectedPatientQueueItem!.patientName}", style: TextStyle(fontSize: 16)),
-          SizedBox(height: 20),
-          Text("Total Amount Due: ₱${totalAmountDue.toStringAsFixed(2)}", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 20),
+          const SizedBox(height: 10),
+          Text("Patient: ${_selectedPatientQueueItem!.patientName}", style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 20),
+          Text("Total Amount Due: ₱${totalAmountDue.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _amountPaidController,
-            style: TextStyle(fontSize: 15),
+            style: const TextStyle(fontSize: 15),
             decoration: InputDecoration(
               labelText: 'Enter Amount Paid (Cash)',
               hintText: 'e.g., ${totalAmountDue.toStringAsFixed(2)}',
@@ -861,7 +863,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               return null;
             },
           ),
-          SizedBox(height: 25),
+          const SizedBox(height: 25),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -876,7 +878,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               ),
             ),
           ),
-          SizedBox(height: 15),
+          const SizedBox(height: 15),
           SizedBox(
             width: double.infinity,
             child: TextButton.icon(
@@ -897,7 +899,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
   Widget _buildPaymentCompleteView() {
      if (_selectedPatientQueueItem == null || _generatedInvoiceNumber == null || _paymentReferenceNumber == null) {
-       return Center(child: Text("Error: Payment summary data missing."));
+       return const Center(child: Text("Error: Payment summary data missing."));
     }
     double subtotal = _currentBillItems.fold(0.0, (sum, item) => sum + item.itemTotal);
     double discount = 0.0; // Assuming discount is 0
@@ -911,20 +913,20 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.check_circle, color: Colors.green[600], size: 60),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Text("Payment Successful!", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green[700])),
-          SizedBox(height: 20),
-          Text("Invoice #: $_generatedInvoiceNumber", style: TextStyle(fontSize: 16)),
-          Text("Payment Ref #: $_paymentReferenceNumber", style: TextStyle(fontSize: 16)),
-          Text("Patient: ${_selectedPatientQueueItem!.patientName}", style: TextStyle(fontSize: 16)),
-          SizedBox(height: 15),
-          Text("Total Bill: ₱${totalBillAmount.toStringAsFixed(2)}", style: TextStyle(fontSize: 16)),
-          Text("Amount Paid: ₱${amountPaid.toStringAsFixed(2)}", style: TextStyle(fontSize: 16)),
-          Text("Change Given: ₱${_paymentChange.toStringAsFixed(2)}", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 30),
+          const SizedBox(height: 20),
+          Text("Invoice #: $_generatedInvoiceNumber", style: const TextStyle(fontSize: 16)),
+          Text("Payment Ref #: $_paymentReferenceNumber", style: const TextStyle(fontSize: 16)),
+          Text("Patient: ${_selectedPatientQueueItem!.patientName}", style: const TextStyle(fontSize: 16)),
+          const SizedBox(height: 15),
+          Text("Total Bill: ₱${totalBillAmount.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16)),
+          Text("Amount Paid: ₱${amountPaid.toStringAsFixed(2)}", style: const TextStyle(fontSize: 16)),
+          Text("Change Given: ₱${_paymentChange.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 30),
           ElevatedButton.icon(
-            icon: Icon(Icons.print_outlined),
-            label: Text("Print Receipt"),
+            icon: const Icon(Icons.print_outlined),
+            label: const Text("Print Receipt"),
             onPressed: () async {
               if (_generatedInvoiceNumber == null || _currentBillItems.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -937,15 +939,15 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                 await _printPdfInvoice(pdfBytes);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           ElevatedButton(
             onPressed: () {
               _fetchInConsultationPatients(); // Resets to patient selection
             },
-            child: Text("New Invoice/Payment"),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
+            child: Text("New Invoice/Payment"),
           ),
         ],
       )
@@ -1005,25 +1007,25 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   Text('Queue Number: ${patient.queueNumber}'),
                   Text('Total Price (from consultation): ₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}'),
                   const Divider(height: 25),
-                  Text('Services/Items to be Invoiced:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const Text('Services/Items to be Invoiced:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   if (patient.selectedServices != null && patient.selectedServices!.isNotEmpty)
                     ...patient.selectedServices!.map((service) {
                       final serviceName = service['name'] ?? 'Unknown Service';
                       final price = service['price'] as double? ?? 0.0;
                       return ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(serviceName), trailing: Text('₱${price.toStringAsFixed(2)}'));
-                    }).toList()
+                    })
                   else if (patient.conditionOrPurpose != null && patient.conditionOrPurpose!.isNotEmpty)
                      ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(patient.conditionOrPurpose!), trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}'))
                   else
-                    Padding(padding: const EdgeInsets.symmetric(vertical:8.0), child: Text("No specific services listed. Invoice will use total price.", style: TextStyle(fontStyle: FontStyle.italic))),
+                    const Padding(padding: EdgeInsets.symmetric(vertical:8.0), child: Text("No specific services listed. Invoice will use total price.", style: TextStyle(fontStyle: FontStyle.italic))),
                   const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          icon: Icon(Icons.receipt_long),
-                          label: Text('Generate & Pay'),
+                          icon: const Icon(Icons.receipt_long),
+                          label: const Text('Generate & Pay'),
                           onPressed: _generateInvoice, 
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700], foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
@@ -1031,8 +1033,8 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton.icon(
-                          icon: Icon(Icons.save_alt_outlined),
-                          label: Text('Save Unpaid'),
+                          icon: const Icon(Icons.save_alt_outlined),
+                          label: const Text('Save Unpaid'),
                           onPressed: _saveInvoiceAsUnpaid,
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[700], foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
@@ -1051,7 +1053,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       case InvoiceFlowStep.paymentComplete:
         return _buildPaymentCompleteView();
       default:
-        return Center(child: Text("Something went wrong."));
+        return const Center(child: Text("Something went wrong."));
     }
   }
 
@@ -1103,7 +1105,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     if (patientQueueItem.selectedServices != null && patientQueueItem.selectedServices!.isNotEmpty) {
       for (var service in patientQueueItem.selectedServices!) {
         tempBillItems.add(BillItem(
-          billId: "TEMP-" + dbBillId, // Temporary, actual billId is set in DB method
+          billId: "TEMP-$dbBillId", // Temporary, actual billId is set in DB method
           description: service['name'] as String? ?? 'Unknown Service',
           quantity: 1, 
           unitPrice: (service['price'] as num?)?.toDouble() ?? 0.0,
@@ -1113,7 +1115,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       }
     } else if (patientQueueItem.conditionOrPurpose != null && patientQueueItem.conditionOrPurpose!.isNotEmpty) {
       tempBillItems.add(BillItem(
-        billId: "TEMP-" + dbBillId,
+        billId: "TEMP-$dbBillId",
         description: patientQueueItem.conditionOrPurpose!,
         quantity: 1,
         unitPrice: patientQueueItem.totalPrice ?? 0.0,
@@ -1121,7 +1123,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       ));
     } else {
        tempBillItems.add(BillItem(
-        billId: "TEMP-" + dbBillId,
+        billId: "TEMP-$dbBillId",
         description: "General Clinic Services",
         quantity: 1,
         unitPrice: patientQueueItem.totalPrice ?? 0.0,
@@ -1217,7 +1219,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Generate Invoice & Process Payment', 
           style: TextStyle(
             color: Colors.white,

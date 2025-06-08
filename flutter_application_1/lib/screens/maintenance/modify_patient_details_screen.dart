@@ -545,8 +545,9 @@ class _ModifyPatientDetailsScreenState
                       }
                     },
                     validator: (value) {
-                      if (value == null || value.isEmpty)
+                      if (value == null || value.isEmpty) {
                         return 'Birth Date is required';
+                      }
                       try {
                         DateFormat('yyyy-MM-dd').parseStrict(value);
                         return null;

@@ -6,12 +6,14 @@ class AddServiceScreen extends StatelessWidget {
   final TextEditingController _servicePriceController = TextEditingController();
   final TextEditingController _serviceDescriptionController = TextEditingController();
 
+  AddServiceScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Add Service',
           style: TextStyle(
             color: Colors.white,
@@ -28,51 +30,51 @@ class AddServiceScreen extends StatelessWidget {
           children: [
             TextField(
               controller: _serviceCategoryController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Service Category',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _specificServiceController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Specific Service',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _servicePriceController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Service Price',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _serviceDescriptionController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Service Description',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 // Logic to save service details
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
+                  const SnackBar(
                     content: Text('Service added successfully!'),
                     backgroundColor: Colors.teal,
                   ),
                 );
                 Navigator.pop(context);
               },
-              child: Text('Save Service'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
+              child: Text('Save Service'),
             ),
           ],
         ),

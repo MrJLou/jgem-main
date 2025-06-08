@@ -392,21 +392,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       _selectedSecurityQuestion1 = newValue;
                       // Ensure other selections are updated if they became invalid
                       if (_selectedSecurityQuestion1 ==
-                          _selectedSecurityQuestion2)
+                          _selectedSecurityQuestion2) {
                         _selectedSecurityQuestion2 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion1 ==
-                          _selectedSecurityQuestion3)
+                          _selectedSecurityQuestion3) {
                         _selectedSecurityQuestion3 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion2,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -439,21 +441,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     setState(() {
                       _selectedSecurityQuestion2 = newValue;
                       if (_selectedSecurityQuestion2 ==
-                          _selectedSecurityQuestion1)
+                          _selectedSecurityQuestion1) {
                         _selectedSecurityQuestion1 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion2 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion2 ==
-                          _selectedSecurityQuestion3)
+                          _selectedSecurityQuestion3) {
                         _selectedSecurityQuestion3 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion2,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -486,21 +490,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     setState(() {
                       _selectedSecurityQuestion3 = newValue;
                       if (_selectedSecurityQuestion3 ==
-                          _selectedSecurityQuestion1)
+                          _selectedSecurityQuestion1) {
                         _selectedSecurityQuestion1 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion2 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion3 ==
-                          _selectedSecurityQuestion2)
+                          _selectedSecurityQuestion2) {
                         _selectedSecurityQuestion2 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -662,7 +668,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isAddingUser ? 'Add New User' : 'User Management',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         backgroundColor: primaryTeal,
         leading: _isAddingUser
             ? IconButton(

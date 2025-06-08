@@ -13,7 +13,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   bool _isUrgent = false;
-  List<String> _attachments = [];
+  final List<String> _attachments = [];
 
   final List<String> _feedbackTypes = [
     'General Feedback',

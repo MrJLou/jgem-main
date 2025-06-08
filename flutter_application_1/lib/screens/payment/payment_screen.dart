@@ -13,6 +13,8 @@ import '../../services/auth_service.dart'; // For fetching current user ID
 // import 'transaction_history_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
+  const PaymentScreen({super.key});
+
   @override
   _PaymentScreenState createState() => _PaymentScreenState();
 }
@@ -32,7 +34,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService(); // Keep for now, might be needed if payment serves a patient
-  final Uuid _uuid = Uuid();
+  static const Uuid _uuid = Uuid();
 
   // Keys for SharedPreferences
   static const String _lastPaymentRefKey = 'last_payment_ref';
@@ -285,7 +287,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               labelText: 'Enter Invoice Number',
               hintText: 'e.g., INV-XXXXXX',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              prefixIcon: Icon(Icons.receipt_long_outlined),
+              prefixIcon: const Icon(Icons.receipt_long_outlined),
             ),
             onSubmitted: (_) => _searchInvoice(), // Allow search on submit
           ),
@@ -293,10 +295,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           SizedBox(
             width: double.infinity,
             child: _isLoadingInvoice 
-              ? Center(child: Padding(padding: const EdgeInsets.all(8.0), child: CircularProgressIndicator())) 
+              ? const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator())) 
               : ElevatedButton.icon(
-                  icon: Icon(Icons.search),
-                  label: Text('Search Invoice'),
+                  icon: const Icon(Icons.search),
+                  label: const Text('Search Invoice'),
                   onPressed: _searchInvoice,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.teal[700],
@@ -384,9 +386,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: Text('Status: ${billData['status']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange[700])),
                 ),
               const SizedBox(height: 10),
-              Text('Patient: $patientName', style: TextStyle(fontSize: 15)),
+              Text('Patient: $patientName', style: const TextStyle(fontSize: 15)),
               if (patientData != null && patientData['id'] != null)
-                 Text('Patient ID: ${patientData['id']}', style: TextStyle(fontSize: 15)),
+                 Text('Patient ID: ${patientData['id']}', style: const TextStyle(fontSize: 15)),
               const Divider(height: 25),
               const Text('Services/Items:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 5),
@@ -404,10 +406,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text('$itemName (Qty: $itemQty)', style: TextStyle(fontSize: 15)),
-                    trailing: Text('₱${itemTotal.toStringAsFixed(2)}', style: TextStyle(fontSize: 15)),
+                    title: Text('$itemName (Qty: $itemQty)', style: const TextStyle(fontSize: 15)),
+                    trailing: Text('₱${itemTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 15)),
                   );
-                }).toList(),
+                }),
               const Divider(height: 25),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -420,7 +422,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               if (billData['status'] != 'Paid') ...[
               TextFormField(
                 controller: _amountPaidController,
-                style: TextStyle(fontSize: 15),
+                style: const TextStyle(fontSize: 15),
                 decoration: InputDecoration(
                   labelText: 'Enter Amount Paid (Cash)',
                   hintText: 'e.g., ${totalAmount.toStringAsFixed(2)}',
@@ -462,8 +464,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 Text('Change Due: ₱${_change.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 10),
                  ElevatedButton.icon(
-                  icon: Icon(Icons.refresh_outlined), 
-                  label: Text("New Payment"), 
+                  icon: const Icon(Icons.refresh_outlined), 
+                  label: const Text("New Payment"), 
                   onPressed: _resetPaymentScreen,
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent)
                 )

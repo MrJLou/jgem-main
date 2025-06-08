@@ -282,7 +282,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        ..._searchResults.map((service) => _buildServiceCard(service)).toList(),
+        ..._searchResults.map((service) => _buildServiceCard(service)),
       ],
     );
   }

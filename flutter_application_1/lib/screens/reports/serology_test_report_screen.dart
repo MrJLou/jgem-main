@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class SerologyTestReportScreen extends StatefulWidget {
+  const SerologyTestReportScreen({super.key});
+
   @override
   _SerologyTestReportScreen createState() => _SerologyTestReportScreen();
 }
@@ -39,7 +41,7 @@ class _SerologyTestReportScreen extends State<SerologyTestReportScreen> {
 
   void _handlePDFConversion() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Generating PDF...')),
+      const SnackBar(content: Text('Generating PDF...')),
     );
   }
 
@@ -172,7 +174,6 @@ class _SerologyTestReportScreen extends State<SerologyTestReportScreen> {
   Widget _buildActionButton(String label, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
-      child: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
@@ -181,6 +182,7 @@ class _SerologyTestReportScreen extends State<SerologyTestReportScreen> {
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),
+      child: Text(label),
     );
   }
 

@@ -1785,7 +1785,7 @@ To view live changes in DB Browser:
 
   // Method to seed initial clinic services
   Future<void> _seedInitialClinicServices(Database db) async {
-    var uuid = Uuid();
+    var uuid = const Uuid();
     final initialServices = [
       // Services from add_to_queue_screen.dart
       {'name': 'Consultation', 'category': 'Consultation', 'price': 500.0},
@@ -1844,8 +1844,8 @@ To view live changes in DB Browser:
     String? paymentNotes,
   }) async {
     final db = await database;
-    final String billDbId = 'BILL-${Uuid().v4()}'; // Internal DB ID for the bill
-    final String paymentReferenceNumber = 'PAY-${Uuid().v4().substring(0, 8).toUpperCase()}';
+    final String billDbId = 'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
+    final String paymentReferenceNumber = 'PAY-${const Uuid().v4().substring(0, 8).toUpperCase()}';
 
     await db.transaction((txn) async {
       // 1. Insert into tablePatientBills
@@ -1937,7 +1937,7 @@ To view live changes in DB Browser:
     String? notes,
   }) async {
     final db = await database;
-    final String billDbId = 'BILL-${Uuid().v4()}'; // Internal DB ID for the bill
+    final String billDbId = 'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
 
     await db.transaction((txn) async {
       // 1. Insert into tablePatientBills

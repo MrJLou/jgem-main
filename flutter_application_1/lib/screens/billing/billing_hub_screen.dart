@@ -12,11 +12,11 @@ class BillingHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Placeholder onTap actions - replace with actual navigation
-    VoidCallback placeholderOnTap = () {
+    placeholderOnTap() {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Navigation to be implemented.')),
       );
-    };
+    }
 
     return Scaffold(
       appBar: AppBar(

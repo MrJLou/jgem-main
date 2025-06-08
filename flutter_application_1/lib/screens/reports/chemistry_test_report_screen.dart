@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ChemistryTestReportScreen extends StatefulWidget {
+  const ChemistryTestReportScreen({super.key});
+
   @override
   _ChemistryTestReportScreenState createState() =>
       _ChemistryTestReportScreenState();
@@ -41,7 +43,7 @@ class _ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
 
   void _handlePDFConversion() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Generating PDF...')),
+      const SnackBar(content: Text('Generating PDF...')),
     );
   }
 
@@ -177,7 +179,6 @@ class _ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
   Widget _buildActionButton(String label, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
-      child: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
@@ -186,6 +187,7 @@ class _ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),
+      child: Text(label),
     );
   }
 

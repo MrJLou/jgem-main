@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class HematologyReportScreen extends StatefulWidget {
+  const HematologyReportScreen({super.key});
+
   @override
   _HematologyReportScreenState createState() => _HematologyReportScreenState();
 }
@@ -39,7 +41,7 @@ class _HematologyReportScreenState extends State<HematologyReportScreen> {
 
   void _handlePDFConversion() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Generating PDF...')),
+      const SnackBar(content: Text('Generating PDF...')),
     );
   }
 
@@ -172,7 +174,6 @@ class _HematologyReportScreenState extends State<HematologyReportScreen> {
   Widget _buildActionButton(String label, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
-      child: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
@@ -181,6 +182,7 @@ class _HematologyReportScreenState extends State<HematologyReportScreen> {
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),
+      child: Text(label),
     );
   }
 

@@ -42,7 +42,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isHovered = false;
-  Map<int, bool> _hoveredItems = {};
+  final Map<int, bool> _hoveredItems = {};
 
   DateTime _selectedDate = DateTime.now();
   List<Appointment> _appointments = [];
@@ -64,7 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final Map<String, Map<String, dynamic>> _allMenuItems = {
     'Dashboard': {
       'screen': (String accessLevel) => LiveQueueDashboardView(
-          queueService: QueueService(), appointments: []),
+          queueService: QueueService(), appointments: const []),
       'icon': Icons.dashboard_outlined
     },
     'Registration': {
@@ -113,7 +113,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'icon': Icons.request_quote_outlined
     },
     'Help': {
-      'screen': (String accessLevel) => HelpScreen(),
+      'screen': (String accessLevel) => const HelpScreen(),
       'icon': Icons.help_outline
     },
     'About': {
@@ -916,8 +916,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   decoration: const InputDecoration(
                       labelText: 'Patient Name', border: OutlineInputBorder()),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Please enter patient name';
+                    }
                     return null;
                   },
                 ),
@@ -927,8 +928,9 @@ class _AppointmentFormState extends State<AppointmentForm> {
                   decoration: const InputDecoration(
                       labelText: 'Doctor', border: OutlineInputBorder()),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Please enter doctor name';
+                    }
                     return null;
                   },
                 ),
@@ -1167,8 +1169,9 @@ class AppointmentCard extends StatelessWidget {
                 children: [
                   const Text('Change Status: '),
                   _buildStatusDropdown(appointment.status, (newStatus) {
-                    if (newStatus != null)
+                    if (newStatus != null) {
                       onUpdateStatus(appointment.id, newStatus);
+                    }
                   }),
                 ],
               ),
@@ -1372,10 +1375,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       String patientDisplayName = 'PT: ${originalAppointment.patientId}';
       try {
         final patientDetails = await ApiService.getPatientById(originalAppointment.patientId);
-        if (patientDetails != null) {
-          patientDisplayName = patientDetails.fullName;
-        }
-      } catch (e) {
+        patientDisplayName = patientDetails.fullName;
+            } catch (e) {
         print('DEBUG: Could not fetch patient details for ${originalAppointment.patientId}: $e');
       }
 
@@ -2267,7 +2268,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     child: Text(text, style: currentCellStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
                   ),
                 ));
-          }).toList(),
+          }),
           Expanded(
             flex: 3,
             child: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
@@ -2403,7 +2404,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                         textAlign: TextAlign.center),
                   ),
                 ));
-          }).toList(),
+          }),
           Expanded(
             flex: 2, // Actions column
             child: Padding(

@@ -3,12 +3,14 @@ import 'add_patient_screen.dart';
 import 'add_service_screen.dart';
 
 class AddScreen extends StatelessWidget {
+  const AddScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Add',
           style: TextStyle(
             color: Colors.white,
@@ -31,10 +33,10 @@ class AddScreen extends StatelessWidget {
                 color: Colors.teal[800],
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ListTile(
               leading: Icon(Icons.person_add, color: Colors.teal[700]),
-              title: Text('Add Patient'),
+              title: const Text('Add Patient'),
               onTap: () {
                 Navigator.push(
                   context,
@@ -44,10 +46,10 @@ class AddScreen extends StatelessWidget {
                 );
               },
             ),
-            Divider(),
+            const Divider(),
             ListTile(
               leading: Icon(Icons.add_circle_outline, color: Colors.teal[700]),
-              title: Text('Add Service'),
+              title: const Text('Add Service'),
               onTap: () {
                 Navigator.push(
                   context,

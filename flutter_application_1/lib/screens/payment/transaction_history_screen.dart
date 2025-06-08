@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class TransactionHistoryScreen extends StatefulWidget {
+  const TransactionHistoryScreen({super.key});
+
   @override
   _TransactionHistoryScreenState createState() =>
       _TransactionHistoryScreenState();
@@ -28,7 +30,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Transaction History',
           style: TextStyle(
             color: Colors.white,
@@ -51,30 +53,30 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 color: Colors.teal[800],
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _patientIdController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Enter Patient ID',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _searchTransactions,
-              child: Text('Search'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
+              child: Text('Search'),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Expanded(
               child: _filteredTransactions.isEmpty
-                  ? Center(child: Text('No transactions found'))
+                  ? const Center(child: Text('No transactions found'))
                   : ListView.builder(
                       itemCount: _filteredTransactions.length,
                       itemBuilder: (context, index) {
                         final transaction = _filteredTransactions[index];
                         return Card(
-                          margin: EdgeInsets.only(bottom: 10),
+                          margin: const EdgeInsets.only(bottom: 10),
                           child: ListTile(
                             title: Text('Date: ${transaction['date']}'),
                             subtitle: Text('Amount: ${transaction['amount']}'),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../models/clinic_service.dart';
 import 'dart:math';
-import 'package:uuid/uuid.dart';
 import '../maintenance/update_screen.dart'; // Import for RecentUpdateLogService
 
 class ModifyServicesScreen extends StatefulWidget {

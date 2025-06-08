@@ -144,7 +144,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                         icon: Icons.edit_note,
                         color: Colors.orange[700]!,
                         onTap: () {
-                          _navigateAndRefresh(ModifyPatientDetailsScreen());
+                          _navigateAndRefresh(const ModifyPatientDetailsScreen());
                         },
                       ),
                     ),
@@ -156,7 +156,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                         icon: Icons.person_search,
                         color: Colors.blue[700]!,
                         onTap: () {
-                          _navigateAndRefresh(ModifyPatientStatusScreen());
+                          _navigateAndRefresh(const ModifyPatientStatusScreen());
                         },
                       ),
                     ),
@@ -168,7 +168,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                         icon: Icons.medical_services_outlined,
                         color: Colors.green[700]!,
                         onTap: () {
-                          _navigateAndRefresh(ModifyServicesScreen());
+                          _navigateAndRefresh(const ModifyServicesScreen());
                         },
                       ),
                     ),

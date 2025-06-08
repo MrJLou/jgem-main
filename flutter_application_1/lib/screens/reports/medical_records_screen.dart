@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class MedicalRecordsScreen extends StatefulWidget {
+  const MedicalRecordsScreen({super.key});
+
   @override
   _MedicalRecordsScreenState createState() => _MedicalRecordsScreenState();
 }
@@ -38,7 +40,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
 
   void _handlePDFConversion() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Generating PDF...')),
+      const SnackBar(content: Text('Generating PDF...')),
     );
   }
 
@@ -174,7 +176,6 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   Widget _buildActionButton(String label, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
-      child: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
@@ -183,6 +184,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),
+      child: Text(label),
     );
   }
 

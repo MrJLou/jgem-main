@@ -285,7 +285,7 @@ class LanSyncService {
         // Add timeout wrapper for the entire sync operation
         final success = await _dbHelper!
             .syncWithServer()
-            .timeout(Duration(seconds: 30), onTimeout: () {
+            .timeout(const Duration(seconds: 30), onTimeout: () {
           debugPrint('Sync operation timed out after 30 seconds');
           return false;
         });

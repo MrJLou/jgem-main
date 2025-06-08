@@ -404,7 +404,7 @@ class _LoginScreenState extends State<LoginScreen>
                               FadeTransition(
                                 opacity: _fadeAnimation, // Using the existing fade animation
                                 child: _imageRotationController == null // Guard condition
-                                    ? Container(
+                                    ? SizedBox(
                                         width: 220,
                                         height: 220) // Placeholder if not initialized
                                     : AnimatedBuilder(

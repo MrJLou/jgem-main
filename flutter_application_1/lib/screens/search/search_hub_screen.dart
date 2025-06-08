@@ -91,7 +91,7 @@ class SearchHubScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => PaymentSearchScreen()),
+                            builder: (context) => const PaymentSearchScreen()),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -105,7 +105,7 @@ class SearchHubScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => ServiceSearchScreen()),
+                            builder: (context) => const ServiceSearchScreen()),
                       ),
                     ),
                   ],

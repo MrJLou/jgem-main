@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class UserRegistrationScreen extends StatefulWidget {
+  const UserRegistrationScreen({super.key});
+
   @override
   _UserRegistrationScreenState createState() => _UserRegistrationScreenState();
 }
@@ -58,14 +60,14 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.teal[700],
         elevation: 0,
-        title: Text(
+        title: const Text(
           'User Registration',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -76,7 +78,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
           ),
         ),
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
             child: Column(
@@ -93,7 +95,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           color: Colors.teal[800],
                         ),
                       ),
-                      SizedBox(height: 5),
+                      const SizedBox(height: 5),
                       Text(
                         'Enter the details below to register a new system user',
                         textAlign: TextAlign.center,
@@ -105,7 +107,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 30),
+                const SizedBox(height: 30),
                 
                 // Personal Information Card
                 _buildSectionCard(
@@ -128,7 +130,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                               },
                             ),
                           ),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _buildInputField(
                               controller: _lastNameController,
@@ -144,7 +146,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           ),
                         ],
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -164,7 +166,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                               },
                             ),
                           ),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _buildInputField(
                               controller: _emailController,
@@ -187,7 +189,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Role Information Card
                 _buildSectionCard(
@@ -206,7 +208,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           });
                         },
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildDropdownField(
                         value: _selectedDepartment,
                         items: _departments,
@@ -219,7 +221,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                         },
                       ),
                       if (_selectedAccessLevel == 'Doctor') ...[
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         _buildInputField(
                           controller: _specialtyController,
                           label: 'Specialty',
@@ -235,7 +237,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Account Security Card
                 _buildSectionCard(
@@ -257,7 +259,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           return null;
                         },
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildPasswordField(
                         controller: _passwordController,
                         label: 'Password',
@@ -277,7 +279,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           return null;
                         },
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildPasswordField(
                         controller: _confirmPasswordController,
                         label: 'Confirm Password',
@@ -297,7 +299,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
 
                 // Recovery Information Card
                 _buildSectionCard(
@@ -316,7 +318,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                           });
                         },
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildInputField(
                         controller: _securityAnswerController,
                         label: 'Security Answer',
@@ -331,7 +333,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 30),
+                const SizedBox(height: 30),
 
                 // Submit Button
                 SizedBox(
@@ -346,7 +348,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: Text(
+                    child: const Text(
                       'Create Account',
                       style: TextStyle(
                         fontSize: 18,
@@ -377,7 +379,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
             Row(
               children: [
                 Icon(icon, color: Colors.teal[700], size: 24),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Text(
                   title,
                   style: TextStyle(
@@ -388,7 +390,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             content,
           ],
         ),
@@ -522,7 +524,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
       // TODO: Implement user registration logic
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
               Icon(Icons.info_outline, color: Colors.white),
               SizedBox(width: 10),
@@ -531,7 +533,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
           ),
           backgroundColor: Colors.teal[700],
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(10),
+          margin: const EdgeInsets.all(10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -540,7 +542,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+          content: const Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.white),
               SizedBox(width: 10),
@@ -549,7 +551,7 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
           ),
           backgroundColor: Colors.red[400],
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.all(10),
+          margin: const EdgeInsets.all(10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),

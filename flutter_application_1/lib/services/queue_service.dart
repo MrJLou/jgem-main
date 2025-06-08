@@ -314,8 +314,9 @@ class QueueService {
   /// Mark patient as 'in_consultation' in the active queue.
   Future<bool> markPatientAsInConsultation(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null || item.status == 'removed' || item.status == 'served')
+    if (item == null || item.status == 'removed' || item.status == 'served') {
       return false;
+    }
 
     final updatedItem = item.copyWith(
         status: 'in_consultation',
@@ -394,7 +395,7 @@ class QueueService {
       List<Duration> waitTimes = [];
       for (var p in servedPatients) {
         DateTime? effectiveStartTime = p.consultationStartedAt ?? p.servedAt;
-        if (p.arrivalTime != null && effectiveStartTime != null) {
+        if (effectiveStartTime != null) {
           if (effectiveStartTime.isAfter(p.arrivalTime)) {
             waitTimes.add(effectiveStartTime.difference(p.arrivalTime));
           }
@@ -484,7 +485,7 @@ class QueueService {
         fontSize: 16,
         fontWeight: pw.FontWeight.bold,
         color: PdfColors.blueGrey800);
-    final estiloTexto = pw.TextStyle(fontSize: 11, color: PdfColors.black);
+    const estiloTexto = pw.TextStyle(fontSize: 11, color: PdfColors.black);
     final estiloValor = pw.TextStyle(
         fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.black);
 
@@ -574,7 +575,7 @@ class QueueService {
     );
 
     // Updated directory path
-    final String dirPath =
+    const String dirPath =
         r'C:\Users\jesie\Documents\jgem-softeng\jgem-main\Daily Reports';
     final Directory dailyReportDir = Directory(dirPath);
 

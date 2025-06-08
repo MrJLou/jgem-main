@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
-import 'package:sqflite/sqflite.dart';
 
 class UserDatabaseService {
   final DatabaseHelper _dbHelper;

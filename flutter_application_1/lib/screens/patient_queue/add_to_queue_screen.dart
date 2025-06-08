@@ -28,8 +28,7 @@ import '../../models/appointment.dart';
 class AddToQueueScreen extends StatefulWidget {
   final QueueService queueService;
 
-  const AddToQueueScreen({Key? key, required this.queueService})
-      : super(key: key);
+  const AddToQueueScreen({super.key, required this.queueService});
 
   @override
   _AddToQueueScreenState createState() => _AddToQueueScreenState();
@@ -196,9 +195,9 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                     onPressed: () => Navigator.of(dialogContext).pop(false),
                   ),
                   ElevatedButton(
-                    child: const Text('Yes, Add to Queue'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
                     onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Yes, Add to Queue'),
                   ),
                 ],
               );
@@ -534,7 +533,6 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  child: const Text('Confirm'),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
@@ -555,6 +553,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  child: const Text('Confirm'),
                 ),
               ],
             );
@@ -773,7 +772,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                             .asyncMap((_) => widget.queueService
                                 .getActiveQueueItems(
                                     statuses: ['waiting', 'in_consultation'])),
-                        initialData: [],
+                        initialData: const [],
                         builder: (context, snapshot) {
                           int queueSize = 0;
                           if (snapshot.hasData) {

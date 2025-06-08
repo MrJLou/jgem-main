@@ -335,7 +335,7 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProv
                 style: cellStyle.copyWith(color: textColor, fontWeight: idx == 0 ? FontWeight.bold : FontWeight.normal),
               ),
             );
-          }).toList(),
+          }),
           Expanded(
             flex: 2,
             child: TableCellWidget(child: _buildLiveQueueStatusActionsWidget(item)),
@@ -543,7 +543,7 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProv
                   text: text,
                   style: cellStyle.copyWith(color: textColor),
                 ));
-          }).toList(),
+          }),
           Expanded(
             flex: 2, 
             child: TableCellWidget(child: _buildAppointmentStatusActionsWidget(appointment)),

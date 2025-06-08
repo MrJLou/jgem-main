@@ -52,7 +52,7 @@ class _BackupScreenState extends State<BackupScreen> {
   Future<void> _initializeBackupSettings() async {
     // BACKUP LOCATION
     _backupLocation =
-        (await getApplicationDocumentsDirectory()).path + '/backups';
+        '${(await getApplicationDocumentsDirectory()).path}/backups';
     _lastBackupDate =
         _backupHistory.isNotEmpty ? _backupHistory.first['date'] : null;
   }
@@ -448,7 +448,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         ],
                       ),
                     ),
-                    Container(
+                    SizedBox(
                       width: double.infinity,
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -458,7 +458,7 @@ class _BackupScreenState extends State<BackupScreen> {
                           ),
                           child: DataTable(
                             headingRowColor:
-                                MaterialStateProperty.all(Colors.grey[50]),
+                                WidgetStateProperty.all(Colors.grey[50]),
                             columnSpacing: 24,
                             horizontalMargin: 24,
                             columns: [

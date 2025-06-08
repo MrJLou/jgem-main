@@ -86,7 +86,7 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
     final List<TimeOfDay> slots = [];
     slots.clear();
     int currentMinutes = 7 * 60 + 30; // 7:30 AM
-    final endMinutes = 16 * 60 + 30;   // 4:30 PM
+    const endMinutes = 16 * 60 + 30;   // 4:30 PM
 
     while (currentMinutes <= endMinutes) {
       slots.add(TimeOfDay(hour: currentMinutes ~/ 60, minute: currentMinutes % 60));
@@ -120,8 +120,8 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
     }
 
     final nowDateTime = DateTime.now();
-    final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
-    final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+    const minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+    const maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
 
     if (widget.selectedDate != null) {
       _selectedDate = widget.selectedDate!;
@@ -224,7 +224,7 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
          }
       }
       
-      final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+      const minWorkingTime = TimeOfDay(hour: 7, minute: 30);
 
       if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
           TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
@@ -295,8 +295,8 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
-        final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+        const minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+        const maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
         final nowDateTime = DateTime.now();
 
         if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
@@ -497,8 +497,8 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
       if (widget.selectedDate != null && widget.selectedDate != _selectedDate) {
         setState(() {
           _selectedDate = widget.selectedDate!;
-          final minWorkingTime = TimeOfDay(hour: 7, minute: 30);
-          final maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
+          const minWorkingTime = TimeOfDay(hour: 7, minute: 30);
+          const maxWorkingTime = TimeOfDay(hour: 16, minute: 30);
           final nowDateTime = DateTime.now();
 
           if (_isSelectable(_selectedDate)) {
@@ -1016,7 +1016,6 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  child: const Text('Confirm'),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
@@ -1037,6 +1036,7 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  child: const Text('Confirm'),
                 ),
               ],
             );
@@ -1051,7 +1051,7 @@ class _DialogPatientRegistrationForm extends StatefulWidget {
   final Function(Patient) onRegistered;
   final List<String> bloodTypes;
 
-  const _DialogPatientRegistrationForm({super.key, required this.onRegistered, required this.bloodTypes});
+  const _DialogPatientRegistrationForm({required this.onRegistered, required this.bloodTypes});
 
   @override
   State<_DialogPatientRegistrationForm> createState() => _DialogPatientRegistrationFormState();
@@ -1163,7 +1163,7 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
         data: Theme.of(context).copyWith(
           textTheme: dialogTextTheme,
           inputDecorationTheme: Theme.of(context).inputDecorationTheme.copyWith(
-            labelStyle: TextStyle(fontSize: dialogFontSize),            
+            labelStyle: const TextStyle(fontSize: dialogFontSize),            
           )
         ),
         child: SingleChildScrollView(
@@ -1210,7 +1210,7 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
                             backgroundColor: Colors.teal,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                            textStyle: TextStyle(fontSize: dialogFontSize + 1, fontWeight: FontWeight.bold) 
+                            textStyle: const TextStyle(fontSize: dialogFontSize + 1, fontWeight: FontWeight.bold) 
                           ),
                         ),
                 ],

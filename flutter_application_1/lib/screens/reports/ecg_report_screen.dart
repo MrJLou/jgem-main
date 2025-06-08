@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ECGReportScreen extends StatefulWidget {
+  const ECGReportScreen({super.key});
+
   @override
   _ECGReportScreenState createState() => _ECGReportScreenState();
 }
@@ -38,7 +40,7 @@ class _ECGReportScreenState extends State<ECGReportScreen> {
 
   void _handlePDFConversion() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Generating PDF...')),
+      const SnackBar(content: Text('Generating PDF...')),
     );
   }
 
@@ -174,7 +176,6 @@ class _ECGReportScreenState extends State<ECGReportScreen> {
   Widget _buildActionButton(String label, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
-      child: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.teal[800],
         foregroundColor: Colors.white,
@@ -183,6 +184,7 @@ class _ECGReportScreenState extends State<ECGReportScreen> {
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
       ),
+      child: Text(label),
     );
   }
 

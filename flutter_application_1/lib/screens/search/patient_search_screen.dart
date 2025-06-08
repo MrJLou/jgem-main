@@ -5,6 +5,8 @@ import '../../models/patient.dart';
 import '../../models/medical_record.dart';
 
 class PatientSearchScreen extends StatefulWidget {
+  const PatientSearchScreen({super.key});
+
   @override
   _PatientSearchScreenState createState() => _PatientSearchScreenState();
 }
@@ -53,7 +55,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         elevation: 2,
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh),
             onPressed: _resetSearch,
             tooltip: 'Reset Search',
           ),
@@ -478,7 +480,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                     const SizedBox(height: 15),
                     ...(_patientData!['labResults'] as List)
                         .map((result) => _buildLabResultCard(result))
-                        .toList(),
+                        ,
                   ] else ...[
                     Container(
                       margin: const EdgeInsets.only(top: 10),
@@ -692,7 +694,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                     ),
                     const SizedBox(width: 10),
                     ElevatedButton.icon(
-                      icon: _isLoading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(Icons.save_alt_outlined),
+                      icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_alt_outlined),
                       label: const Text('SAVE CHANGES'),
                       onPressed: _isLoading ? null : _savePatientChanges, 
                       style: ElevatedButton.styleFrom(

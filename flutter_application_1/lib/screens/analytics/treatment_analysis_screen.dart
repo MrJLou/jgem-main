@@ -494,7 +494,7 @@ class TreatmentStat {
 }
 
 Future<List<TreatmentStat>> fetchTreatmentStats() async {
-  await Future.delayed(Duration(seconds: 1)); // Simulate network delay
+  await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
   return [
     TreatmentStat(
       name: 'Antibiotic Treatment',

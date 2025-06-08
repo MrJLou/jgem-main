@@ -99,7 +99,7 @@ class MaintenanceHubScreen extends StatelessWidget {
                       color: Colors.teal[500]!,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => UpdateScreen()),
+                        MaterialPageRoute(builder: (context) => const UpdateScreen()),
                       ),
                     ),
                   ],

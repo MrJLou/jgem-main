@@ -6,7 +6,7 @@ class AppointmentCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
-  const AppointmentCard({
+  const AppointmentCard({super.key, 
     required this.appointment,
     required this.onEdit,
     required this.onDelete,

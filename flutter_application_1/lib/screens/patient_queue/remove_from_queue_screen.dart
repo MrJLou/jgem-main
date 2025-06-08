@@ -5,8 +5,7 @@ import '../../models/active_patient_queue_item.dart';
 class RemoveFromQueueScreen extends StatefulWidget {
   final QueueService queueService;
 
-  const RemoveFromQueueScreen({Key? key, required this.queueService})
-      : super(key: key);
+  const RemoveFromQueueScreen({super.key, required this.queueService});
 
   @override
   _RemoveFromQueueScreenState createState() => _RemoveFromQueueScreenState();
@@ -54,7 +53,7 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
                   onPressed: () => Navigator.of(context).pop(false),
                 ),
                 TextButton(
-                  child: Text('Remove', style: TextStyle(color: Colors.red)),
+                  child: const Text('Remove', style: TextStyle(color: Colors.red)),
                   onPressed: () => Navigator.of(context).pop(true),
                 ),
               ],
@@ -128,12 +127,12 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
               decoration: InputDecoration(
                 labelText: 'Search by Name or Patient ID',
                 hintText: 'Enter name or ID to search...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0)),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchController.clear();
                           _performSearch('');
@@ -186,7 +185,7 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
                                 )
                               : (patient.status == 'removed'
                                   ? Chip(
-                                      label: Text('Removed'),
+                                      label: const Text('Removed'),
                                       backgroundColor: Colors.grey.shade300)
                                   : null), // No action for 'served' or other statuses here
                         ),

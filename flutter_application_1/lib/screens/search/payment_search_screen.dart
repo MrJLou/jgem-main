@@ -51,7 +51,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
             if (_hasSearched) ...[
               const SizedBox(height: 24),
               if (_isLoading)
-                Center(child: CircularProgressIndicator())
+                const Center(child: CircularProgressIndicator())
               else if (_paymentResults.isNotEmpty)
                 _buildPaymentResultsList()
               else
@@ -179,7 +179,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                       ),
                       suffixIcon: _startDate != null
                           ? IconButton(
-                              icon: Icon(Icons.clear),
+                              icon: const Icon(Icons.clear),
                               onPressed: () =>
                                   setState(() => _startDate = null))
                           : null,
@@ -215,7 +215,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                       ),
                       suffixIcon: _endDate != null
                           ? IconButton(
-                              icon: Icon(Icons.clear),
+                              icon: const Icon(Icons.clear),
                               onPressed: () => setState(() => _endDate = null))
                           : null,
                     ),
@@ -316,7 +316,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
   Widget _buildPaymentResultsList() {
     return ListView.builder(
       shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: _paymentResults.length,
       itemBuilder: (context, index) {
         final payment = _paymentResults[index];
@@ -349,7 +349,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                     ),
                   ],
                 ),
-                Divider(height: 15),
+                const Divider(height: 15),
                 _buildDetailRow(
                     'Patient Name:', payment['patient_name'] ?? 'N/A'),
                 _buildDetailRow('Amount Paid:',

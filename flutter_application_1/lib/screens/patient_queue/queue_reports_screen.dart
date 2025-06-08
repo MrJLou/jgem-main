@@ -7,7 +7,7 @@ import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
 
 class QueueReportsScreen extends StatefulWidget {
-  const QueueReportsScreen({Key? key}) : super(key: key);
+  const QueueReportsScreen({super.key});
 
   @override
   _QueueReportsScreenState createState() => _QueueReportsScreenState();

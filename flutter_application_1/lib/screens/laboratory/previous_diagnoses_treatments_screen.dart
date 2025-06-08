@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class PreviousDiagnosesTreatmentsScreen extends StatefulWidget {
+  const PreviousDiagnosesTreatmentsScreen({super.key});
+
   @override
   _PreviousDiagnosesTreatmentsScreenState createState() =>
       _PreviousDiagnosesTreatmentsScreenState();
@@ -19,7 +21,7 @@ class _PreviousDiagnosesTreatmentsScreenState
       _errorMessage = null;
     });
 
-    await Future.delayed(Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 800));
 
     final mockData = [
       {
@@ -66,7 +68,7 @@ class _PreviousDiagnosesTreatmentsScreenState
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Row(
+        title: const Row(
           children: [
             Icon(Icons.medical_services, color: Color(0xFF1ABC9C)),
             SizedBox(width: 10),
@@ -76,7 +78,7 @@ class _PreviousDiagnosesTreatmentsScreenState
             ),
           ],
         ),
-        content: Container(
+        content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.4,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -96,7 +98,7 @@ class _PreviousDiagnosesTreatmentsScreenState
         actions: [
           TextButton(
             onPressed: Navigator.of(context).pop,
-            child: Text('Close', style: TextStyle(color: Color(0xFF1ABC9C))),
+            child: const Text('Close', style: TextStyle(color: Color(0xFF1ABC9C))),
           )
         ],
       ),
@@ -136,7 +138,7 @@ class _PreviousDiagnosesTreatmentsScreenState
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Previous Diagnoses & Treatments',
           style: TextStyle(
             fontWeight: FontWeight.bold,
@@ -146,17 +148,17 @@ class _PreviousDiagnosesTreatmentsScreenState
         backgroundColor: Colors.teal[700],
         actions: [
           IconButton(
-            icon: Icon(Icons.help_outline),
+            icon: const Icon(Icons.help_outline),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: Text('Help'),
-                  content: Text('Enter a patient ID to view their diagnosis and treatment history. The records will show all previous medical conditions and their treatments.'),
+                  title: const Text('Help'),
+                  content: const Text('Enter a patient ID to view their diagnosis and treatment history. The records will show all previous medical conditions and their treatments.'),
                   actions: [
                     TextButton(
                       onPressed: Navigator.of(context).pop,
-                      child: Text('Got it'),
+                      child: const Text('Got it'),
                     ),
                   ],
                 ),
@@ -171,7 +173,7 @@ class _PreviousDiagnosesTreatmentsScreenState
             decoration: BoxDecoration(
               color: Colors.teal[700],
             ),
-            padding: EdgeInsets.fromLTRB(24, 20, 24, 40),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -184,33 +186,33 @@ class _PreviousDiagnosesTreatmentsScreenState
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
-                        offset: Offset(0, 5),
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
                   child: TextField(
                     controller: _patientIdController,
-                    style: TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 18),
                     decoration: InputDecoration(
                       hintText: 'Enter Patient ID',
                       hintStyle: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 18,
                       ),
-                      prefixIcon: Icon(
+                      prefixIcon: const Icon(
                         Icons.person_search,
                         color: Color(0xFF1ABC9C),
                         size: 28,
                       ),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                         horizontal: 25,
                         vertical: 20,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Center(
                   child: SizedBox(
                     width: MediaQuery.of(context).size.width * 0.5,
@@ -222,6 +224,13 @@ class _PreviousDiagnosesTreatmentsScreenState
                           _fetchRecords(patientId);
                         }
                       },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -241,13 +250,6 @@ class _PreviousDiagnosesTreatmentsScreenState
                           ),
                         ],
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
                     ),
                   ),
                 ),
@@ -256,7 +258,7 @@ class _PreviousDiagnosesTreatmentsScreenState
           ),
           Expanded(
             child: _isLoading
-                ? Center(
+                ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -275,7 +277,7 @@ class _PreviousDiagnosesTreatmentsScreenState
                           children: [
                             Icon(Icons.error_outline,
                                 size: 48, color: Colors.red[300]),
-                            SizedBox(height: 16),
+                            const SizedBox(height: 16),
                             Text(_errorMessage!,
                                 style: TextStyle(color: Colors.red[300])),
                           ],
@@ -288,14 +290,14 @@ class _PreviousDiagnosesTreatmentsScreenState
                               children: [
                                 Icon(Icons.search,
                                     size: 48, color: Colors.grey[400]),
-                                SizedBox(height: 16),
+                                const SizedBox(height: 16),
                                 Text('Enter a patient ID to view records',
                                     style: TextStyle(color: Colors.grey[600])),
                               ],
                             ),
                           )
                         : ListView.builder(
-                            padding: EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(24),
                             itemCount: _records.length,
                             itemBuilder: (context, index) {
                               final record = _records[index];
@@ -327,7 +329,7 @@ class DiagnosisTreatmentCard extends StatefulWidget {
   final VoidCallback onTap;
 
   const DiagnosisTreatmentCard({
-    Key? key,
+    super.key,
     required this.date,
     required this.doctor,
     required this.diagnosis,
@@ -335,7 +337,7 @@ class DiagnosisTreatmentCard extends StatefulWidget {
     required this.severity,
     required this.status,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   _DiagnosisTreatmentCardState createState() => _DiagnosisTreatmentCardState();
@@ -370,10 +372,10 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
         onTapCancel: () => setState(() => _isPressed = false),
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          margin: EdgeInsets.symmetric(vertical: 8),
-          padding: EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(16),
           transform: Matrix4.identity()..scale(_isPressed ? 0.98 : 1.0),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -396,9 +398,9 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.calendar_today,
+                      const Icon(Icons.calendar_today,
                           size: 16, color: Color(0xFF1ABC9C)),
-                      SizedBox(width: 8),
+                      const SizedBox(width: 8),
                       Text(
                         widget.date,
                         style: TextStyle(
@@ -411,8 +413,8 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        margin: EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        margin: const EdgeInsets.only(right: 8),
                         decoration: BoxDecoration(
                           color: _getSeverityColor().withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -427,14 +429,14 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                         ),
                       ),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Color(0xFF1ABC9C).withOpacity(0.1),
+                          color: const Color(0xFF1ABC9C).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           widget.status,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Color(0xFF1ABC9C),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -445,16 +447,16 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Text(
                 widget.doctor,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1ABC9C),
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 'Diagnosis: ${widget.diagnosis}',
                 style: TextStyle(
@@ -463,7 +465,7 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 widget.treatment,
                 style: TextStyle(
@@ -473,8 +475,8 @@ class _DiagnosisTreatmentCardState extends State<DiagnosisTreatmentCard> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              SizedBox(height: 12),
-              Row(
+              const SizedBox(height: 12),
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(

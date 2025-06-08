@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class PreviousLaboratoryResultsScreen extends StatefulWidget {
+  const PreviousLaboratoryResultsScreen({super.key});
+
   @override
   _PreviousLaboratoryResultsScreenState createState() =>
       _PreviousLaboratoryResultsScreenState();
@@ -19,7 +21,7 @@ class _PreviousLaboratoryResultsScreenState
       _errorMessage = null;
     });
 
-    await Future.delayed(Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 800));
 
     final mockData = [
       {
@@ -81,15 +83,15 @@ class _PreviousLaboratoryResultsScreenState
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Row(
           children: [
-            Icon(Icons.science, color: Color(0xFF1ABC9C)),
-            SizedBox(width: 10),
+            const Icon(Icons.science, color: Color(0xFF1ABC9C)),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     result['test'],
-                    style: TextStyle(color: Color(0xFF1ABC9C)),
+                    style: const TextStyle(color: Color(0xFF1ABC9C)),
                   ),
                   Text(
                     result['category'],
@@ -104,7 +106,7 @@ class _PreviousLaboratoryResultsScreenState
             ),
           ],
         ),
-        content: Container(
+        content: SizedBox(
           width: MediaQuery.of(context).size.width * 0.4,
           child: SingleChildScrollView(
             child: Column(
@@ -115,8 +117,8 @@ class _PreviousLaboratoryResultsScreenState
                 _buildDetailRow('Doctor', result['doctor']),
                 _buildDetailRow('Status', result['status']),
                 _buildDetailRow('Notes', result['notes']),
-                SizedBox(height: 16),
-                Text(
+                const SizedBox(height: 16),
+                const Text(
                   'Test Results',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
@@ -124,7 +126,7 @@ class _PreviousLaboratoryResultsScreenState
                     fontSize: 16,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 ...(result['result'] as Map<String, dynamic>).entries.map(
                   (entry) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -156,7 +158,7 @@ class _PreviousLaboratoryResultsScreenState
         actions: [
           TextButton(
             onPressed: Navigator.of(context).pop,
-            child: Text('Close', style: TextStyle(color: Color(0xFF1ABC9C))),
+            child: const Text('Close', style: TextStyle(color: Color(0xFF1ABC9C))),
           )
         ],
       ),
@@ -196,7 +198,7 @@ class _PreviousLaboratoryResultsScreenState
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Previous Laboratory Results',
           style: TextStyle(
             fontWeight: FontWeight.bold,
@@ -206,17 +208,17 @@ class _PreviousLaboratoryResultsScreenState
         backgroundColor: Colors.teal[700],
         actions: [
           IconButton(
-            icon: Icon(Icons.help_outline),
+            icon: const Icon(Icons.help_outline),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: Text('Help'),
-                  content: Text('Enter a patient ID to view their laboratory test results. The records will show all previous tests and their outcomes.'),
+                  title: const Text('Help'),
+                  content: const Text('Enter a patient ID to view their laboratory test results. The records will show all previous tests and their outcomes.'),
                   actions: [
                     TextButton(
                       onPressed: Navigator.of(context).pop,
-                      child: Text('Got it'),
+                      child: const Text('Got it'),
                     ),
                   ],
                 ),
@@ -231,7 +233,7 @@ class _PreviousLaboratoryResultsScreenState
             decoration: BoxDecoration(
               color: Colors.teal[700],
             ),
-            padding: EdgeInsets.fromLTRB(24, 20, 24, 40),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -244,33 +246,33 @@ class _PreviousLaboratoryResultsScreenState
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
-                        offset: Offset(0, 5),
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
                   child: TextField(
                     controller: _patientIdController,
-                    style: TextStyle(fontSize: 18),
+                    style: const TextStyle(fontSize: 18),
                     decoration: InputDecoration(
                       hintText: 'Enter Patient ID',
                       hintStyle: TextStyle(
                         color: Colors.grey[400],
                         fontSize: 18,
                       ),
-                      prefixIcon: Icon(
+                      prefixIcon: const Icon(
                         Icons.person_search,
                         color: Color(0xFF1ABC9C),
                         size: 28,
                       ),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                         horizontal: 25,
                         vertical: 20,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Center(
                   child: SizedBox(
                     width: MediaQuery.of(context).size.width * 0.5,
@@ -282,6 +284,13 @@ class _PreviousLaboratoryResultsScreenState
                           _fetchResults(patientId);
                         }
                       },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -301,13 +310,6 @@ class _PreviousLaboratoryResultsScreenState
                           ),
                         ],
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
                     ),
                   ),
                 ),
@@ -316,7 +318,7 @@ class _PreviousLaboratoryResultsScreenState
           ),
           Expanded(
             child: _isLoading
-                ? Center(
+                ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -335,7 +337,7 @@ class _PreviousLaboratoryResultsScreenState
                           children: [
                             Icon(Icons.error_outline,
                                 size: 48, color: Colors.red[300]),
-                            SizedBox(height: 16),
+                            const SizedBox(height: 16),
                             Text(_errorMessage!,
                                 style: TextStyle(color: Colors.red[300])),
                           ],
@@ -348,14 +350,14 @@ class _PreviousLaboratoryResultsScreenState
                               children: [
                                 Icon(Icons.science,
                                     size: 48, color: Colors.grey[400]),
-                                SizedBox(height: 16),
+                                const SizedBox(height: 16),
                                 Text('Enter a patient ID to view results',
                                     style: TextStyle(color: Colors.grey[600])),
                               ],
                             ),
                           )
                         : ListView.builder(
-                            padding: EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(24),
                             itemCount: _results.length,
                             itemBuilder: (context, index) {
                               final result = _results[index];
@@ -385,14 +387,14 @@ class LabResultCard extends StatefulWidget {
   final VoidCallback onTap;
 
   const LabResultCard({
-    Key? key,
+    super.key,
     required this.date,
     required this.test,
     required this.doctor,
     required this.status,
     required this.category,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   _LabResultCardState createState() => _LabResultCardState();
@@ -427,10 +429,10 @@ class _LabResultCardState extends State<LabResultCard> {
         onTapCancel: () => setState(() => _isPressed = false),
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-          margin: EdgeInsets.symmetric(vertical: 8),
-          padding: EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(16),
           transform: Matrix4.identity()..scale(_isPressed ? 0.98 : 1.0),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -453,9 +455,9 @@ class _LabResultCardState extends State<LabResultCard> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.calendar_today,
+                      const Icon(Icons.calendar_today,
                           size: 16, color: Color(0xFF1ABC9C)),
-                      SizedBox(width: 8),
+                      const SizedBox(width: 8),
                       Text(
                         widget.date,
                         style: TextStyle(
@@ -468,15 +470,15 @@ class _LabResultCardState extends State<LabResultCard> {
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        margin: EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        margin: const EdgeInsets.only(right: 8),
                         decoration: BoxDecoration(
-                          color: Color(0xFF1ABC9C).withOpacity(0.1),
+                          color: const Color(0xFF1ABC9C).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           widget.category,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Color(0xFF1ABC9C),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -484,7 +486,7 @@ class _LabResultCardState extends State<LabResultCard> {
                         ),
                       ),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: _getStatusColor().withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -502,16 +504,16 @@ class _LabResultCardState extends State<LabResultCard> {
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Text(
                 widget.test,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1ABC9C),
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 'Ordered by ${widget.doctor}',
                 style: TextStyle(
@@ -519,8 +521,8 @@ class _LabResultCardState extends State<LabResultCard> {
                   fontSize: 14,
                 ),
               ),
-              SizedBox(height: 12),
-              Row(
+              const SizedBox(height: 12),
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Text(

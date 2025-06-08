@@ -149,7 +149,7 @@ class AppointmentDatabaseService {
       FROM ${DatabaseHelper.tableAppointments} a
       LEFT JOIN ${DatabaseHelper.tablePatients} p ON a.patientId = p.id
       WHERE DATE(a.date) = ? 
-      AND a.status != \'Cancelled\'
+      AND a.status != 'Cancelled'
       ORDER BY a.time ASC
     ''', [todayStr]);
   }

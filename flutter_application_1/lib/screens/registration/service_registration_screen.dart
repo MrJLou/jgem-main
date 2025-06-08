@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ServiceRegistrationScreen extends StatefulWidget {
+  const ServiceRegistrationScreen({super.key});
+
   @override
   _ServiceRegistrationScreenState createState() => _ServiceRegistrationScreenState();
 }
@@ -37,7 +39,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
       backgroundColor: Colors.grey[50],
       floatingActionButton: null,
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Service Registration',
           style: TextStyle(
             color: Colors.white,
@@ -52,8 +54,8 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
           unselectedLabelColor: Colors.white.withOpacity(0.7),
           indicatorColor: Colors.white,
           indicatorWeight: 3,
-          indicatorPadding: EdgeInsets.symmetric(horizontal: 20),
-          tabs: [
+          indicatorPadding: const EdgeInsets.symmetric(horizontal: 20),
+          tabs: const [
             Tab(icon: Icon(Icons.list_alt), text: 'Existing Services'),
             Tab(icon: Icon(Icons.add_circle_outline), text: 'New Service'),
           ],
@@ -114,19 +116,19 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
     ];
 
     return ListView.builder(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       itemCount: existingServices.length,
       itemBuilder: (context, index) {
         final service = existingServices[index];
         return Card(
-          margin: EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
           elevation: 3,
           child: ExpansionTile(
             leading: Container(
-              padding: EdgeInsets.all(10),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: service['color'],
                 shape: BoxShape.circle,
@@ -135,12 +137,12 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
             ),
             title: Text(
               service['name']!,
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(service['type']!),
             children: [
               Padding(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
                     Row(
@@ -158,7 +160,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                         ),
                       ],
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -169,10 +171,10 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                             // Handle edit
                           },
                         ),
-                        SizedBox(width: 16),
+                        const SizedBox(width: 16),
                         ElevatedButton.icon(
-                          icon: Icon(Icons.add),
-                          label: Text('Add to Patient'),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add to Patient'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.teal[700],
                             foregroundColor: Colors.white,
@@ -206,7 +208,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
     return Column(
       children: [
         Icon(icon, color: Colors.teal[600]),
-        SizedBox(height: 4),
+        const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
@@ -227,7 +229,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
 
   Widget _buildNewServiceForm() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       child: Form(
         key: _formKey,
         child: Column(
@@ -241,18 +243,18 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                 color: Colors.teal[800],
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               'Fill in the details below to register a new service.',
               style: TextStyle(color: Colors.grey[600]),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             _buildInputField(
               controller: _nameController,
               label: 'Service Name',
               icon: Icons.medical_services,
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             _buildDropdownField(
               value: _serviceType,
               items: ['Consultation', 'Laboratory', 'Therapy', 'Dental', 'Radiology'],
@@ -264,7 +266,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                 });
               },
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -275,7 +277,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                     keyboardType: TextInputType.number,
                   ),
                 ),
-                SizedBox(width: 20),
+                const SizedBox(width: 20),
                 Expanded(
                   child: _buildInputField(
                     controller: _durationController,
@@ -286,27 +288,27 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             _buildInputField(
               controller: _descriptionController,
               label: 'Description',
               icon: Icons.description,
               maxLines: 3,
             ),
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
             ElevatedButton(
               onPressed: _submitForm,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal[700],
-                padding: EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                minimumSize: Size(double.infinity, 50),
+                minimumSize: const Size(double.infinity, 50),
                 elevation: 3,
                 shadowColor: Colors.teal.withOpacity(0.3),
               ),
-              child: Text(
+              child: const Text(
                 'Register New Service',
                 style: TextStyle(
                   fontSize: 16,
@@ -345,9 +347,9 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal, width: 2),
+          borderSide: const BorderSide(color: Colors.teal, width: 2),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -381,9 +383,9 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal, width: 2),
+          borderSide: const BorderSide(color: Colors.teal, width: 2),
         ),
-        contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       ),
       items: items.map((item) {
         return DropdownMenuItem(
@@ -399,7 +401,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
     if (_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('New service registered successfully!'),
+          content: const Text('New service registered successfully!'),
           backgroundColor: Colors.teal,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
