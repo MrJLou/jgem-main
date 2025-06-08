@@ -231,7 +231,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       _medicalInfoController.text = ''; 
       _allergiesController.text = patient.allergies ?? '';
       _currentMedicationsController.text = ''; 
-      _gender = patient.gender;
+      _gender = patient.gender == 'Other' ? 'Male' : patient.gender;
       _bloodType = patient.bloodType ?? 'A+';
       _generatedPatientId = patient.id;
     }
@@ -792,7 +792,7 @@ class ReusablePatientFormFields extends StatelessWidget {
                   Expanded(
                     child: _buildStaticDropdownField(
                       value: gender,
-                      items: const ['Male', 'Female', 'Other'],
+                      items: const ['Male', 'Female'],
                       label: 'Gender',
                       icon: Icons.wc,
                       onChanged: onGenderChanged,

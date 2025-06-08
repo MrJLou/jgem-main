@@ -18,7 +18,6 @@ class _ModifyPatientDetailsScreenState
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _birthDateController = TextEditingController();
-  final TextEditingController _genderController = TextEditingController();
   final TextEditingController _contactNumberController =
       TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -36,6 +35,8 @@ class _ModifyPatientDetailsScreenState
     'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
     'Unknown' // Added 'Unknown' as an option
   ];
+  String? _selectedGender;
+  final List<String> _gendersList = ['Male', 'Female'];
 
   Future<void> _performSearch() async {
     String searchTerm = _searchController.text;
@@ -84,12 +85,12 @@ class _ModifyPatientDetailsScreenState
   void _clearFormFields() {
     _fullNameController.clear();
     _birthDateController.clear();
-    _genderController.clear();
     _contactNumberController.clear();
     _addressController.clear();
     _allergiesController.clear();
     setState(() {
       _selectedBloodType = null; // Reset selected blood type
+      _selectedGender = null;
     });
   }
 
@@ -99,12 +100,15 @@ class _ModifyPatientDetailsScreenState
       _fullNameController.text = patient.fullName;
       _birthDateController.text =
           DateFormat('yyyy-MM-dd').format(patient.birthDate);
-      _genderController.text = patient.gender;
+      if (patient.gender.isNotEmpty && _gendersList.contains(patient.gender)) {
+        _selectedGender = patient.gender;
+      } else {
+        _selectedGender = 'Male';
+      }
       _contactNumberController.text = patient.contactNumber ?? '';
       _addressController.text = patient.address ?? '';
       _allergiesController.text = patient.allergies ?? '';
       _searchResults = [];
-      // Set selected blood type for dropdown
       if (patient.bloodType != null &&
           _bloodTypesList.contains(patient.bloodType)) {
         _selectedBloodType = patient.bloodType;
@@ -163,7 +167,7 @@ class _ModifyPatientDetailsScreenState
         id: _selectedPatient!.id,
         fullName: _fullNameController.text,
         birthDate: birthDate,
-        gender: _genderController.text,
+        gender: _selectedGender ?? 'Male',
         contactNumber: _contactNumberController.text.isNotEmpty
             ? _contactNumberController.text
             : null,
@@ -352,7 +356,7 @@ class _ModifyPatientDetailsScreenState
     required String label,
     required IconData icon,
     TextInputType? keyboardType,
-    int maxLines = 1,
+    int? maxLines = 1,
     String? Function(String?)? validator,
     bool readOnly = false,
     VoidCallback? onTap,
@@ -429,15 +433,15 @@ class _ModifyPatientDetailsScreenState
 
   // Helper to build styled DropdownButtonFormField
   Widget _buildStyledDropdownField({
-    required String? currentValue, // Allow null for initial state
+    required String? value,
     required List<String> items,
     required String label,
     required IconData icon,
-    required void Function(String?) onChanged,
+    required void Function(String?)? onChanged,
     String? Function(String?)? validator,
   }) {
     return DropdownButtonFormField<String>(
-      value: currentValue,
+      value: value,
       items: items.map((String value) {
         return DropdownMenuItem<String>(
           value: value,
@@ -450,20 +454,11 @@ class _ModifyPatientDetailsScreenState
         labelText: label,
         prefixIcon: Icon(icon, color: Colors.teal[700]),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[700]!),
+          borderRadius: BorderRadius.circular(12),
         ),
         filled: true,
         fillColor: Colors.white,
       ),
-      hint: Text('Select $label'), // Show a hint if currentValue is null
     );
   }
 
@@ -561,13 +556,18 @@ class _ModifyPatientDetailsScreenState
                     },
                   ),
                   const SizedBox(height: 16),
-                  _buildStyledInputField(
-                    controller: _genderController,
+                  _buildStyledDropdownField(
+                    value: _selectedGender,
+                    items: _gendersList,
                     label: 'Gender',
                     icon: Icons.wc,
-                    validator: (value) => value == null || value.isEmpty
-                        ? 'Gender is required'
-                        : null,
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        _selectedGender = newValue;
+                      });
+                    },
+                    validator: (value) =>
+                        value == null ? 'Gender is required' : null,
                   ),
                 ],
               ),
@@ -597,7 +597,7 @@ class _ModifyPatientDetailsScreenState
                 Icons.medical_services_outlined,
                 [
                   _buildStyledDropdownField(
-                    currentValue: _selectedBloodType,
+                    value: _selectedBloodType,
                     items: _bloodTypesList,
                     label: 'Blood Type',
                     icon: Icons.bloodtype_outlined,

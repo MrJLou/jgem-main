@@ -420,7 +420,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                           _contactController.text = patient.contactNumber ?? '';
                           _addressController.text = patient.address ?? '';
                           _allergiesController.text = patient.allergies ?? '';
-                          _editGender = patient.gender;
+                          _editGender = patient.gender == 'Other' ? 'Male' : patient.gender;
                           _editBloodType = patient.bloodType; // Can be null, handled by DropdownButtonFormField
                         });
                       }
@@ -556,7 +556,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
   // New method to build the edit form
   Widget _buildEditPatientForm() {
-    final List<String> genderItems = ['Male', 'Female', 'Other'];
+    final List<String> genderItems = ['Male', 'Female'];
     final List<String> bloodTypeItems = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 
     // Ensure _editBloodType has a valid default if null and patient.bloodType was null

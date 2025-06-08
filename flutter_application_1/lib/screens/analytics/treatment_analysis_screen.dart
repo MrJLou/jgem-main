@@ -14,15 +14,7 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Treatment Analysis',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.teal[700],
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Container(
+    return Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -45,8 +37,7 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildSummaryCards() {
@@ -65,13 +56,6 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
           '14 days',
           Icons.timer,
           '-2 days vs last month',
-          Colors.green,
-        ),
-        _buildSummaryCard(
-          'Follow-ups',
-          '92%',
-          Icons.repeat,
-          '+3% vs last month',
           Colors.green,
         ),
       ],

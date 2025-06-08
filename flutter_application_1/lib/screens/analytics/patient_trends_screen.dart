@@ -14,15 +14,7 @@ class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Patient Trends',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.teal[700],
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Container(
+    return Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -45,8 +37,7 @@ class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildSummaryCards() {

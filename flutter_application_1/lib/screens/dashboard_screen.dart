@@ -15,7 +15,7 @@ import 'search/search_hub_screen.dart';
 import 'laboratory/laboratory_hub_screen.dart';
 import 'patient_queue/patient_queue_hub_screen.dart';
 import 'appointments/appointment_overview_screen.dart'; // Import the new AppointmentOverviewScreen
-import 'analytics/analytics_hub_screen.dart';
+import 'analytics/analytics_hub_screen.dart'; // Import the unified analytics screen
 import 'reports/report_hub_screen.dart'; // Import the ReportHubScreen
 import 'billing/billing_hub_screen.dart';
 import 'payment/payment_hub_screen.dart';
@@ -92,13 +92,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'screen': (String accessLevel) =>
           PatientQueueHubScreen(accessLevel: accessLevel),
       'icon': Icons.groups_outlined
-    },
-    'Appointment Schedule': {
+    },    'Appointment Schedule': {
       'screen': (String accessLevel) => const AppointmentOverviewScreen(),
       'icon': Icons.calendar_month_outlined
     },
     'Analytics Hub': {
-      'screen': (String accessLevel) => AnalyticsHubScreen(accessLevel: accessLevel),
+      'screen': (String accessLevel) => const AnalyticsHubScreen(),
       'icon': Icons.analytics_outlined
     },
     'Report': {
