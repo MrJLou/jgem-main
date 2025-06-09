@@ -125,6 +125,14 @@ class ApiService {
     }
   }
 
+  static Future<List<ActivePatientQueueItem>> getAllQueueItems() async {
+    try {
+      return await _dbHelper.getAllActiveQueueItems();
+    } catch (e) {
+      throw Exception('Failed to load all queue items: $e');
+    }
+  }
+
   static Future<Appointment> saveAppointment(Appointment appointment) async {
     try {
       return await _dbHelper.insertAppointment(appointment);
@@ -693,6 +701,32 @@ class ApiService {
       // Depending on requirements, you might want to throw this exception
       // or handle it silently if it's not critical for the user flow.
       // For now, just printing.
+    }
+  }
+
+  static Future<int> updateClinicService(ClinicService service) async {
+    try {
+      return await _dbHelper.updateClinicService(service.toJson());
+    } catch (e) {
+      throw Exception('Failed to update clinic service: $e');
+    }
+  }
+
+  /// Resets the entire database, except for the admin user.
+  static Future<void> resetDatabase() async {
+    try {
+      await _dbHelper.resetDatabase();
+    } catch (e) {
+      throw Exception('Failed to reset database: $e');
+    }
+  }
+
+  static Future<Map<String, int>> getDashboardStatistics() async {
+    try {
+      return await _dbHelper.getDashboardStatistics();
+    } catch (e) {
+      print('ApiService: Failed to get dashboard statistics: $e');
+      throw Exception('Failed to get dashboard statistics: $e');
     }
   }
 }

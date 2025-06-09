@@ -319,9 +319,11 @@ class DatabaseHelper {
         birthDate TEXT,
         gender TEXT,
         contactNumber TEXT,
+        email TEXT,
         address TEXT,
         bloodType TEXT,
         allergies TEXT,
+        currentMedications TEXT,
         medicalHistory TEXT,
         emergencyContactName TEXT,
         emergencyContactNumber TEXT,
@@ -329,18 +331,16 @@ class DatabaseHelper {
         lastVisitDate TEXT,
         isArchived INTEGER DEFAULT 0,
         notes TEXT,
-        email TEXT, 
-        occupation TEXT, 
-        maritalStatus TEXT, 
-        nationality TEXT, 
-        preferredLanguage TEXT, 
-        photoUrl TEXT, 
-        insuranceProvider TEXT, 
-        insurancePolicyNumber TEXT, 
-        currentMedications TEXT, 
-        familyMedicalHistory TEXT, 
-        socialHistory TEXT, 
-        vaccinationHistory TEXT, 
+        occupation TEXT,
+        maritalStatus TEXT,
+        nationality TEXT,
+        preferredLanguage TEXT,
+        photoUrl TEXT,
+        insuranceProvider TEXT,
+        insurancePolicyNumber TEXT,
+        familyMedicalHistory TEXT,
+        socialHistory TEXT,
+        vaccinationHistory TEXT,
         primaryCarePhysician TEXT,
         referralSource TEXT,
         createdAt TEXT,
@@ -1402,6 +1402,16 @@ To view live changes in DB Browser:
     return maps.map((map) => ActivePatientQueueItem.fromJson(map)).toList();
   }
 
+  /// Gets all items from the active queue table.
+  Future<List<ActivePatientQueueItem>> getAllActiveQueueItems() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      DatabaseHelper.tableActivePatientQueue,
+      orderBy: 'arrivalTime DESC',
+    );
+    return maps.map((item) => ActivePatientQueueItem.fromJson(item)).toList();
+  }
+
   /// Clears all entries from the active_patient_queue table (e.g., at the end of a day).
   Future<int> clearActiveQueue() async {
     final db = await database;
@@ -1770,7 +1780,7 @@ To view live changes in DB Browser:
   }
 
   // Helper method to check if a service already exists by name (for seeding)
-  Future<Map<String, dynamic>?> _getClinicServiceByName(Database db, String name) async {
+  Future<Map<String, dynamic>?> _getClinicServiceByName(DatabaseExecutor db, String name) async {
     final List<Map<String, dynamic>> maps = await db.query(
       DatabaseHelper.tableClinicServices,
       where: 'LOWER(serviceName) = LOWER(?)', // Case-insensitive check
@@ -1785,6 +1795,10 @@ To view live changes in DB Browser:
 
   // Method to seed initial clinic services
   Future<void> _seedInitialClinicServices(Database db) async {
+    return _seedInitialClinicServicesWithExecutor(db);
+  }
+
+  Future<void> _seedInitialClinicServicesWithExecutor(DatabaseExecutor db) async {
     var uuid = const Uuid();
     final initialServices = [
       // Services from add_to_queue_screen.dart
@@ -2045,4 +2059,63 @@ To view live changes in DB Browser:
     return result;
   }
 
+  /// Resets the database by deleting all records from all tables, except for the admin user and clinic services.
+  Future<void> resetDatabase() async {
+    final db = await database;
+    print('DATABASE_HELPER: Starting database reset...');
+
+    // ClinicServices is now excluded from this list.
+    final List<String> tablesToClear = [
+      tablePatients,
+      tableAppointments,
+      tableMedicalRecords,
+      tableUserActivityLog,
+      tablePatientBills,
+      tableBillItems,
+      tablePayments,
+      tableSyncLog,
+      tablePatientQueue,
+      tableActivePatientQueue,
+    ];
+
+    await db.transaction((txn) async {
+      // Clear all specified tables completely
+      for (final table in tablesToClear) {
+        await txn.delete(table);
+        print('DATABASE_HELPER: Cleared table: $table');
+      }
+
+      // Clear users table, but keep the admin
+      await txn.delete(
+        tableUsers,
+        where: "role != ?",
+        whereArgs: ['admin'],
+      );
+      print('DATABASE_HELPER: Cleared table: $tableUsers (except admin)');
+
+      // Re-seed the initial clinic services to restore them if they were accidentally wiped.
+      // This is safe to run multiple times as it checks for existence before inserting.
+      await _seedInitialClinicServicesWithExecutor(txn);
+      print('DATABASE_HELPER: Ensured initial clinic services are present.');
+    });
+
+    print('DATABASE_HELPER: Database reset completed successfully.');
+  }
+
+  Future<Map<String, int>> getDashboardStatistics() async {
+    final db = await database;
+
+    final totalPatients = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tablePatients')) ?? 0;
+    
+    final confirmedAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Confirmed'])) ?? 0;
+    final cancelledAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Cancelled'])) ?? 0;
+    final completedAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Completed'])) ?? 0;
+
+    return {
+      'totalPatients': totalPatients,
+      'confirmedAppointments': confirmedAppointments,
+      'cancelledAppointments': cancelledAppointments,
+      'completedAppointments': completedAppointments,
+    };
+  }
 }

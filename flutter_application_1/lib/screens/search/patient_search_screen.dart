@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../models/patient.dart';
 import '../../models/medical_record.dart';
+import 'dart:async';
 
 class PatientSearchScreen extends StatefulWidget {
   const PatientSearchScreen({super.key});
@@ -12,8 +13,8 @@ class PatientSearchScreen extends StatefulWidget {
 }
 
 class _PatientSearchScreenState extends State<PatientSearchScreen> {
-  final TextEditingController _patientIdController = TextEditingController();
-  final TextEditingController _surnameController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _hasSearched = false;
   bool _isLoading = false;
   Patient? _foundPatient;
@@ -37,6 +38,71 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   String? _editGender;
   String? _editBloodType;
   // --- End of additions ---
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      _onSearchChanged(_searchController.text);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchDebounce?.cancel();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _dobController.dispose();
+    _contactController.dispose();
+    _addressController.dispose();
+    _allergiesController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (query.length >= 2) {
+        _performSearch(query);
+      } else {
+        setState(() {
+          _searchResults = [];
+          _hasSearched = false;
+        });
+      }
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() {
+      _isLoading = true;
+      _hasSearched = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final results = await ApiService.searchPatients(query);
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _searchResults = [];
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +148,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
               const SizedBox(width: 16),
               // Right Pane: Results Display
               Expanded(
-                flex: 1,
+                flex: 2, // Give more space to results
                 child: _buildResultsPane(),
               ),
             ],
@@ -137,7 +203,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    'Search by ID or surname to access patient information',
+                    'Search by ID or name to access patient information',
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 14,
@@ -148,76 +214,13 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
               ),
               const SizedBox(height: 30),
               _buildInputField(
-                controller: _patientIdController,
-                label: 'Patient ID',
-                icon: Icons.badge_outlined,
-                keyboardType: TextInputType.number,
-                hintText: 'Enter patient ID number',
+                controller: _searchController,
+                label: 'Search by Patient ID or Name',
+                icon: Icons.search,
+                hintText: 'Start typing to search...',
               ),
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(child: Divider(color: Colors.grey[300])),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 15),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.teal[50],
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'OR',
-                      style: TextStyle(
-                        color: Colors.teal[700],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Expanded(child: Divider(color: Colors.grey[300])),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildInputField(
-                controller: _surnameController,
-                label: 'Patient Surname',
-                icon: Icons.person_outline,
-                hintText: 'Enter patient last name',
-              ),
-              const SizedBox(height: 25),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  icon: Icon(_isLoading ? null : Icons.search),
-                  label: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'SEARCH PATIENT',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                  onPressed: _isLoading ? null : _searchPatient,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal[700],
-                    foregroundColor: Colors.white,
-                    elevation: 2,
-                    shadowColor: Colors.teal.withOpacity(0.4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
+              _buildLiveSearchResults(),
             ],
           ),
         ),
@@ -251,13 +254,13 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
             Row(
               children: [
                 Icon(
-                  Icons.search_outlined,
+                  Icons.folder_shared_outlined,
                   color: Colors.teal[700],
                   size: 24,
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Search Results',
+                  'Patient File',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -277,11 +280,12 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   }
 
   Widget _buildResultsContent() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    if (_isLoading && _foundPatient == null) {
+      // Show loading indicator only when fetching details for the first time
+      // The search loading is in the left pane.
     }
 
-    if (_errorMessage != null) {
+    if (_errorMessage != null && _foundPatient == null) {
       return _buildErrorState();
     }
 
@@ -306,6 +310,9 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     required IconData icon,
     String? hintText,
     TextInputType keyboardType = TextInputType.text,
+    TextStyle? hintStyle,
+    TextStyle? labelStyle,
+    IconButton? suffixIcon,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -326,9 +333,10 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         decoration: InputDecoration(
           labelText: label,
           hintText: hintText,
-          hintStyle: TextStyle(color: Colors.grey[400]),
-          labelStyle: TextStyle(color: Colors.teal[700]),
+          hintStyle: hintStyle,
+          labelStyle: labelStyle,
           prefixIcon: Icon(icon, color: Colors.teal[700], size: 22),
+          suffixIcon: suffixIcon,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(color: Colors.grey[300]!),
@@ -1331,8 +1339,70 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     );
   }
 
+  Widget _buildLiveSearchResults() {
+    if (_isLoading) {
+      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+    }
+
+    if (_searchController.text.length < 2) {
+      return const SizedBox.shrink();
+    }
+
+    if (_searchResults.isNotEmpty) {
+      return Container(
+        height: 400,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: SingleChildScrollView(
+          child: DataTable(
+            columns: const [
+              DataColumn(label: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Patient ID', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('DoB', style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+            rows: _searchResults.map((patient) {
+              return DataRow(
+                cells: [
+                  DataCell(Text(patient.fullName)),
+                  DataCell(Text(patient.id)),
+                  DataCell(Text(DateFormat.yMd().format(patient.birthDate))),
+                ],
+                onSelectChanged: (isSelected) {
+                  if (isSelected ?? false) {
+                    _fetchPatientDetailsAndSetState(patient);
+                    setState(() {
+                      _searchResults = [];
+                      _searchController.clear();
+                      _hasSearched = false;
+                    });
+                  }
+                },
+              );
+            }).toList(),
+            dataRowMinHeight: 40,
+            dataRowMaxHeight: 48,
+            headingRowHeight: 48,
+            columnSpacing: 16,
+            horizontalMargin: 12,
+          ),
+        ),
+      );
+    }
+    
+    if (_hasSearched && _searchResults.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text("No patients found for your query."),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   void _searchPatient() async {
-    if (_patientIdController.text.isEmpty && _surnameController.text.isEmpty) {
+    if (_searchController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(
@@ -1367,21 +1437,11 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
     try {
       List<Patient> tempPatientsList = [];
-      String patientIdInput = _patientIdController.text.trim();
-      String surnameInput = _surnameController.text.trim();
+      String searchInput = _searchController.text.trim();
 
-      if (patientIdInput.isNotEmpty) {
-        try {
-          final patient = await ApiService.getPatientById(patientIdInput);
-          tempPatientsList = [patient];
-        } catch (e) {
-          // If getPatientById fails, search using the patientIdInput as a general term
-          tempPatientsList = await ApiService.searchPatients(patientIdInput);
-        }
-      } else if (surnameInput.isNotEmpty) {
-        tempPatientsList = await ApiService.searchPatients(surnameInput);
+      if (searchInput.isNotEmpty) {
+        tempPatientsList = await ApiService.searchPatients(searchInput);
       }
-      // No need for an else here as the initial check handles both empty
 
       if (tempPatientsList.isNotEmpty) {
         if (tempPatientsList.length == 1) {
@@ -1401,7 +1461,6 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           _foundPatient = null;
           _searchResults = []; // Ensure cleared
           _isLoading = false;
-          // _errorMessage = "No patient found"; // Let _buildNoResultsState handle message
         });
       }
     } catch (e) {
@@ -1437,8 +1496,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
   void _resetSearch() {
     setState(() {
-      _patientIdController.clear();
-      _surnameController.clear();
+      _searchController.clear();
       _hasSearched = false;
       _foundPatient = null;
       _patientData = null;
@@ -1446,6 +1504,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
       _searchResults = [];
       _errorMessage = null;
       _isLoading = false;
+      _isEditing = false;
     });
   }
 }

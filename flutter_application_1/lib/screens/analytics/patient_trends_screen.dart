@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../models/appointment.dart';
+import '../../models/active_patient_queue_item.dart';
+import '../../services/api_service.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:math';
 
 class PatientTrendsScreen extends StatefulWidget {
   const PatientTrendsScreen({super.key});
@@ -9,480 +15,543 @@ class PatientTrendsScreen extends StatefulWidget {
 
 class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
   final Color primaryColor = Colors.teal[700]!;
-  final List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  final List<int> visitData = [200, 220, 180, 250, 230, 245];
+  Future<Map<String, dynamic>>? _trendsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _trendsFuture = _fetchTrendsData();
+  }
+
+  void _refreshData() {
+    setState(() {
+      _trendsFuture = _fetchTrendsData();
+    });
+  }
+
+  Future<Map<String, dynamic>> _fetchTrendsData() async {
+    try {
+      // 1. Fetch all appointments (considered "Scheduled")
+      final allAppointments = await ApiService.getAllAppointments();
+
+      // 2. Fetch all queue items and filter for "Walk-ins"
+      final allQueueItems = await ApiService.getAllQueueItems();
+      final walkInQueueItems = allQueueItems
+          .where((q) =>
+              q.originalAppointmentId == null ||
+              q.originalAppointmentId!.isEmpty)
+          .toList();
+
+      // --- Process Scheduled Appointments ---
+      final scheduledMonthlyData = _calculateMonthlyTrendsForAppointments(allAppointments);
+      final scheduledStatusData = _calculateStatusDistributionForAppointments(allAppointments);
+      final totalScheduledThisMonth = scheduledMonthlyData['totalThisMonth'] ?? 0;
+      final totalScheduledLastMonth = scheduledMonthlyData['totalLastMonth'] ?? 0;
+      final scheduledGrowth = _calculateGrowth(totalScheduledThisMonth, totalScheduledLastMonth);
+      final scheduledServiceDataRaw = _calculateServiceDistributionForAppointments(allAppointments);
+
+      // --- Process Walk-in Queue Items ---
+      final walkInMonthlyData = _calculateMonthlyTrendsForQueueItems(walkInQueueItems);
+      final walkInStatusData = _calculateStatusDistributionForQueueItems(walkInQueueItems);
+      final totalWalkInThisMonth = walkInMonthlyData['totalThisMonth'] ?? 0;
+      final walkInServiceDataRaw = _calculateServiceDistributionForQueueItems(walkInQueueItems);
+      
+      // --- Combine Data ---
+      final combinedStatusCounts = <String, int>{};
+      scheduledStatusData.forEach((key, value) => combinedStatusCounts[key] = (combinedStatusCounts[key] ?? 0) + value);
+      walkInStatusData.forEach((key, value) => combinedStatusCounts[key] = (combinedStatusCounts[key] ?? 0) + value);
+
+      final combinedServiceCountsRaw = <String, int>{};
+      scheduledServiceDataRaw.forEach((key, value) => combinedServiceCountsRaw[key] = (combinedServiceCountsRaw[key] ?? 0) + value);
+      walkInServiceDataRaw.forEach((key, value) => combinedServiceCountsRaw[key] = (combinedServiceCountsRaw[key] ?? 0) + value);
+
+      return {
+        // Scheduled Data
+        'scheduledMonthlyCounts': scheduledMonthlyData['monthlyCounts'],
+        'scheduledStatusCounts': scheduledStatusData,
+        'scheduledServiceCounts': _getTopServices(scheduledServiceDataRaw),
+
+        // Walk-in Data
+        'walkInMonthlyCounts': walkInMonthlyData['monthlyCounts'],
+        'walkInStatusCounts': walkInStatusData,
+        'walkInServiceCounts': _getTopServices(walkInServiceDataRaw),
+        
+        // Summary Data
+        'totalAppointments': allAppointments.length, // This is just scheduled
+        'totalWalkIns': walkInQueueItems.length,
+        'totalThisMonth': totalScheduledThisMonth + totalWalkInThisMonth,
+        'scheduledGrowth': scheduledGrowth,
+
+        // Combined Data
+        'combinedStatusCounts': combinedStatusCounts,
+        'combinedServiceCounts': _getTopServices(combinedServiceCountsRaw),
+      };
+    } catch (e) {
+      print('Error fetching trends data: $e');
+      throw Exception('Failed to fetch trends data: $e');
+    }
+  }
+
+  Map<String, dynamic> _calculateMonthlyTrendsForAppointments(List<Appointment> appointments) {
+    return _calculateMonthlyTrends(appointments.map((e) => e.date).toList());
+  }
+
+  Map<String, dynamic> _calculateMonthlyTrendsForQueueItems(List<ActivePatientQueueItem> queueItems) {
+    return _calculateMonthlyTrends(queueItems.map((e) => e.arrivalTime).toList());
+  }
+
+  Map<String, dynamic> _calculateMonthlyTrends(List<DateTime> dates) {
+    if (dates.isEmpty) {
+      return {'monthlyCounts': <String, int>{}, 'totalThisMonth': 0, 'totalLastMonth': 0};
+    }
+
+    final now = DateTime.now();
+    final monthlyCounts = <String, int>{};
+    int totalThisMonth = 0;
+    int totalLastMonth = 0;
+    
+    final lastSixMonths = List.generate(6, (index) => DateTime(now.year, now.month - index, 1));
+
+    for (var date in lastSixMonths) {
+      final monthKey = DateFormat('MMM yyyy').format(date);
+      monthlyCounts[monthKey] = 0;
+    }
+
+    for (final date in dates) {
+      final monthKey = DateFormat('MMM yyyy').format(date);
+      if (monthlyCounts.containsKey(monthKey)) {
+        monthlyCounts[monthKey] = (monthlyCounts[monthKey] ?? 0) + 1;
+      }
+
+      if (date.year == now.year && date.month == now.month) {
+        totalThisMonth++;
+      }
+      if (date.year == now.year && date.month == now.month - 1) {
+        totalLastMonth++;
+      } else if (now.month == 1 && date.year == now.year - 1 && date.month == 12) {
+        totalLastMonth++;
+      }
+    }
+    
+    return {
+      'monthlyCounts': Map.fromEntries(monthlyCounts.entries.toList().reversed),
+      'totalThisMonth': totalThisMonth,
+      'totalLastMonth': totalLastMonth,
+    };
+  }
+
+  Map<String, int> _calculateStatusDistributionForAppointments(List<Appointment> appointments) {
+    if (appointments.isEmpty) return {};
+    final statusCounts = <String, int>{};
+    for (final appointment in appointments) {
+      final status = appointment.status;
+      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+    }
+    return statusCounts;
+  }
+
+  Map<String, int> _calculateStatusDistributionForQueueItems(List<ActivePatientQueueItem> queueItems) {
+    if (queueItems.isEmpty) return {};
+    final statusCounts = <String, int>{};
+    for (final item in queueItems) {
+      final status = item.status;
+      statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+    }
+    return statusCounts;
+  }
+  
+  double _calculateGrowth(int currentMonth, int lastMonth) {
+    if (lastMonth == 0) {
+      return currentMonth > 0 ? 100.0 : 0.0;
+    }
+    return ((currentMonth - lastMonth) / lastMonth) * 100;
+  }
+
+  Map<String, int> _calculateServiceDistribution(List<List<Map<String, dynamic>>?> servicesList) {
+    if (servicesList.isEmpty) return {};
+    final serviceCounts = <String, int>{};
+
+    for (final services in servicesList) {
+      if (services != null) {
+        for (final service in services) {
+          final serviceName = service['name'] as String?;
+          if (serviceName != null) {
+            serviceCounts[serviceName] = (serviceCounts[serviceName] ?? 0) + 1;
+          }
+        }
+      }
+    }
+    
+    if (serviceCounts.length > 5) {
+      final sortedEntries = serviceCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final top5 = Map.fromEntries(sortedEntries.take(5));
+      final otherCount = sortedEntries.skip(5).fold(0, (sum, e) => sum + e.value);
+      if (otherCount > 0) {
+        top5['Other'] = otherCount;
+      }
+      return top5;
+    }
+    return serviceCounts;
+  }
+
+  Map<String, int> _getTopServices(Map<String, int> serviceCounts) {
+    if (serviceCounts.length > 5) {
+      final sortedEntries = serviceCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final top5 = Map.fromEntries(sortedEntries.take(5));
+      final otherCount = sortedEntries.skip(5).fold(0, (sum, e) => sum + e.value);
+      if (otherCount > 0) {
+        top5['Other'] = otherCount;
+      }
+      return top5;
+    }
+    return serviceCounts;
+  }
+
+  Map<String, int> _calculateServiceDistributionForAppointments(List<Appointment> appointments) {
+    final servicesList = appointments.map((a) => a.selectedServices).toList();
+    return _calculateServiceDistribution(servicesList);
+  }
+
+  Map<String, int> _calculateServiceDistributionForQueueItems(List<ActivePatientQueueItem> queueItems) {
+    final servicesList = queueItems.map((q) => q.selectedServices).toList();
+    return _calculateServiceDistribution(servicesList);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal[50]!, Colors.white],
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        title: const Text('Patient Visit Trends'),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh, color: primaryColor),
+            onPressed: _refreshData,
+            tooltip: 'Refresh Data',
           ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSummaryCards(),
-              const SizedBox(height: 20),
-              _buildVisitTrendsCard(),
-              const SizedBox(height: 20),
-              _buildConditionDistributionCard(),
-              const SizedBox(height: 20),
-              _buildTreatmentOutcomesCard(),
-            ],
-          ),
-        ),
-      );
+        ],
+      ),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _trendsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+                child: Text('Error: ${snapshot.error.toString()}',
+                    style: const TextStyle(color: Colors.red)));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No trend data available.'));
+          }
+
+          final data = snapshot.data!;
+          final totalThisMonth = data['totalThisMonth'];
+          final totalScheduled = data['totalAppointments'];
+          final totalWalkIns = data['totalWalkIns'];
+          final growth = data['scheduledGrowth'];
+
+          return RefreshIndicator(
+            onRefresh: () async => _refreshData(),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildSummaryCards(
+                      totalThisMonth, totalScheduled, totalWalkIns, growth),
+                  const SizedBox(height: 24),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _buildChartCard(
+                          'Monthly Scheduled',
+                           _buildBarChart(data['scheduledMonthlyCounts'] ?? {}),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildChartCard(
+                          'Monthly Walk-ins',
+                          _buildBarChart(data['walkInMonthlyCounts'] ?? {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                       Expanded(
+                        child: _buildChartCard(
+                          'Status Distribution',
+                           _buildPieChart(data['combinedStatusCounts'] ?? {}),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                       Expanded(
+                        child: _buildChartCard(
+                          'Top Services',
+                          _buildPieChart(data['combinedServiceCounts'] ?? {}),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
-  Widget _buildSummaryCards() {
+  Widget _buildSummaryCards(
+      int thisMonth, int totalScheduled, int totalWalkIns, double growth) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildSummaryCard(
-          'Monthly Visits',
-          '245',
-          Icons.calendar_today,
-          '+12% vs last month',
-          Colors.green,
-        ),
-        _buildSummaryCard(
-          'Avg. Wait Time',
-          '18 min',
-          Icons.timer,
-          '-5% vs last month',
-          Colors.green,
-        ),
-        _buildSummaryCard(
-          'Patient Satisfaction',
-          '4.8/5',
-          Icons.star,
-          '+0.2 vs last month',
-          Colors.green,
-        ),
+        _buildSummaryCard('This Month', thisMonth.toString(), 'Total Visits',
+            Icons.calendar_today, Colors.blue),
+        _buildSummaryCard('Scheduled', totalScheduled.toString(),
+            'Total Appointments', Icons.event, Colors.purple),
+        _buildSummaryCard('Walk-Ins', totalWalkIns.toString(), 'Total Visits',
+            Icons.directions_walk, Colors.orange),
+        _buildSummaryCard('Growth', '${growth.toStringAsFixed(1)}%',
+            'Scheduled (MoM)', Icons.trending_up, growth >= 0 ? Colors.green : Colors.red),
       ],
     );
   }
 
   Widget _buildSummaryCard(
-    String title,
-    String value,
-    IconData icon,
-    String trend,
-    Color trendColor,
-  ) {
+      String title, String value, String subtitle, IconData icon, Color color) {
     return Expanded(
       child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: primaryColor, size: 28),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: primaryColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: trendColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  trend,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: trendColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVisitTrendsCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.trending_up, color: primaryColor),
-                const SizedBox(width: 10),
-                Text(
-                  'Visit Trends',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 250,
-              child: Column(
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: List.generate(
-                        months.length,
-                        (index) => Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: TweenAnimationBuilder(
-                              tween: Tween<double>(begin: 0, end: 1),
-                              duration: Duration(milliseconds: 1000 + (index * 200)),
-                              builder: (context, double value, child) {
-                                return _buildVisitBar(
-                                  visitData[index],
-                                  months[index],
-                                  value,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: months
-                        .map(
-                          (month) => Expanded(
-                            child: Text(
-                              month,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
+                  Icon(icon, color: color),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVisitBar(int value, String month, double animationValue) {
-    final double maxValue = visitData.reduce((a, b) => a > b ? a : b).toDouble();
-    final double percentage = value / maxValue;
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          value.toString(),
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: 180 * percentage * animationValue,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                primaryColor,
-                primaryColor.withOpacity(0.7),
-              ],
-            ),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-            boxShadow: [
-              BoxShadow(
-                color: primaryColor.withOpacity(0.2),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 2),
-              ),
+              const SizedBox(height: 10),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(subtitle,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildConditionDistributionCard() {
+  Widget _buildChartCard(String title, Widget chart) {
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Icon(Icons.pie_chart, color: primaryColor),
-                const SizedBox(width: 10),
-                Text(
-                  'Condition Distribution',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: primaryColor,
+              ),
             ),
-            const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildConditionStat('Chronic', 40, Colors.blue[400]!),
-                _buildConditionStat('Acute', 45, Colors.red[400]!),
-                _buildConditionStat('Preventive', 15, Colors.green[400]!),
-              ],
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 180,
+              child: chart,
             ),
-            const SizedBox(height: 20),
-            _buildConditionLegend(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConditionStat(String condition, int percentage, Color color) {
-    return Column(
-      children: [
-        TweenAnimationBuilder(
-          tween: Tween<double>(begin: 0, end: percentage.toDouble()),
-          duration: const Duration(milliseconds: 1000),
-          builder: (context, double value, child) {
-            return Container(
-              width: 90,
-              height: 90,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withOpacity(0.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.2),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  '${value.toInt()}%',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ),
-            );
-          },
+  Widget _buildBarChart(Map<String, int> monthlyData) {
+    if (monthlyData.isEmpty || monthlyData.values.every((v) => v == 0)) {
+      return const Center(
+          child: Text("Not enough data for monthly trends yet."));
+    }
+
+    final barGroups = monthlyData.entries.map((entry) {
+      final month = entry.key;
+      final count = entry.value;
+      final index = monthlyData.keys.toList().indexOf(month);
+
+      return BarChartGroupData(
+        x: index,
+        barRods: [
+          BarChartRodData(
+            toY: count.toDouble(),
+            color: primaryColor,
+            width: 16,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(4),
+              topRight: Radius.circular(4),
+            ),
+          )
+        ],
+      );
+    }).toList();
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        barGroups: barGroups,
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                final index = value.toInt();
+                if (index >= 0 && index < monthlyData.keys.length) {
+                  final month =
+                      monthlyData.keys.elementAt(index).split(' ')[0];
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Text(month, style: const TextStyle(fontSize: 10)),
+                  );
+                }
+                return const Text('');
+              },
+              reservedSize: 30,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              getTitlesWidget: (value, meta) {
+                final positiveValues = monthlyData.values.where((v) => v > 0);
+                if (positiveValues.isEmpty) {
+                  if (value == 0) return const Text('0');
+                  return const Text('');
+                }
+                
+                final maxValue = positiveValues.reduce(max);
+                if (value > 0 && value % (max(1, (maxValue / 5).ceil())) == 0) {
+                  return Text(value.toInt().toString());
+                }
+                
+                if (value == 0) {
+                  return const Text('0');
+                }
+                return const Text('');
+              },
+            ),
+          ),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
-        const SizedBox(height: 10),
-        Text(
-          condition,
-          style: TextStyle(
-            color: Colors.grey[700],
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        gridData: FlGridData(
+          show: true,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(color: Colors.grey.withOpacity(0.2), strokeWidth: 1);
+          },
+          drawVerticalLine: false,
+        ),
+        borderData: FlBorderData(
+          show: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPieChart(Map<String, int> statusData) {
+    if (statusData.isEmpty) {
+      return const Center(child: Text("No data available."));
+    }
+
+    final total = statusData.values.reduce((a, b) => a + b);
+    final List<PieChartSectionData> sections = [];
+    final colors = [
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.red,
+      Colors.purple,
+      Colors.brown
+    ];
+    int colorIndex = 0;
+
+    statusData.forEach((status, count) {
+      final percentage = total > 0 ? (count / total) * 100 : 0.0;
+      sections.add(PieChartSectionData(
+        color: colors[colorIndex % colors.length],
+        value: count.toDouble(),
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: 50,
+        titleStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ));
+      colorIndex++;
+    });
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: PieChart(
+            PieChartData(
+              sections: sections,
+              sectionsSpace: 2,
+              centerSpaceRadius: 30,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: ListView(
+            children: statusData.keys.map((status) {
+              final index = statusData.keys.toList().indexOf(status);
+              return _buildLegendItem(status, colors[index % colors.length]);
+            }).toList(),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildConditionLegend() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(10),
-      ),
+  Widget _buildLegendItem(String name, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 8.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildLegendItem('Chronic', Colors.blue[400]!, '40%'),
-          _buildLegendItem('Acute', Colors.red[400]!, '45%'),
-          _buildLegendItem('Preventive', Colors.green[400]!, '15%'),
+          Container(width: 12, height: 12, color: color),
+          const SizedBox(width: 8),
+          Text(name),
         ],
       ),
     );
   }
-
-  Widget _buildLegendItem(String label, Color color, String value) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '$label: $value',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTreatmentOutcomesCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.check_circle_outline, color: primaryColor),
-                const SizedBox(width: 10),
-                Text(
-                  'Treatment Outcomes',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _buildOutcomeBar('Successful', 85, Colors.green[400]!),
-            const SizedBox(height: 15),
-            _buildOutcomeBar('In Progress', 10, Colors.orange[400]!),
-            const SizedBox(height: 15),
-            _buildOutcomeBar('Needs Review', 5, Colors.red[400]!),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOutcomeBar(String outcome, int percentage, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              outcome,
-              style: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Text(
-              '$percentage%',
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TweenAnimationBuilder(
-          tween: Tween<double>(begin: 0, end: percentage / 100),
-          duration: const Duration(milliseconds: 1000),
-          builder: (context, double value, child) {
-            return Stack(
-              children: [
-                Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: value,
-                  child: Container(
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withOpacity(0.2),
-                          spreadRadius: 1,
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-} 
+}

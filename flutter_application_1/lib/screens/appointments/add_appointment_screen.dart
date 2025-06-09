@@ -267,6 +267,9 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
         if (existing.doctorId == doctorId) {
           return "Doctor Conflict: Dr. $doctorName is booked from ${DateFormat.Hm().format(existingApptStart)} to ${DateFormat.Hm().format(existingApptEnd)}.";
         }
+        if (existing.patientId == patientId) {
+          return "Patient Conflict: $patientName already has an appointment scheduled from ${DateFormat.Hm().format(existingApptStart)} to ${DateFormat.Hm().format(existingApptEnd)}.";
+        }
       }
     }
     return null;
@@ -737,12 +740,19 @@ class _AddAppointmentScreenState extends State<AddAppointmentScreen> {
                       ),
                       value: _selectedTime,
                       hint: const Text('Select Time'),
-                      items: _generateWorkingTimeSlots().map((TimeOfDay time) {
-                        return DropdownMenuItem<TimeOfDay>(
-                          value: time,
-                          child: Text(time.format(context)),
-                        );
-                      }).toList(),
+                      items: () {
+                        final slots = _generateWorkingTimeSlots();
+                        if (!slots.contains(_selectedTime)) {
+                          slots.add(_selectedTime);
+                          slots.sort((a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute));
+                        }
+                        return slots.map((TimeOfDay time) {
+                          return DropdownMenuItem<TimeOfDay>(
+                            value: time,
+                            child: Text(time.format(context)),
+                          );
+                        }).toList();
+                      }(),
                       onChanged: (TimeOfDay? newValue) {
                         if (newValue != null) {
                           setState(() {
@@ -1119,9 +1129,14 @@ class _DialogPatientRegistrationFormState extends State<_DialogPatientRegistrati
           birthDate: DateFormat('yyyy-MM-dd').parse(_dobController.text), 
           gender: _gender,
           contactNumber: _contactController.text.trim(),
+          email: _emailController.text.trim(),
           address: _addressController.text.trim(), 
           bloodType: _bloodType, 
           allergies: _allergiesController.text.trim(),
+          currentMedications: _currentMedicationsController.text.trim(),
+          medicalHistory: _medicalInfoController.text.trim(),
+          emergencyContactName: _emergencyContactNameController.text.trim(),
+          emergencyContactNumber: _emergencyContactController.text.trim(),
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );

@@ -126,67 +126,6 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
       }
       _filterAppointmentsForSelectedDate(); 
 
-      if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Appointment for P_ID: ${savedAppointmentFromDb.patientId} on ${DateFormat.yMd().format(savedAppointmentFromDb.date)} saved.'), backgroundColor: Colors.green)
-        );
-      }
-
-      // ---- ADD TO ACTIVE PATIENT QUEUE ----
-      try {
-        Patient? patientDetails;
-        try {
-            patientDetails = await ApiService.getPatientById(savedAppointmentFromDb.patientId);
-        } catch (e) {
-            print("Could not fetch patient details for queue item: $e");
-            // Continue without full patient details if fetch fails
-        }
-
-        final arrivalDateTime = DateTime(
-            savedAppointmentFromDb.date.year,
-            savedAppointmentFromDb.date.month,
-            savedAppointmentFromDb.date.day,
-            savedAppointmentFromDb.time.hour,
-            savedAppointmentFromDb.time.minute,
-        );
-
-        // TODO: Determine a robust way to get queueNumber or make it nullable/default in DB for this use case.
-        // For now, using a placeholder or 0 if non-nullable.
-        // If queueNumber is for daily sequence, this scheduled appointment might not follow that sequence easily.
-        int currentQueueNumber = 0; // Placeholder
-
-        ActivePatientQueueItem queueItem = ActivePatientQueueItem(
-          queueEntryId: 'appt_q_${DateTime.now().millisecondsSinceEpoch.toString()}', // Unique ID for queue entry
-          patientId: savedAppointmentFromDb.patientId,
-          patientName: patientDetails?.fullName ?? savedAppointmentFromDb.patientId, // Use fetched name or ID as fallback
-          arrivalTime: arrivalDateTime,
-          queueNumber: currentQueueNumber, // Placeholder or a system to assign this
-          gender: patientDetails?.gender,
-          age: patientDetails != null ? (DateTime.now().year - patientDetails.birthDate.year) : null, // Basic age calculation
-          conditionOrPurpose: "Scheduled: ${savedAppointmentFromDb.consultationType ?? 'Appointment'}".substring(0, savedAppointmentFromDb.consultationType != null ? (savedAppointmentFromDb.consultationType!.length + 11 > 100 ? 100 : savedAppointmentFromDb.consultationType!.length + 11) : 20), // Truncate if needed
-          selectedServices: null, // Appointments don't directly store multiple selected services in this model
-          totalPrice: null, // Not directly available from appointment
-          status: 'waiting', // Or 'scheduled_pending_check_in' etc.
-          createdAt: DateTime.now(),
-          // addedByUserId: savedAppointmentFromDb.createdById, // REMOVED createdById usage
-        );
-
-        await ApiService.addToActiveQueue(queueItem);
-        if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Patient ${queueItem.patientName} added to today\'s queue.'), backgroundColor: Colors.blueAccent),
-            );
-        }
-      } catch (e) {
-        print("Failed to add scheduled appointment to active queue: $e");
-        if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error adding patient to queue: ${e.toString()}'), backgroundColor: Colors.orangeAccent),
-            );
-        }
-      }
-      // ---- END ADD TO ACTIVE PATIENT QUEUE ----
-
     } catch (e) {
       print("Error saving appointment or adding to queue: $e");
       if (mounted) {

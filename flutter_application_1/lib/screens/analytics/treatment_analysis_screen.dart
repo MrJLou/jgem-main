@@ -1,62 +1,124 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../models/clinic_service.dart';
+import '../../services/api_service.dart';
 
 class TreatmentAnalysisScreen extends StatefulWidget {
   const TreatmentAnalysisScreen({super.key});
 
   @override
-  _TreatmentAnalysisScreenState createState() => _TreatmentAnalysisScreenState();
+  _TreatmentAnalysisScreenState createState() =>
+      _TreatmentAnalysisScreenState();
 }
 
 class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
   final Color primaryColor = Colors.teal[700]!;
-  final List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  final List<double> successRates = [82.5, 84.0, 83.0, 86.5, 85.0, 87.5];
+  Future<List<ClinicService>>? _servicesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _servicesFuture = _fetchServiceData();
+  }
+
+  Future<List<ClinicService>> _fetchServiceData() async {
+    try {
+      // Fetch all services and sort them by selectionCount in descending order
+      final services = await ApiService.getAllClinicServices();
+      services.sort((a, b) => b.selectionCount.compareTo(a.selectionCount));
+      return services;
+    } catch (e) {
+      print("Error fetching service data for analytics: $e");
+      // Show a snackbar or handle the error appropriately
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to load service data: $e'),
+              backgroundColor: Colors.red),
+        );
+      }
+      return []; // Return empty list on error
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal[50]!, Colors.white],
+    return FutureBuilder<List<ClinicService>>(
+      future: _servicesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(child: Text('No service data available.'));
+        }
+
+        final services = snapshot.data!;
+        final categoryDistribution = _calculateCategoryDistribution(services);
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.teal[50]!, Colors.white],
+            ),
           ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSummaryCards(),
-              const SizedBox(height: 20),
-              _buildSuccessRateCard(),
-              const SizedBox(height: 20),
-              _buildTreatmentTypeCard(),
-              const SizedBox(height: 20),
-              _buildOutcomeDetailsCard(),
-            ],
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSummaryCards(services),
+                const SizedBox(height: 20),
+                _buildTopServicesCard(services),
+                const SizedBox(height: 20),
+                _buildServiceCategoryCard(categoryDistribution),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      },
+    );
   }
 
-  Widget _buildSummaryCards() {
+  Map<String, int> _calculateCategoryDistribution(List<ClinicService> services) {
+    final Map<String, int> distribution = {};
+    for (final service in services) {
+      final category = service.category ?? 'Uncategorized';
+      distribution[category] = (distribution[category] ?? 0) + service.selectionCount;
+    }
+    return distribution;
+  }
+
+  Widget _buildSummaryCards(List<ClinicService> services) {
+    final totalServicesOffered = services.length;
+    final mostPopularService = services.isNotEmpty ? services.first.serviceName : 'N/A';
+    final totalSelections = services.fold<int>(0, (sum, item) => sum + item.selectionCount);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _buildSummaryCard(
-          'Success Rate',
-          '87.5%',
-          Icons.check_circle,
-          '+1.5% vs last month',
-          Colors.green,
+          'Total Services Offered',
+          totalServicesOffered.toString(),
+          Icons.medical_services_outlined,
+          "Count of distinct services",
         ),
         _buildSummaryCard(
-          'Avg. Duration',
-          '14 days',
-          Icons.timer,
-          '-2 days vs last month',
-          Colors.green,
+          'Most Popular Service',
+          mostPopularService,
+          Icons.star_rate_rounded,
+          "By total selections",
+        ),
+         _buildSummaryCard(
+          'Total Selections Made',
+          NumberFormat.compact().format(totalSelections),
+          Icons.touch_app,
+          "Across all services",
         ),
       ],
     );
@@ -66,8 +128,7 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
     String title,
     String value,
     IconData icon,
-    String trend,
-    Color trendColor,
+    String subtitle,
   ) {
     return Expanded(
       child: Card(
@@ -89,10 +150,11 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: value.length > 15 ? 16 : 22,
                   fontWeight: FontWeight.bold,
                   color: primaryColor,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
@@ -104,20 +166,14 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: trendColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontStyle: FontStyle.italic,
                 ),
-                child: Text(
-                  trend,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: trendColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -126,7 +182,13 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
     );
   }
 
-  Widget _buildSuccessRateCard() {
+  Widget _buildTopServicesCard(List<ClinicService> allServices) {
+    // Take top 5 services, or fewer if not available
+    final topServices = allServices.take(5).toList();
+    final double maxCount = topServices.isNotEmpty && topServices.first.selectionCount > 0
+        ? topServices.first.selectionCount.toDouble()
+        : 1.0;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -137,10 +199,10 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.trending_up, color: primaryColor),
+                Icon(Icons.bar_chart, color: primaryColor),
                 const SizedBox(width: 10),
                 Text(
-                  'Success Rate Trends',
+                  'Most Popular Services',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -150,103 +212,109 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            SizedBox(
-              height: 250,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: List.generate(
-                        months.length,
-                        (index) => Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: TweenAnimationBuilder(
-                              tween: Tween<double>(begin: 0, end: 1),
-                              duration: Duration(milliseconds: 1000 + (index * 200)),
-                              builder: (context, double value, child) {
-                                return _buildSuccessBar(
-                                  successRates[index],
-                                  months[index],
-                                  value,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: months
-                        .map(
-                          (month) => Expanded(
-                            child: Text(
-                              month,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
+            if (topServices.isEmpty)
+              const Center(child: Text("No service usage has been recorded yet."))
+            else
+              ...topServices.map((service) {
+                return _buildServiceUsageBar(
+                  service.serviceName,
+                  service.selectionCount,
+                  service.selectionCount / maxCount, // Normalize for bar width
+                  Colors.teal,
+                );
+              }).expand((widget) => [widget, const SizedBox(height: 15)]),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSuccessBar(double value, String month, double animationValue) {
+  Widget _buildServiceUsageBar(String serviceName, int count, double percentage, Color color) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${value.toStringAsFixed(1)}%',
+          serviceName,
           style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
+            color: Colors.grey[700],
+            fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          height: 180 * (value / 100) * animationValue,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                primaryColor,
-                primaryColor.withOpacity(0.7),
-              ],
-            ),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-            boxShadow: [
-              BoxShadow(
-                color: primaryColor.withOpacity(0.2),
-                spreadRadius: 1,
-                blurRadius: 3,
-                offset: const Offset(0, 2),
+        Row(
+          children: [
+            Expanded(
+              child: TweenAnimationBuilder(
+                tween: Tween<double>(begin: 0, end: percentage.clamp(0.0, 1.0)),
+                duration: const Duration(milliseconds: 800),
+                builder: (context, double value, child) {
+                  return Stack(
+                    children: [
+                      Container(
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: value,
+                        child: Container(
+                          height: 22,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [color.withOpacity(0.7), color],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(11),
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withOpacity(0.2),
+                                spreadRadius: 1,
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              NumberFormat.compact().format(count),
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildTreatmentTypeCard() {
+  Widget _buildServiceCategoryCard(Map<String, int> categoryDistribution) {
+     final totalSelections = categoryDistribution.values.fold(0, (sum, item) => sum + item);
+     final List<Color> colors = [
+      Colors.blue[400]!,
+      Colors.purple[400]!,
+      Colors.orange[400]!,
+      Colors.green[400]!,
+      Colors.red[400]!,
+      Colors.indigo[400]!,
+    ];
+
+    final sortedCategories = categoryDistribution.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -257,10 +325,10 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.medical_services, color: primaryColor),
+                Icon(Icons.category, color: primaryColor),
                 const SizedBox(width: 10),
                 Text(
-                  'Treatment Types',
+                  'Service Categories',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -270,16 +338,30 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               ],
             ),
             const SizedBox(height: 30),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildTreatmentStat('Medication', 45, Colors.blue[400]!),
-                _buildTreatmentStat('Therapy', 35, Colors.purple[400]!),
-                _buildTreatmentStat('Surgery', 20, Colors.orange[400]!),
-              ],
-            ),
+            if (totalSelections == 0)
+              const Center(child: Text("No service categories to display."))
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return Wrap(
+                    spacing: 20,
+                    runSpacing: 20,
+                    alignment: WrapAlignment.center,
+                    children: List.generate(sortedCategories.length, (index) {
+                      final entry = sortedCategories[index];
+                      final percentage = (entry.value / totalSelections) * 100;
+                      return _buildTreatmentStat(
+                        entry.key, 
+                        percentage.toInt(), 
+                        colors[index % colors.length]
+                      );
+                    }),
+                  );
+                }
+              ),
             const SizedBox(height: 20),
-            _buildTreatmentLegend(),
+             if (totalSelections > 0)
+              _buildTreatmentLegend(sortedCategories, colors, totalSelections),
           ],
         ),
       ),
@@ -298,19 +380,12 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               height: 90,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withOpacity(0.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.2),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                color: Colors.white,
+                 border: Border.all(color: color.withOpacity(0.3), width: 4),
               ),
               child: Center(
                 child: Text(
-                  '${value.toInt()}%',
+                  '${value.round()}%',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -322,32 +397,42 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
           },
         ),
         const SizedBox(height: 10),
-        Text(
-          treatment,
-          style: TextStyle(
-            color: Colors.grey[700],
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        SizedBox(
+          width: 90,
+          child: Text(
+            treatment,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildTreatmentLegend() {
+  Widget _buildTreatmentLegend(List<MapEntry<String, int>> categories, List<Color> colors, int total) {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.grey[100],
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildLegendItem('Medication', Colors.blue[400]!, '45%'),
-          _buildLegendItem('Therapy', Colors.purple[400]!, '35%'),
-          _buildLegendItem('Surgery', Colors.orange[400]!, '20%'),
-        ],
+      child: Column(
+        children: List.generate(categories.length, (index) {
+          final entry = categories[index];
+          final percentage = (entry.value / total * 100);
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: _buildLegendItem(
+              entry.key, 
+              colors[index % colors.length], 
+              '${percentage.toStringAsFixed(1)}% (${NumberFormat.compact().format(entry.value)})'
+            ),
+          );
+        }),
       ),
     );
   }
@@ -364,116 +449,24 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          '$label: $value',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildOutcomeDetailsCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.assessment, color: primaryColor),
-                const SizedBox(width: 10),
-                Text(
-                  'Outcome Details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _buildOutcomeBar('Complete Recovery', 65, Colors.green[400]!),
-            const SizedBox(height: 15),
-            _buildOutcomeBar('Significant Improvement', 25, Colors.blue[400]!),
-            const SizedBox(height: 15),
-            _buildOutcomeBar('Moderate Improvement', 8, Colors.orange[400]!),
-            const SizedBox(height: 15),
-            _buildOutcomeBar('Limited Improvement', 2, Colors.red[400]!),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOutcomeBar(String outcome, int percentage, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              outcome,
-              style: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Text(
-              '$percentage%',
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TweenAnimationBuilder(
-          tween: Tween<double>(begin: 0, end: percentage / 100),
-          duration: const Duration(milliseconds: 1000),
-          builder: (context, double value, child) {
-            return Stack(
-              children: [
-                Container(
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: value,
-                  child: Container(
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withOpacity(0.2),
-                          spreadRadius: 1,
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: Colors.grey[800],
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        )
       ],
     );
   }

@@ -57,6 +57,7 @@ dependencies:
   table_calendar: ^3.0.9
   open_filex: ^4.3.2
   pie_chart: ^5.4.0
+  fl_chart: ^1.0.0
   
 dev_dependencies:
   flutter_test:

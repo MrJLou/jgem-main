@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../models/patient.dart';
+import '../../services/api_service.dart';
 
 class DemographicsScreen extends StatefulWidget {
   const DemographicsScreen({super.key});
@@ -8,33 +11,152 @@ class DemographicsScreen extends StatefulWidget {
 }
 
 class _DemographicsScreenState extends State<DemographicsScreen> {
+  Future<Map<String, dynamic>>? _demographicsFuture;
+
   @override
-  Widget build(BuildContext context) {
-    return Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal[50]!, Colors.white],
-          ),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSummarySection(),
-              const SizedBox(height: 30),
-              _buildAgeDistributionCard(),
-              const SizedBox(height: 20),
-              _buildGenderDistributionCard(),
-            ],
-          ),
-        ),
-      );
+  void initState() {
+    super.initState();
+    _demographicsFuture = _fetchDemographicsData();
   }
 
-  Widget _buildSummarySection() {
+  Future<Map<String, dynamic>> _fetchDemographicsData() async {
+    try {
+      final patients = await ApiService.getPatients();
+      if (patients.isEmpty) {
+        return {
+          'totalPatients': 0,
+          'genderDistribution': {'Male': 0, 'Female': 0, 'Other': 0},
+          'ageDistribution': {
+            '0-18': 0,
+            '19-35': 0,
+            '36-50': 0,
+            '51-65': 0,
+            '65+': 0,
+          },
+        };
+      }
+
+      final totalPatients = patients.length;
+
+      final now = DateTime.now();
+
+      final genderDistribution = {'Male': 0, 'Female': 0, 'Other': 0, 'Unknown': 0};
+      for (final patient in patients) {
+        final gender = patient.gender?.toLowerCase() ?? 'unknown';
+        if (gender == 'male') {
+          genderDistribution['Male'] = genderDistribution['Male']! + 1;
+        } else if (gender == 'female') {
+          genderDistribution['Female'] = genderDistribution['Female']! + 1;
+        } else if (gender == 'other') {
+          genderDistribution['Other'] = genderDistribution['Other']! + 1;
+        } else {
+          genderDistribution['Unknown'] = genderDistribution['Unknown']! + 1;
+        }
+      }
+
+      final ageDistribution = {
+        '0-18': 0,
+        '19-35': 0,
+        '36-50': 0,
+        '51-65': 0,
+        '65+': 0,
+      };
+      for (final patient in patients) {
+        final birthDate = patient.birthDate;
+        if (birthDate != null) {
+          int age = now.year - birthDate.year;
+          if (now.month < birthDate.month ||
+              (now.month == birthDate.month && now.day < birthDate.day)) {
+            age--;
+          }
+          
+          if (age <= 18) {
+            ageDistribution['0-18'] = ageDistribution['0-18']! + 1;
+          } else if (age <= 35) {
+            ageDistribution['19-35'] = ageDistribution['19-35']! + 1;
+          } else if (age <= 50) {
+            ageDistribution['36-50'] = ageDistribution['36-50']! + 1;
+          } else if (age <= 65) {
+            ageDistribution['51-65'] = ageDistribution['51-65']! + 1;
+          } else {
+            ageDistribution['65+'] = ageDistribution['65+']! + 1;
+          }
+        }
+      }
+
+      return {
+        'totalPatients': totalPatients,
+        'genderDistribution': genderDistribution,
+        'ageDistribution': ageDistribution,
+      };
+    } catch (e) {
+      print("Error fetching demographics: $e");
+      throw Exception("Failed to load demographic data");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _demographicsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const Center(child: Text('No data available.'));
+        }
+
+        final data = snapshot.data!;
+        final totalPatients = data['totalPatients'] as int;
+        final genderData = data['genderDistribution'] as Map<String, int>;
+        final ageData = data['ageDistribution'] as Map<String, int>;
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.teal[50]!, Colors.white],
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSummarySection(totalPatients, genderData),
+                const SizedBox(height: 30),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildAgeDistributionCard(ageData, totalPatients),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: _buildGenderDistributionCard(genderData),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSummarySection(int totalPatients, Map<String, int> genderData) {
+    final femaleCount = genderData['Female'] ?? 0;
+    final maleCount = genderData['Male'] ?? 0;
+    final totalGendered = femaleCount + maleCount;
+    final femalePercent = totalGendered > 0 ? (femaleCount / totalGendered * 100).round() : 0;
+    final malePercent = totalGendered > 0 ? (maleCount / totalGendered * 100).round() : 0;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -64,7 +186,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                 _buildStatCard(
                     'Total Patients',
                     Text(
-                      '1,234',
+                      NumberFormat.compact().format(totalPatients),
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -73,22 +195,11 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                     ),
                     Icons.people),
                 _buildStatCard(
-                    'New This Month',
-                    Text(
-                      '45',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal[700],
-                      ),
-                    ),
-                    Icons.person_add),
-                _buildStatCard(
                   'Female / Male',
                   Column(
                     children: [
                       Text(
-                        '740 / 494',
+                        '$femaleCount / $maleCount',
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -97,7 +208,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '(60% / 40%)',
+                        '($femalePercent% / $malePercent%)',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -149,7 +260,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
     );
   }
 
-  Widget _buildAgeDistributionCard() {
+  Widget _buildAgeDistributionCard(Map<String, int> ageData, int totalPatients) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -173,15 +284,13 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            _buildAgeDistributionBar('0-18', 15),
-            const SizedBox(height: 12),
-            _buildAgeDistributionBar('19-35', 30),
-            const SizedBox(height: 12),
-            _buildAgeDistributionBar('36-50', 25),
-            const SizedBox(height: 12),
-            _buildAgeDistributionBar('51-65', 20),
-            const SizedBox(height: 12),
-            _buildAgeDistributionBar('65+', 10),
+            ...ageData.entries.map((entry) {
+              final percentage = totalPatients > 0 ? (entry.value / totalPatients * 100) : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: _buildAgeDistributionBar(entry.key, percentage),
+              );
+            }).toList(),
           ],
         ),
       ),
@@ -207,44 +316,49 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Stack(
-                children: [
-                  Container(
-                    height: 25,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(12.5),
-                    ),
-                  ),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    height: 25,
-                    width: (percentage / 100) * (MediaQuery.of(context).size.width - 140),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.teal[700]!, Colors.teal[500]!],
-                      ),
-                      borderRadius: BorderRadius.circular(12.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.teal.withOpacity(0.2),
-                          spreadRadius: 1,
-                          blurRadius: 3,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${percentage.toInt()}%',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    children: [
+                      Container(
+                        height: 25,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12.5),
                         ),
                       ),
-                    ),
-                  ),
-                ],
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 500),
+                        height: 25,
+                        width: constraints.maxWidth * (percentage / 100),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.teal[700]!, Colors.teal[500]!],
+                          ),
+                          borderRadius: BorderRadius.circular(12.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.teal.withOpacity(0.2),
+                              spreadRadius: 1,
+                              blurRadius: 3,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${percentage.toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
               ),
             ),
           ],
@@ -253,7 +367,8 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
     );
   }
 
-  Widget _buildGenderDistributionCard() {
+  Widget _buildGenderDistributionCard(Map<String, int> genderData) {
+    final total = genderData.values.reduce((a, b) => a + b);
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -281,17 +396,27 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
               icon: Icons.male,
               color: Colors.blue,
               gender: 'Male',
-              count: 494,
-              percentage: 40,
+              count: genderData['Male'] ?? 0,
+              percentage: total > 0 ? ((genderData['Male'] ?? 0) / total * 100) : 0,
             ),
             const SizedBox(height: 12),
             _buildGenderRow(
               icon: Icons.female,
               color: Colors.pink,
               gender: 'Female',
-              count: 740,
-              percentage: 60,
+              count: genderData['Female'] ?? 0,
+              percentage: total > 0 ? ((genderData['Female'] ?? 0) / total * 100) : 0,
             ),
+             if ((genderData['Other'] ?? 0) > 0) ...[
+              const SizedBox(height: 12),
+              _buildGenderRow(
+                icon: Icons.transgender,
+                color: Colors.purple,
+                gender: 'Other',
+                count: genderData['Other'] ?? 0,
+                percentage: total > 0 ? ((genderData['Other'] ?? 0) / total * 100) : 0,
+              ),
+            ],
           ],
         ),
       ),
@@ -339,7 +464,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
           ),
         ),
         Text(
-          '${percentage.toInt()}%',
+          '${percentage.toStringAsFixed(1)}%',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,
