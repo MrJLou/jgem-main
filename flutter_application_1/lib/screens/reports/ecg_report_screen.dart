@@ -4,10 +4,10 @@ class ECGReportScreen extends StatefulWidget {
   const ECGReportScreen({super.key});
 
   @override
-  _ECGReportScreenState createState() => _ECGReportScreenState();
+  ECGReportScreenState createState() => ECGReportScreenState();
 }
 
-class _ECGReportScreenState extends State<ECGReportScreen> {
+class ECGReportScreenState extends State<ECGReportScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
       name: 'Ethan Wright',
@@ -151,7 +151,7 @@ class _ECGReportScreenState extends State<ECGReportScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

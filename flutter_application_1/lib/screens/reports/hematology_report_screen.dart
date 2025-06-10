@@ -4,10 +4,10 @@ class HematologyReportScreen extends StatefulWidget {
   const HematologyReportScreen({super.key});
 
   @override
-  _HematologyReportScreenState createState() => _HematologyReportScreenState();
+  HematologyReportScreenState createState() => HematologyReportScreenState();
 }
 
-class _HematologyReportScreenState extends State<HematologyReportScreen> {
+class HematologyReportScreenState extends State<HematologyReportScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
       name: 'Jason Lee',
@@ -149,7 +149,7 @@ class _HematologyReportScreenState extends State<HematologyReportScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

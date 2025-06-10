@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -8,7 +9,6 @@ import '../models/appointment.dart';
 import 'auth_service.dart';
 import 'dart:math';
 import 'api_service.dart';
-import 'dart:convert';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -34,7 +34,9 @@ class QueueService {
         patientName: patientName,
       );
     } catch (e) {
-      print('QueueService: Error checking if patient is active in queue: $e');
+      if (kDebugMode) {
+        print('QueueService: Error checking if patient is active in queue: $e');
+      }
       // Depending on your error handling strategy:
       // Option 1: Rethrow the error to be handled by the caller
       // throw Exception('Failed to check patient queue status: $e');
@@ -75,6 +77,8 @@ class QueueService {
       selectedServices:
           patientData['selectedServices'] as List<Map<String, dynamic>>?,
       totalPrice: patientData['totalPrice'] as double?,
+      doctorId: patientData['doctorId'] as String?,
+      doctorName: patientData['doctorName'] as String?,
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
@@ -87,10 +91,14 @@ class QueueService {
       // The DatabaseHelper.addToActiveQueue method already handles the DB insertion.
       // It returns the item, so we assume success if no exception.
       await _dbHelper.addToActiveQueue(queueItem);
-      print('QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
+      if (kDebugMode) {
+        print('QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
+      }
       return true; // Return true on success
     } catch (e) {
-      print("QueueService: Error in addPatientToQueue for ${queueItem.patientName}: $e");
+      if (kDebugMode) {
+        print("QueueService: Error in addPatientToQueue for ${queueItem.patientName}: $e");
+      }
       return false; // Return false on failure
     }
   }
@@ -109,7 +117,7 @@ class QueueService {
     }
 
     final maxQueueNumber = todaysQueue
-        .map((item) => item.queueNumber ?? 0)
+        .map((item) => item.queueNumber)
         .reduce((a, b) => a > b ? a : b);
 
     return maxQueueNumber + 1;
@@ -127,9 +135,13 @@ class QueueService {
     if (result > 0 && updatedItem.originalAppointmentId != null) {
       try {
         await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Cancelled');
-        print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+        if (kDebugMode) {
+          print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+        }
       } catch (e) {
-        print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
+        if (kDebugMode) {
+          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
+        }
         // Decide if this error should affect the return value of removeFromQueue
       }
     }
@@ -192,8 +204,10 @@ class QueueService {
   }) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
     if (item == null) {
-      print(
-          'QueueService: Item with ID $queueEntryId not found for status update.');
+      if (kDebugMode) {
+        print(
+            'QueueService: Item with ID $queueEntryId not found for status update.');
+      }
       return false;
     }
 
@@ -248,8 +262,10 @@ class QueueService {
     try {
       final result = await _dbHelper.updateActiveQueueItem(updatedItem);
       if (result > 0) {
-        print(
-            'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
+        if (kDebugMode) {
+          print(
+              'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
+        }
 
         // ADDED: Propagate to original Appointment if exists
         if (updatedItem.originalAppointmentId != null) {
@@ -263,22 +279,30 @@ class QueueService {
                 // selectedServices, totalPrice, paymentStatus are more tied to payment/finalization
               );
               await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
-              print('QueueService: Updated original appointment ${originalAppointment.id} due to queue status change.');
+              if (kDebugMode) {
+                print('QueueService: Updated original appointment ${originalAppointment.id} due to queue status change.');
+              }
             }
           } catch (e) {
-            print('QueueService: Error updating original appointment after queue status change: $e');
+            if (kDebugMode) {
+              print('QueueService: Error updating original appointment after queue status change: $e');
+            }
           }
         }
         // END ADDED
         return true;
       } else {
-        print(
-            'QueueService: Failed to update patient $queueEntryId status in DB.');
+        if (kDebugMode) {
+          print(
+              'QueueService: Failed to update patient $queueEntryId status in DB.');
+        }
         return false;
       }
     } catch (e) {
-      print(
-          "QueueService: Error in updatePatientStatusInQueue for $queueEntryId: $e");
+      if (kDebugMode) {
+        print(
+            "QueueService: Error in updatePatientStatusInQueue for $queueEntryId: $e");
+      }
       return false;
     }
   }
@@ -302,9 +326,13 @@ class QueueService {
     if (result > 0 && updatedItem.originalAppointmentId != null) {
       try {
         await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Completed');
-        print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Completed.');
+        if (kDebugMode) {
+          print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Completed.');
+        }
       } catch (e) {
-        print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Completed: $e');
+        if (kDebugMode) {
+          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Completed: $e');
+        }
         // Decide if this error should affect the return value of markPatientAsServed
       }
     }
@@ -356,7 +384,9 @@ class QueueService {
     try {
       dayAppointments = await _dbHelper.getAppointmentsByDate(dateToReport);
     } catch (e) {
-      print('QueueService: Error fetching appointments for report: $e');
+      if (kDebugMode) {
+        print('QueueService: Error fetching appointments for report: $e');
+      }
     }
 
     // Separate queue items by origin (appointment vs walk-in)
@@ -428,7 +458,7 @@ class QueueService {
         'appointmentOriginatedQueueItems': appointmentOriginatedItems.length, // From active queue items for the day
         'walkInQueueItems': walkInItems.length, // From active queue items for the day
       },
-      'appointmentData': dayAppointments.map((appt) => appt.toJson()).toList(), // Full appointment data for the day
+      'appointmentData': dayAppointments.map((appt) => appt.toMap()).toList(), // Full appointment data for the day
     };
     return report;
   }
@@ -591,7 +621,9 @@ class QueueService {
 
     final file = File(filePath);
     await file.writeAsBytes(await pdf.save());
-    print('PDF Report saved to $filePath');
+    if (kDebugMode) {
+      print('PDF Report saved to $filePath');
+    }
     return file;
   }
 
@@ -599,15 +631,21 @@ class QueueService {
   /// This is used when an appointment is cancelled or deleted.
   Future<void> removeScheduledEntryForAppointment(String appointmentId) async {
     if (appointmentId.isEmpty) {
-      print("QueueService: removeScheduledEntryForAppointment called with empty appointmentId.");
+      if (kDebugMode) {
+        print("QueueService: removeScheduledEntryForAppointment called with empty appointmentId.");
+      }
       return;
     }
     final String queueEntryIdToRemove = 'appt_$appointmentId';
     try {
       await _dbHelper.deleteActiveQueueItemByQueueEntryId(queueEntryIdToRemove);
-      print("QueueService: Attempted to remove scheduled entry $queueEntryIdToRemove for appointment $appointmentId.");
+      if (kDebugMode) {
+        print("QueueService: Attempted to remove scheduled entry $queueEntryIdToRemove for appointment $appointmentId.");
+      }
     } catch (e) {
-      print("QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
+      if (kDebugMode) {
+        print("QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
+      }
       // Depending on policy, you might want to rethrow or handle silently
     }
   }
@@ -616,12 +654,16 @@ class QueueService {
   Future<bool> markPaymentSuccessfulAndServe(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
     if (item == null) {
-      print('QueueService: Item $queueEntryId not found for payment processing.');
+      if (kDebugMode) {
+        print('QueueService: Item $queueEntryId not found for payment processing.');
+      }
       return false;
     }
 
     if (item.status.toLowerCase() != 'in_consultation') {
-      print('QueueService: Item $queueEntryId is not In Consultation. Current status: ${item.status}. Cannot process payment unless in consultation.');
+      if (kDebugMode) {
+        print('QueueService: Item $queueEntryId is not In Consultation. Current status: ${item.status}. Cannot process payment unless in consultation.');
+      }
       // Optionally show a message to the user or handle differently
       // For now, just preventing the update if not 'in_consultation'
       // Consider if 'waiting' patients should be allowed to pay and then be set to 'in_consultation' or 'served'
@@ -640,7 +682,9 @@ class QueueService {
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
 
     if (result > 0) {
-      print('QueueService: Item $queueEntryId marked as Paid and Served.');
+      if (kDebugMode) {
+        print('QueueService: Item $queueEntryId marked as Paid and Served.');
+      }
       if (updatedItem.originalAppointmentId != null) {
         try {
           // Fetch the original appointment
@@ -656,18 +700,26 @@ class QueueService {
               totalPrice: updatedItem.totalPrice ?? originalAppointment.totalPrice,
             );
             await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
-            print('QueueService: Original appointment ${updatedItem.originalAppointmentId} updated to Completed and payment details synced.');
+            if (kDebugMode) {
+              print('QueueService: Original appointment ${updatedItem.originalAppointmentId} updated to Completed and payment details synced.');
+            }
           } else {
-            print('QueueService: Original appointment ${updatedItem.originalAppointmentId} not found for updating after payment.');
+            if (kDebugMode) {
+              print('QueueService: Original appointment ${updatedItem.originalAppointmentId} not found for updating after payment.');
+            }
           }
         } catch (e) {
-          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} after payment: $e');
+          if (kDebugMode) {
+            print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} after payment: $e');
+          }
           // Decide if this error should affect the return value
         }
       }
       return true;
     } else {
-      print('QueueService: Failed to update item $queueEntryId after payment.');
+      if (kDebugMode) {
+        print('QueueService: Failed to update item $queueEntryId after payment.');
+      }
       return false;
     }
   }
@@ -682,12 +734,12 @@ class QueueService {
 
 // Helper to ensure ValueGetter<T?>? parameters in copyWith are handled.
 // Not directly used in the provided snippet but good for model classes.
-T? _copyWith<T>(T? value, T Function()? getter) {
-  if (getter != null) {
-    return getter();
-  }
-  return value;
-}
+// T? _copyWith<T>(T? value, T Function()? getter) {
+//   if (getter != null) {
+//     return getter();
+//   }
+//   return value;
+// }
 
 // Helper for PDF stat rows, if not already present
 pw.Widget _buildPdfStatRow(String label, String value, pw.TextStyle labelStyle,

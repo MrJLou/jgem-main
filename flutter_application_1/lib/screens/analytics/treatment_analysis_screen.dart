@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/clinic_service.dart';
@@ -7,11 +8,11 @@ class TreatmentAnalysisScreen extends StatefulWidget {
   const TreatmentAnalysisScreen({super.key});
 
   @override
-  _TreatmentAnalysisScreenState createState() =>
-      _TreatmentAnalysisScreenState();
+  TreatmentAnalysisScreenState createState() =>
+      TreatmentAnalysisScreenState();
 }
 
-class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
+class TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
   final Color primaryColor = Colors.teal[700]!;
   Future<List<ClinicService>>? _servicesFuture;
 
@@ -28,7 +29,9 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
       services.sort((a, b) => b.selectionCount.compareTo(a.selectionCount));
       return services;
     } catch (e) {
-      print("Error fetching service data for analytics: $e");
+      if (kDebugMode) {
+        print("Error fetching service data for analytics: $e");
+      }
       // Show a snackbar or handle the error appropriately
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -141,7 +144,7 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.1),
+                  color: primaryColor.withAlpha(26),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: primaryColor, size: 28),
@@ -264,14 +267,14 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
                           height: 22,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [color.withOpacity(0.7), color],
+                              colors: [color.withAlpha(179), color],
                               begin: Alignment.centerLeft,
                               end: Alignment.centerRight,
                             ),
                             borderRadius: BorderRadius.circular(11),
                             boxShadow: [
                               BoxShadow(
-                                color: color.withOpacity(0.2),
+                                color: color.withAlpha(26),
                                 spreadRadius: 1,
                                 blurRadius: 2,
                                 offset: const Offset(0, 1),
@@ -380,8 +383,7 @@ class _TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
               height: 90,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white,
-                 border: Border.all(color: color.withOpacity(0.3), width: 4),
+                border: Border.all(color: color.withAlpha(77), width: 4),
               ),
               child: Center(
                 child: Text(

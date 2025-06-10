@@ -8,10 +8,10 @@ class RemoveFromQueueScreen extends StatefulWidget {
   const RemoveFromQueueScreen({super.key, required this.queueService});
 
   @override
-  _RemoveFromQueueScreenState createState() => _RemoveFromQueueScreenState();
+  RemoveFromQueueScreenState createState() => RemoveFromQueueScreenState();
 }
 
-class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
+class RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
   final TextEditingController _searchController = TextEditingController();
   Future<List<ActivePatientQueueItem>>? _searchResultsFuture;
   String _searchTerm = '';
@@ -62,10 +62,12 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
         ) ??
         false;
 
+    if (!mounted) return;
     if (confirm) {
       try {
         bool success =
             await widget.queueService.removeFromQueue(patient.queueEntryId);
+        if (!mounted) return;
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -85,6 +87,7 @@ class _RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
           );
         }
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error removing patient: $e'),

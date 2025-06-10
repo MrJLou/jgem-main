@@ -99,7 +99,7 @@ class ContactSupportScreen extends StatelessWidget {
         color: Colors.teal[700],
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withAlpha(26),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -113,7 +113,7 @@ class ContactSupportScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withAlpha(51),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -152,7 +152,7 @@ class ContactSupportScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withAlpha(51),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -163,7 +163,7 @@ class ContactSupportScreen extends StatelessWidget {
                   child: Text(
                     'Average response time: < 5 minutes',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withAlpha(230),
                       fontSize: 14,
                     ),
                   ),
@@ -196,7 +196,7 @@ class ContactSupportScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, size: 28, color: color),

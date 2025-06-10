@@ -1,13 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For formatting price
 import '../../services/api_service.dart'; // Added ApiService import
 import '../../models/clinic_service.dart'; // Added ClinicService import
-import '../../services/real_time_sync_service.dart';
+import '../../models/user.dart'; // ADDED for doctors
 import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
 import '../../services/appointment_database_service.dart';
 import '../../models/active_patient_queue_item.dart';
-import '../../models/patient.dart'; // Assuming Patient model might be used, though not directly in snippet
 import '../../models/appointment.dart';
 
 // Define Service data structure
@@ -31,10 +31,10 @@ class AddToQueueScreen extends StatefulWidget {
   const AddToQueueScreen({super.key, required this.queueService});
 
   @override
-  _AddToQueueScreenState createState() => _AddToQueueScreenState();
+  AddToQueueScreenState createState() => AddToQueueScreenState();
 }
 
-class _AddToQueueScreenState extends State<AddToQueueScreen> {
+class AddToQueueScreenState extends State<AddToQueueScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _patientNameController = TextEditingController();
   final TextEditingController _patientIdController = TextEditingController();
@@ -53,6 +53,10 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
   List<ClinicService> _selectedServices = []; // Changed to List<ClinicService>
   Map<String, bool> _serviceSelectionState = {}; // To track selection in the dialog
 
+  // ADDED - Doctor selection state
+  List<User> _doctors = [];
+  User? _selectedDoctor;
+
   double _totalPrice = 0.0;
   bool _showOtherConditionField = false;
 
@@ -61,6 +65,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     super.initState();
     _appointmentDbService = AppointmentDatabaseService(_dbHelper);
     _fetchAvailableServices();
+    _fetchDoctors(); // ADDED
   }
 
   Future<void> _fetchAvailableServices() async {
@@ -84,7 +89,33 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           ),
         );
       }
-      print('Error fetching available services: $e');
+      if (kDebugMode) {
+        print('Error fetching available services: $e');
+      }
+    }
+  }
+
+  // ADDED - Fetch doctors
+  Future<void> _fetchDoctors() async {
+    try {
+      final allUsers = await ApiService.getUsers();
+      if (mounted) {
+        setState(() {
+          _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load doctors: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      if (kDebugMode) {
+        print('Error fetching doctors: $e');
+      }
     }
   }
 
@@ -102,7 +133,9 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           ? age
           : 0; // Return 0 if age is negative (e.g. birthdate in future)
     } catch (e) {
-      print('Error parsing birthDateString for age calculation: $e');
+      if (kDebugMode) {
+        print('Error parsing birthDateString for age calculation: $e');
+      }
       return null;
     }
   }
@@ -111,10 +144,23 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     if (_formKey.currentState!.validate()) {
       if (_selectedServices.isEmpty &&
           _otherConditionController.text.trim().isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
                 'Please select at least one service or specify a purpose.'),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+        return;
+      }
+
+      // ADDED - Doctor validation
+      if (_selectedDoctor == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Please select a doctor.'),
             backgroundColor: Colors.red[700],
           ),
         );
@@ -130,6 +176,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         patientName: enteredPatientName,
       );
 
+      if (!mounted) return;
       if (alreadyInQueue) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -168,6 +215,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
 
       if (patientIdForAppointmentCheck != null && patientIdForAppointmentCheck.isNotEmpty) {
         final List<Appointment> patientAppointments = await _appointmentDbService.getPatientAppointments(patientIdForAppointmentCheck);
+        if (!mounted) return;
         final DateTime today = DateTime.now();
         final todaysAppointments = patientAppointments.where((appt) {
           return appt.date.year == today.year &&
@@ -183,7 +231,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             barrierDismissible: false,
             builder: (BuildContext dialogContext) {
               String appointmentsSummary = todaysAppointments
-                  .map((a) => "${a.consultationType ?? 'Appointment'} at ${a.time.format(dialogContext)}")
+                  .map((a) => "${a.consultationType} at ${a.time.format(dialogContext)}")
                   .join(", ");
               return AlertDialog(
                 title: const Text('Existing Appointment Found'),
@@ -204,6 +252,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             },
           );
 
+          if (!mounted) return;
           if (proceedDespiteAppointment != true) {
             return; // User chose not to proceed
           }
@@ -267,6 +316,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               ) ??
               false;
 
+          if (!mounted) return;
           String finalPatientIdToUse;
           String finalPatientNameToUse;
           int? finalAgeToUse;
@@ -286,7 +336,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             _patientIdController.text = finalPatientIdToUse;
             _patientNameController.text = finalPatientNameToUse;
             _ageController.text = finalAgeToUse?.toString() ?? '';
-            _genderController.text = finalGenderToUse ?? '';
+            _genderController.text = finalGenderToUse;
           } else {
             // User chose to use their manually entered data, even if a DB match was found.
             // Or if they pressed 'No' or dismissed a dialog confirming override.
@@ -343,21 +393,30 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
             'totalPrice': _totalPrice, // Added
           };
 
-          await widget.queueService.addPatientDataToQueue(newPatientQueueData);
+          await widget.queueService.addPatientDataToQueue({
+            ...newPatientQueueData,
+            'doctorId': _selectedDoctor?.id, // ADDED
+            'doctorName': _selectedDoctor?.fullName, // ADDED
+          });
 
           // ---- Increment service usage count ----
           if (_selectedServices.isNotEmpty) {
             final List<String> selectedServiceIds = _selectedServices.map((s) => s.id).toList();
             try {
               await ApiService.incrementServiceUsage(selectedServiceIds);
-              print('Successfully incremented usage for services: $selectedServiceIds');
+              if (kDebugMode) {
+                print('Successfully incremented usage for services: $selectedServiceIds');
+              }
             } catch (e) {
-              print('Error incrementing service usage: $e');
+              if (kDebugMode) {
+                print('Error incrementing service usage: $e');
+              }
               // Optionally show a non-blocking warning to the user or log more formally
             }
           }
           // ---- End Increment service usage count ----
 
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('$finalPatientNameToUse added to queue!'),
@@ -373,6 +432,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
           // _conditionController.clear(); // Removed
           _otherConditionController.clear();
           setState(() {
+            _selectedDoctor = null; // ADDED
             // _selectedServices // Reset selection states - handled by _serviceSelectionState
             //     .forEach((s) => s.isSelected = false); 
             _selectedServices.clear();
@@ -398,8 +458,10 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               ],
             ),
           );
+          if (!mounted) return;
         }
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text('Error processing queue addition: $e'),
@@ -600,144 +662,162 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
                             color: Colors.teal[800]),
                       ),
                       const SizedBox(height: 20),
-                      Card(
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                  'Patient Details (Must be a Registered Patient)',
+                      Container(
+                        padding: const EdgeInsets.all(16.0),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withAlpha(26),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                                'Patient Details (Must be a Registered Patient)',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.teal[700])),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _patientNameController,
+                              decoration: const InputDecoration(
+                                  labelText: 'Patient Name (Registered) *',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.person)),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                      ? 'Patient name is required'
+                                      : null,
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _patientIdController,
+                              decoration: const InputDecoration(
+                                  labelText:
+                                      'Patient ID (Registered - Optional)',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.badge),
+                                  hintText: 'Enter patient ID if known'),
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<User>(
+                              decoration: const InputDecoration(
+                                labelText: 'Assign Doctor *',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.medical_services_outlined),
+                              ),
+                              value: _selectedDoctor,
+                              hint: const Text('Select a Doctor'),
+                              isExpanded: true,
+                              items: _doctors.map((User doctor) {
+                                return DropdownMenuItem<User>(
+                                  value: doctor,
+                                  child: Text(
+                                    'Dr. ${doctor.fullName}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (User? newValue) {
+                                setState(() {
+                                  _selectedDoctor = newValue;
+                                });
+                              },
+                              validator: (value) =>
+                                  value == null ? 'Please select a doctor' : null,
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _ageController,
+                                    keyboardType: TextInputType.number,
+                                    enabled:
+                                        false, // Age will be auto-filled or from manual override if no DB match
+                                    decoration: const InputDecoration(
+                                        labelText: 'Age (from DB)',
+                                        border: OutlineInputBorder(),
+                                        prefixIcon: Icon(Icons.cake)),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _genderController,
+                                    enabled:
+                                        false, // Gender will be auto-filled or from manual override if no DB match
+                                    decoration: const InputDecoration(
+                                        labelText: 'Gender (from DB)',
+                                        border: OutlineInputBorder(),
+                                        prefixIcon:
+                                            Icon(Icons.person_outline)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // New Service Selection UI
+                            Text('Services / Purpose of Visit',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[700])),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.medical_services_outlined),
+                              label: const Text('Select Services / Purpose'),
+                              onPressed: _openServiceSelectionDialog,
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal[50],
+                                  foregroundColor: Colors.teal[700],
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  textStyle: const TextStyle(fontSize: 15)),
+                            ),
+                            const SizedBox(height: 10),
+                            if (_selectedServices.isNotEmpty)
+                              Wrap(
+                                spacing: 8.0,
+                                runSpacing: 4.0,
+                                children: _selectedServices
+                                    .map((service) => Chip(
+                                          label: Text(
+                                              '${service.serviceName} (₱${(service.defaultPrice ?? 0.0).toStringAsFixed(2)})'),
+                                          backgroundColor: Colors.teal[100],
+                                          labelStyle: TextStyle(
+                                              color: Colors.teal[800]),
+                                        ))
+                                    .toList(),
+                              ),
+                            if (_showOtherConditionField &&
+                                _otherConditionController.text.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                    "Other: ${_otherConditionController.text}",
+                                    style: const TextStyle(
+                                        fontStyle: FontStyle.italic)),
+                              ),
+                            if (_selectedServices.isNotEmpty ||
+                                (_showOtherConditionField &&
+                                    _otherConditionController
+                                        .text.isNotEmpty))
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12.0),
+                                child: Text(
+                                  'Total Estimated Price: ₱${_totalPrice.toStringAsFixed(2)}',
                                   style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.teal[700])),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _patientNameController,
-                                decoration: const InputDecoration(
-                                    labelText: 'Patient Name (Registered) *',
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.person)),
-                                validator: (value) =>
-                                    value == null || value.isEmpty
-                                        ? 'Patient name is required'
-                                        : null,
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _patientIdController,
-                                decoration: const InputDecoration(
-                                    labelText:
-                                        'Patient ID (Registered - Optional)',
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.badge),
-                                    hintText: 'Enter patient ID if known'),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _ageController,
-                                      keyboardType: TextInputType.number,
-                                      enabled:
-                                          false, // Age will be auto-filled or from manual override if no DB match
-                                      decoration: const InputDecoration(
-                                          labelText: 'Age (from DB)',
-                                          border: OutlineInputBorder(),
-                                          prefixIcon: Icon(Icons.cake)),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _genderController,
-                                      enabled:
-                                          false, // Gender will be auto-filled or from manual override if no DB match
-                                      decoration: const InputDecoration(
-                                          labelText: 'Gender (from DB)',
-                                          border: OutlineInputBorder(),
-                                          prefixIcon:
-                                              Icon(Icons.person_outline)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              // TextFormField( // This is replaced
-                              //   controller: _conditionController,
-                              //   decoration: const InputDecoration(
-                              //       labelText: 'Condition/Purpose of Visit',
-                              //       border: OutlineInputBorder(),
-                              //       prefixIcon: Icon(Icons.medical_services),
-                              //       hintText:
-                              //           'Enter medical condition or reason for visit'),
-                              //   maxLines: 2,
-                              // ),
-
-                              // New Service Selection UI
-                              Text('Services / Purpose of Visit',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.grey[700])),
-                              const SizedBox(height: 8),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.medical_services_outlined),
-                                label: const Text('Select Services / Purpose'),
-                                onPressed: _openServiceSelectionDialog,
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal[50],
-                                    foregroundColor: Colors.teal[700],
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 12),
-                                    textStyle: const TextStyle(fontSize: 15)),
-                              ),
-                              const SizedBox(height: 10),
-                              if (_selectedServices.isNotEmpty)
-                                Wrap(
-                                  spacing: 8.0,
-                                  runSpacing: 4.0,
-                                  children: _selectedServices
-                                      .map((service) => Chip(
-                                            label: Text(
-                                                '${service.serviceName} (₱${(service.defaultPrice ?? 0.0).toStringAsFixed(2)})'),
-                                            backgroundColor: Colors.teal[100],
-                                            labelStyle: TextStyle(
-                                                color: Colors.teal[800]),
-                                          ))
-                                      .toList(),
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green[700]),
                                 ),
-                              if (_showOtherConditionField &&
-                                  _otherConditionController.text.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(
-                                      "Other: ${_otherConditionController.text}",
-                                      style: const TextStyle(
-                                          fontStyle: FontStyle.italic)),
-                                ),
-                              if (_selectedServices.isNotEmpty ||
-                                  (_showOtherConditionField &&
-                                      _otherConditionController
-                                          .text.isNotEmpty))
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12.0),
-                                  child: Text(
-                                    'Total Estimated Price: ₱${_totalPrice.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green[700]),
-                                  ),
-                                ),
-                              // End New Service Selection UI
-                            ],
-                          ), // End child column
-                        ), // End Padding
-                      ), // End Card
-                      const SizedBox(height: 30),
+                              ),
+                            // End New Service Selection UI
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                       ElevatedButton.icon(
                         icon: _isAddingToQueue
                             ? const SizedBox(
@@ -890,6 +970,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
       'Queue No.',
       'Name',
       'Patient ID',
+      'Doctor', // ADDED
       'Arrival',
       'Purpose',
       'Status'
@@ -904,12 +985,12 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
         children: headers.map((text) {
           return Expanded(
             flex: (text == 'Name')
-                ? 3
+                ? 2
                 : (text == 'Patient ID'
                     ? 2
                     : (text == 'Purpose')
-                        ? 3
-                        : 1),
+                        ? 2
+                        : (text == 'Doctor') ? 2 : (text == 'Status') ? 2 : 1), // ADDED
             child: Text(text,
                 style: const TextStyle(
                     color: Colors.white,
@@ -929,6 +1010,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
     // Access conditionOrPurpose, which should now be part of the ActivePatientQueueItem model
     // and populated by your QueueService.
     String purposeText = item.conditionOrPurpose ?? 'Not specified';
+    String doctorText = item.doctorName ?? 'N/A'; // ADDED
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 1),
@@ -946,7 +1028,7 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               child: Text(item.queueNumber.toString(),
                   textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
           Expanded(
-              flex: 3,
+              flex: 2,
               child: Text(
                 item.patientName,
                 textAlign: TextAlign.center,
@@ -957,12 +1039,22 @@ class _AddToQueueScreenState extends State<AddToQueueScreen> {
               flex: 2,
               child: Text(item.patientId ?? 'N/A',
                   textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
+          Expanded( // ADDED Doctor column
+              flex: 2,
+              child: Tooltip(
+                message: "Dr. $doctorText",
+                child: Text("Dr. $doctorText",
+                    textAlign: TextAlign.center, 
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                ),
+              )),
           Expanded(
               flex: 1,
               child: Text(arrivalDisplayTime,
                   textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
           Expanded(
-              flex: 3,
+              flex: 2,
               child: Tooltip(
                 message: purposeText,
                 child: Text(

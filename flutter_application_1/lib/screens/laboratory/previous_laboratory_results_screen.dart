@@ -4,11 +4,11 @@ class PreviousLaboratoryResultsScreen extends StatefulWidget {
   const PreviousLaboratoryResultsScreen({super.key});
 
   @override
-  _PreviousLaboratoryResultsScreenState createState() =>
-      _PreviousLaboratoryResultsScreenState();
+  PreviousLaboratoryResultsScreenState createState() =>
+      PreviousLaboratoryResultsScreenState();
 }
 
-class _PreviousLaboratoryResultsScreenState
+class PreviousLaboratoryResultsScreenState
     extends State<PreviousLaboratoryResultsScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   List<Map<String, dynamic>> _results = [];
@@ -69,6 +69,7 @@ class _PreviousLaboratoryResultsScreenState
       },
     ];
 
+    if (!mounted) return;
     setState(() {
       _results = mockData;
       _isLoading = false;
@@ -244,7 +245,7 @@ class _PreviousLaboratoryResultsScreenState
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withAlpha(26),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                       ),
@@ -291,7 +292,7 @@ class _PreviousLaboratoryResultsScreenState
                         ),
                         elevation: 5,
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -397,10 +398,10 @@ class LabResultCard extends StatefulWidget {
   });
 
   @override
-  _LabResultCardState createState() => _LabResultCardState();
+  LabResultCardState createState() => LabResultCardState();
 }
 
-class _LabResultCardState extends State<LabResultCard> {
+class LabResultCardState extends State<LabResultCard> {
   bool _isHovering = false;
   bool _isPressed = false;
 
@@ -440,8 +441,8 @@ class _LabResultCardState extends State<LabResultCard> {
             boxShadow: [
               BoxShadow(
                 color: _isHovering
-                    ? Colors.black.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.05),
+                    ? Colors.black.withAlpha(26)
+                    : Colors.black.withAlpha(13),
                 blurRadius: _isHovering ? 10 : 5,
                 offset: Offset(0, _isHovering ? 5 : 2),
               ),
@@ -473,7 +474,7 @@ class _LabResultCardState extends State<LabResultCard> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         margin: const EdgeInsets.only(right: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1ABC9C).withOpacity(0.1),
+                          color: const Color(0xFF1ABC9C).withAlpha(26),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -488,7 +489,7 @@ class _LabResultCardState extends State<LabResultCard> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _getStatusColor().withOpacity(0.1),
+                          color: _getStatusColor().withAlpha(26),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(

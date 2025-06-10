@@ -8,10 +8,10 @@ class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
 
   @override
-  _UserManagementScreenState createState() => _UserManagementScreenState();
+  UserManagementScreenState createState() => UserManagementScreenState();
 }
 
-class _UserManagementScreenState extends State<UserManagementScreen> {
+class UserManagementScreenState extends State<UserManagementScreen> {
   List<User> _users = [];
   bool _isLoading = false;
   bool _isAddingUser = false;
@@ -614,7 +614,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   Widget _buildRoleBadge(String role) {
     Color badgeColor;
     IconData iconData;
-    final theme = Theme.of(context);
+    Theme.of(context);
 
     switch (role.toLowerCase()) {
       case 'admin':
@@ -637,9 +637,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.12),
+        color: badgeColor.withAlpha(31),
         borderRadius: BorderRadius.circular(20), // More rounded
-        border: Border.all(color: badgeColor.withOpacity(0.5), width: 1),
+        border: Border.all(color: badgeColor.withAlpha(128), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -662,7 +662,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final Color primaryTeal = Colors.teal[700]!;
 
     return Scaffold(
@@ -787,7 +786,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                         horizontal: 16, vertical: 10),
                                     leading: CircleAvatar(
                                       backgroundColor:
-                                          primaryTeal.withOpacity(0.12),
+                                          primaryTeal.withAlpha(31),
                                       child: Icon(Icons.account_circle_outlined,
                                           color: primaryTeal, size: 28),
                                     ),

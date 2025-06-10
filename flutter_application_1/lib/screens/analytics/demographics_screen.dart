@@ -1,16 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../models/patient.dart';
 import '../../services/api_service.dart';
 
 class DemographicsScreen extends StatefulWidget {
   const DemographicsScreen({super.key});
 
   @override
-  _DemographicsScreenState createState() => _DemographicsScreenState();
+  DemographicsScreenState createState() => DemographicsScreenState();
 }
 
-class _DemographicsScreenState extends State<DemographicsScreen> {
+class DemographicsScreenState extends State<DemographicsScreen> {
   Future<Map<String, dynamic>>? _demographicsFuture;
 
   @override
@@ -42,7 +42,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
 
       final genderDistribution = {'Male': 0, 'Female': 0, 'Other': 0, 'Unknown': 0};
       for (final patient in patients) {
-        final gender = patient.gender?.toLowerCase() ?? 'unknown';
+        final gender = patient.gender.toLowerCase();
         if (gender == 'male') {
           genderDistribution['Male'] = genderDistribution['Male']! + 1;
         } else if (gender == 'female') {
@@ -63,26 +63,24 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
       };
       for (final patient in patients) {
         final birthDate = patient.birthDate;
-        if (birthDate != null) {
-          int age = now.year - birthDate.year;
-          if (now.month < birthDate.month ||
-              (now.month == birthDate.month && now.day < birthDate.day)) {
-            age--;
-          }
-          
-          if (age <= 18) {
-            ageDistribution['0-18'] = ageDistribution['0-18']! + 1;
-          } else if (age <= 35) {
-            ageDistribution['19-35'] = ageDistribution['19-35']! + 1;
-          } else if (age <= 50) {
-            ageDistribution['36-50'] = ageDistribution['36-50']! + 1;
-          } else if (age <= 65) {
-            ageDistribution['51-65'] = ageDistribution['51-65']! + 1;
-          } else {
-            ageDistribution['65+'] = ageDistribution['65+']! + 1;
-          }
+        int age = now.year - birthDate.year;
+        if (now.month < birthDate.month ||
+            (now.month == birthDate.month && now.day < birthDate.day)) {
+          age--;
         }
-      }
+        
+        if (age <= 18) {
+          ageDistribution['0-18'] = ageDistribution['0-18']! + 1;
+        } else if (age <= 35) {
+          ageDistribution['19-35'] = ageDistribution['19-35']! + 1;
+        } else if (age <= 50) {
+          ageDistribution['36-50'] = ageDistribution['36-50']! + 1;
+        } else if (age <= 65) {
+          ageDistribution['51-65'] = ageDistribution['51-65']! + 1;
+        } else {
+          ageDistribution['65+'] = ageDistribution['65+']! + 1;
+        }
+            }
 
       return {
         'totalPatients': totalPatients,
@@ -90,7 +88,9 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
         'ageDistribution': ageDistribution,
       };
     } catch (e) {
-      print("Error fetching demographics: $e");
+      if (kDebugMode) {
+        print("Error fetching demographics: $e");
+      }
       throw Exception("Failed to load demographic data");
     }
   }
@@ -234,7 +234,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withAlpha(26),
             spreadRadius: 1,
             blurRadius: 3,
             offset: const Offset(0, 2),
@@ -290,7 +290,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                 padding: const EdgeInsets.only(bottom: 12.0),
                 child: _buildAgeDistributionBar(entry.key, percentage),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -323,7 +323,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                       Container(
                         height: 25,
                         decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                          color: Colors.grey.withAlpha(26),
                           borderRadius: BorderRadius.circular(12.5),
                         ),
                       ),
@@ -338,7 +338,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
                           borderRadius: BorderRadius.circular(12.5),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.teal.withOpacity(0.2),
+                              color: Colors.teal.withAlpha(51),
                               spreadRadius: 1,
                               blurRadius: 3,
                               offset: const Offset(0, 2),
@@ -435,7 +435,7 @@ class _DemographicsScreenState extends State<DemographicsScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withAlpha(26),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color),

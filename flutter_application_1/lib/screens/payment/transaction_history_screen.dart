@@ -4,11 +4,11 @@ class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
 
   @override
-  _TransactionHistoryScreenState createState() =>
-      _TransactionHistoryScreenState();
+  TransactionHistoryScreenState createState() =>
+      TransactionHistoryScreenState();
 }
 
-class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
+class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   final List<Map<String, String>> _transactions = [
     {'id': 'PT-1001', 'date': '2023-04-01', 'amount': '\$150.00'},
@@ -65,7 +65,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
             ElevatedButton(
               onPressed: _searchTransactions,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
-              child: Text('Search'),
+              child: const Text('Search'),
             ),
             const SizedBox(height: 20),
             Expanded(

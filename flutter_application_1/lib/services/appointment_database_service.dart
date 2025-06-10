@@ -1,8 +1,7 @@
 import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
-import 'package:sqflite/sqflite.dart';
 
 class AppointmentDatabaseService {
   final DatabaseHelper _dbHelper;
@@ -13,7 +12,7 @@ class AppointmentDatabaseService {
 
   Future<Appointment> insertAppointment(Appointment appointment) async {
     final db = await _dbHelper.database;
-    final appointmentMap = appointment.toJson();
+    final appointmentMap = appointment.toMap();
 
     if (appointmentMap['id'] == null) {
       appointmentMap['id'] =
@@ -26,12 +25,12 @@ class AppointmentDatabaseService {
     await db.insert(DatabaseHelper.tableAppointments, appointmentMap);
     await _dbHelper.logChange(DatabaseHelper.tableAppointments, appointmentMap['id'], 'insert');
 
-    return Appointment.fromJson(appointmentMap);
+    return Appointment.fromMap(appointmentMap);
   }
 
   Future<int> updateAppointment(Appointment appointment) async {
     final db = await _dbHelper.database;
-    final appointmentMap = appointment.toJson();
+    final appointmentMap = appointment.toMap();
 
     final result = await db.update(
       DatabaseHelper.tableAppointments,
@@ -80,7 +79,7 @@ class AppointmentDatabaseService {
     );
 
     return List.generate(maps.length, (i) {
-      return Appointment.fromJson(maps[i]);
+      return Appointment.fromMap(maps[i]);
     });
   }
 
@@ -93,7 +92,7 @@ class AppointmentDatabaseService {
     );
 
     return List.generate(maps.length, (i) {
-      return Appointment.fromJson(maps[i]);
+      return Appointment.fromMap(maps[i]);
     });
   }
 
@@ -108,7 +107,7 @@ class AppointmentDatabaseService {
     );
 
     if (maps.isNotEmpty) {
-      return Appointment.fromJson(maps.first);
+      return Appointment.fromMap(maps.first);
     }
     return null;
   }
@@ -133,7 +132,9 @@ class AppointmentDatabaseService {
         );
       }
     } catch (e) {
-      print('Error updating patient queue from sync: $e');
+      if (kDebugMode) {
+        print('Error updating patient queue from sync: $e');
+      }
       rethrow;
     }
   }

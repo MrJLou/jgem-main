@@ -57,6 +57,7 @@ Widget _buildStaticDatePickerField({
   required TextEditingController controller,
   required String label,
   required IconData icon,
+  required void Function(DateTime) onDatePicked,
   bool enabled = true,
 }) {
   return TextFormField(
@@ -84,18 +85,19 @@ Widget _buildStaticDatePickerField({
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     ),
-    onTap: enabled ? () async { // Added enabled check
-      final DateTime? picked = await showDatePicker(
-        context: context, // Use passed context
-        initialDate: DateTime.now(),
-        firstDate: DateTime(1900),
-        lastDate: DateTime.now(),
-      );
-      if (picked != null) {
-        // setState is not available here, controller update will trigger UI if parent is stateful
-        controller.text = DateFormat('yyyy-MM-dd').format(picked); 
-      }
-    } : null,
+    onTap: enabled
+        ? () async {
+            final DateTime? picked = await showDatePicker(
+              context: context,
+              initialDate: DateTime.now(),
+              firstDate: DateTime(1900),
+              lastDate: DateTime.now(),
+            );
+            if (picked != null) {
+              onDatePicked(picked);
+            }
+          }
+        : null,
     validator: (value) {
       if (value == null || value.isEmpty) {
         return 'Required';
@@ -183,11 +185,11 @@ class PatientRegistrationScreen extends StatefulWidget {
   const PatientRegistrationScreen({super.key, this.patient});
 
   @override
-  _PatientRegistrationScreenState createState() =>
-      _PatientRegistrationScreenState();
+  PatientRegistrationScreenState createState() =>
+      PatientRegistrationScreenState();
 }
 
-class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
+class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
@@ -282,10 +284,10 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                   borderRadius: BorderRadius.circular(12.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      spreadRadius: 1,
-                      blurRadius: 3,
-                      offset: const Offset(0, 2),
+                      color: Colors.grey.withAlpha(77),
+                      spreadRadius: 2,
+                      blurRadius: 5,
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
@@ -499,7 +501,8 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     );
   }
 
-  void _registerPatient() async {
+
+  Future<void> _registerPatient() async {
     if (_formKey.currentState!.validate()) {
       try {
         setState(() => _isLoading = true);
@@ -528,45 +531,42 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
         if (_isEditMode) {
           await ApiService.updatePatient(patientObject);
-          if (mounted) {
-            setState(() => _isLoading = false);
-            _showSuccessDialog(context, patientObject);
-          }
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          _showSuccessDialog(context, patientObject);
         } else {
           final newPatientId = await ApiService.createPatient(patientObject);
           final finalNewPatient = patientObject.copyWith(id: newPatientId);
-          if (mounted) {
-            setState(() {
-              _generatedPatientId = newPatientId; // For _buildSuccessMessage
-              _isLoading = false;
-            });
-            _showSuccessDialog(context, finalNewPatient);
-          }
+          if (!mounted) return;
+          setState(() {
+            _generatedPatientId = newPatientId; // For _buildSuccessMessage
+            _isLoading = false;
+          });
+          _showSuccessDialog(context, finalNewPatient);
         }
       } catch (e) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: Text('Failed to register patient: ${e.toString()}')),
-                ],
-              ),
-              backgroundColor: Colors.red[600],
-              behavior: SnackBarBehavior.floating, // Consistent behavior
-              margin: const EdgeInsets.all(10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              duration: const Duration(seconds: 5),
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                    child: Text('Failed to register patient: ${e.toString()}')),
+              ],
             ),
-          );
-        }
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating, // Consistent behavior
+            margin: const EdgeInsets.all(10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     } else {
        ScaffoldMessenger.of(context).showSnackBar(
@@ -785,6 +785,10 @@ class ReusablePatientFormFields extends StatelessWidget {
                       controller: dobController,
                       label: 'Date of Birth',
                       icon: Icons.calendar_today,
+                      onDatePicked: (pickedDate) {
+                        dobController.text =
+                            DateFormat('yyyy-MM-dd').format(pickedDate);
+                      },
                       enabled: !isEditMode || formType == FormType.mini,
                     ),
                   ),

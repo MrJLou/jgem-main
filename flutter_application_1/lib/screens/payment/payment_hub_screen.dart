@@ -88,7 +88,7 @@ class PaymentHubScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => PaymentScreen()),
+                              builder: (context) => const PaymentScreen()),
                         );
                       },
                     ),
@@ -157,7 +157,7 @@ class PaymentHubScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

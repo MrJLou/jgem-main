@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/appointment.dart';
@@ -10,10 +11,10 @@ class PatientTrendsScreen extends StatefulWidget {
   const PatientTrendsScreen({super.key});
 
   @override
-  _PatientTrendsScreenState createState() => _PatientTrendsScreenState();
+  PatientTrendsScreenState createState() => PatientTrendsScreenState();
 }
 
-class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
+class PatientTrendsScreenState extends State<PatientTrendsScreen> {
   final Color primaryColor = Colors.teal[700]!;
   Future<Map<String, dynamic>>? _trendsFuture;
 
@@ -87,7 +88,9 @@ class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
         'combinedServiceCounts': _getTopServices(combinedServiceCountsRaw),
       };
     } catch (e) {
-      print('Error fetching trends data: $e');
+      if (kDebugMode) {
+        print('Error fetching trends data: $e');
+      }
       throw Exception('Failed to fetch trends data: $e');
     }
   }
@@ -473,9 +476,11 @@ class _PatientTrendsScreenState extends State<PatientTrendsScreen> {
         gridData: FlGridData(
           show: true,
           getDrawingHorizontalLine: (value) {
-            return FlLine(color: Colors.grey.withOpacity(0.2), strokeWidth: 1);
+            return FlLine(color: Colors.grey.withAlpha(51), strokeWidth: 1);
           },
-          drawVerticalLine: false,
+          getDrawingVerticalLine: (value) {
+            return FlLine(color: Colors.grey[200]!, strokeWidth: 1);
+          },
         ),
         borderData: FlBorderData(
           show: false,

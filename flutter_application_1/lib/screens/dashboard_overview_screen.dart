@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import '../services/api_service.dart';
-import 'settings_screen.dart';
 
 class DashboardOverviewScreen extends StatefulWidget {
   const DashboardOverviewScreen({super.key});
 
   @override
-  _DashboardOverviewScreenState createState() => _DashboardOverviewScreenState();
+  DashboardOverviewScreenState createState() => DashboardOverviewScreenState();
 }
 
-class _DashboardOverviewScreenState extends State<DashboardOverviewScreen> {
+class DashboardOverviewScreenState extends State<DashboardOverviewScreen> {
   Future<Map<String, int>>? _statisticsFuture;
 
   @override

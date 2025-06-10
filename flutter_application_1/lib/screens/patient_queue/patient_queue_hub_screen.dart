@@ -10,10 +10,10 @@ class PatientQueueHubScreen extends StatefulWidget {
   const PatientQueueHubScreen({super.key, required this.accessLevel});
 
   @override
-  _PatientQueueHubScreenState createState() => _PatientQueueHubScreenState();
+  PatientQueueHubScreenState createState() => PatientQueueHubScreenState();
 }
 
-class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
+class PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
   final QueueService _queueService = QueueService();
 
   @override
@@ -87,7 +87,10 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                           builder: (context) =>
                               AddToQueueScreen(queueService: _queueService),
                         ),
-                      ).then((_) => setState(() {})),
+                      ).then((_) {
+                        if (!mounted) return;
+                        setState(() {});
+                      }),
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -102,7 +105,10 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                           builder: (context) => RemoveFromQueueScreen(
                               queueService: _queueService),
                         ),
-                      ).then((_) => setState(() {})),
+                      ).then((_) {
+                        if (!mounted) return;
+                        setState(() {});
+                      }),
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -166,7 +172,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

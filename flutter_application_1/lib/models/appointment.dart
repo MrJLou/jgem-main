@@ -4,145 +4,158 @@ import 'dart:convert'; // Required for jsonEncode and jsonDecode
 class Appointment {
   final String id;
   final String patientId;
+  final String doctorId;
   final DateTime date;
   final TimeOfDay time;
-  final String doctorId;
-  final String? consultationType; // Made optional as services will cover purpose
-  final int? durationMinutes;      // Made optional
-  String status;
+  final String status;
+  final String consultationType;
+  final List<Map<String, dynamic>> selectedServices;
+  final double totalPrice;
+  final int? durationMinutes;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-  final String? originalAppointmentId; // For queue items originating from appointments
-
-  // Fields for syncing from ActivePatientQueueItem
+  final DateTime? cancelledAt;
+  final String? cancellationReason;
+  final String? notes;
+  final bool? isWalkIn;
   final DateTime? consultationStartedAt;
   final DateTime? servedAt;
-  final List<Map<String, dynamic>>? selectedServices; // CHANGED: from String? to List<Map<String, dynamic>>?
-  final double? totalPrice;
-  final String? paymentStatus; // e.g., 'Pending', 'Paid', 'Waived'
+  final String? paymentStatus;
+  final String? originalAppointmentId;
 
   Appointment({
     required this.id,
     required this.patientId,
+    required this.doctorId,
     required this.date,
     required this.time,
-    required this.doctorId,
-    this.consultationType,
-    this.durationMinutes,
     required this.status,
+    required this.consultationType,
+    required this.selectedServices,
+    required this.totalPrice,
+    this.durationMinutes,
     this.createdAt,
     this.updatedAt,
-    this.originalAppointmentId,
-    // Fields for syncing
+    this.cancelledAt,
+    this.cancellationReason,
+    this.notes,
+    this.isWalkIn,
     this.consultationStartedAt,
     this.servedAt,
-    this.selectedServices,
-    this.totalPrice,
     this.paymentStatus,
+    this.originalAppointmentId,
   });
 
   Appointment copyWith({
     String? id,
     String? patientId,
+    String? doctorId,
     DateTime? date,
     TimeOfDay? time,
-    String? doctorId,
-    String? consultationType,
-    int? durationMinutes,
     String? status,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-    String? originalAppointmentId, // Potentially nullable
-    DateTime? consultationStartedAt,
-    DateTime? servedAt,
+    String? consultationType,
     List<Map<String, dynamic>>? selectedServices,
     double? totalPrice,
+    int? durationMinutes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? cancelledAt,
+    String? cancellationReason,
+    String? notes,
+    bool? isWalkIn,
+    DateTime? consultationStartedAt,
+    DateTime? servedAt,
     String? paymentStatus,
+    String? originalAppointmentId,
   }) {
     return Appointment(
       id: id ?? this.id,
       patientId: patientId ?? this.patientId,
+      doctorId: doctorId ?? this.doctorId,
       date: date ?? this.date,
       time: time ?? this.time,
-      doctorId: doctorId ?? this.doctorId,
-      consultationType: consultationType ?? this.consultationType,
-      durationMinutes: durationMinutes ?? this.durationMinutes,
       status: status ?? this.status,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId,
-      consultationStartedAt: consultationStartedAt ?? this.consultationStartedAt,
-      servedAt: servedAt ?? this.servedAt,
+      consultationType: consultationType ?? this.consultationType,
       selectedServices: selectedServices ?? this.selectedServices,
       totalPrice: totalPrice ?? this.totalPrice,
+      durationMinutes: durationMinutes ?? this.durationMinutes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      cancelledAt: cancelledAt ?? this.cancelledAt,
+      cancellationReason: cancellationReason ?? this.cancellationReason,
+      notes: notes ?? this.notes,
+      isWalkIn: isWalkIn ?? this.isWalkIn,
+      consultationStartedAt: consultationStartedAt ?? this.consultationStartedAt,
+      servedAt: servedAt ?? this.servedAt,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId,
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toMap() {
     return {
       'id': id,
       'patientId': patientId,
-      'date': date.toIso8601String(),
-      'time': '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
       'doctorId': doctorId,
-      'consultationType': consultationType,
-      'durationMinutes': durationMinutes,
+      'date': date.toIso8601String(),
+      'time': '${time.hour}:${time.minute.toString().padLeft(2, '0')}',
       'status': status,
+      'consultationType': consultationType,
+      'selectedServices': jsonEncode(selectedServices),
+      'totalPrice': totalPrice,
+      'durationMinutes': durationMinutes,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
-      'originalAppointmentId': originalAppointmentId,
+      'cancelledAt': cancelledAt?.toIso8601String(),
+      'cancellationReason': cancellationReason,
+      'notes': notes,
+      'isWalkIn': isWalkIn == true ? 1 : 0,
       'consultationStartedAt': consultationStartedAt?.toIso8601String(),
       'servedAt': servedAt?.toIso8601String(),
-      'selectedServices': selectedServices != null ? jsonEncode(selectedServices) : null, // Encode list to JSON string
-      'totalPrice': totalPrice,
       'paymentStatus': paymentStatus,
+      'originalAppointmentId': originalAppointmentId,
     };
   }
 
-  factory Appointment.fromJson(Map<String, dynamic> json) {
+  factory Appointment.fromMap(Map<String, dynamic> map) {
     List<Map<String, dynamic>>? services;
-    if (json['selectedServices'] is String) {
-      try {
-        var decoded = jsonDecode(json['selectedServices']);
-        if (decoded is List) {
-          services = decoded.cast<Map<String, dynamic>>();
-        }
-      } catch (e) {
-        print("Error decoding selectedServices from JSON: $e");
-        services = null; // or handle error appropriately
+    if (map['selectedServices'] != null) {
+      final decoded = jsonDecode(map['selectedServices']);
+      if (decoded is List) {
+        services = decoded.cast<Map<String, dynamic>>();
       }
-    } else if (json['selectedServices'] is List) { // Handle if it's already a list (e.g. from direct object creation)
-        services = (json['selectedServices'] as List).cast<Map<String, dynamic>>();
     }
 
-
     return Appointment(
-      id: json['id'] as String,
-      patientId: json['patientId'] as String,
-      date: DateTime.parse(json['date'] as String),
+      id: map['id'].toString(),
+      patientId: map['patientId'],
+      doctorId: map['doctorId'],
+      date: DateTime.parse(map['date']),
       time: TimeOfDay(
-        hour: int.parse((json['time'] as String).split(':')[0]),
-        minute: int.parse((json['time'] as String).split(':')[1]),
+        hour: int.parse(map['time'].split(':')[0]),
+        minute: int.parse(map['time'].split(':')[1]),
       ),
-      doctorId: json['doctorId'] as String,
-      consultationType: json['consultationType'] as String?,
-      durationMinutes: json['durationMinutes'] as int?,
-      status: json['status'] as String,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt'] as String) : null,
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
-      originalAppointmentId: json['originalAppointmentId'] as String?,
-      consultationStartedAt: json['consultationStartedAt'] != null ? DateTime.parse(json['consultationStartedAt'] as String) : null,
-      servedAt: json['servedAt'] != null ? DateTime.parse(json['servedAt'] as String) : null,
-      selectedServices: services,
-      totalPrice: (json['totalPrice'] as num?)?.toDouble(),
-      paymentStatus: json['paymentStatus'] as String?,
+      status: map['status'],
+      consultationType: map['consultationType'],
+      selectedServices: services ?? [],
+      totalPrice: (map['totalPrice'] as num?)?.toDouble() ?? 0.0,
+      durationMinutes: map['durationMinutes'],
+      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      cancelledAt: map['cancelledAt'] != null ? DateTime.parse(map['cancelledAt']) : null,
+      cancellationReason: map['cancellationReason'],
+      notes: map['notes'],
+      isWalkIn: map['isWalkIn'] == 1,
+      consultationStartedAt: map['consultationStartedAt'] != null ? DateTime.parse(map['consultationStartedAt']) : null,
+      servedAt: map['servedAt'] != null ? DateTime.parse(map['servedAt']) : null,
+      paymentStatus: map['paymentStatus'],
+      originalAppointmentId: map['originalAppointmentId'],
     );
   }
 
   @override
   String toString() {
-    return 'Appointment{id: $id, patientId: $patientId, date: $date, time: $time, doctorId: $doctorId, consultationType: $consultationType, durationMinutes: $durationMinutes, status: $status, createdAt: $createdAt, updatedAt: $updatedAt, originalAppointmentId: $originalAppointmentId, consultationStartedAt: $consultationStartedAt, servedAt: $servedAt, selectedServices: $selectedServices, totalPrice: $totalPrice, paymentStatus: $paymentStatus}';
+    return 'Appointment{id: $id, patientId: $patientId, date: $date, time: $time, doctorId: $doctorId, consultationType: $consultationType, durationMinutes: $durationMinutes, status: $status, createdAt: $createdAt, updatedAt: $updatedAt, cancelledAt: $cancelledAt, cancellationReason: $cancellationReason, notes: $notes, isWalkIn: $isWalkIn, consultationStartedAt: $consultationStartedAt, servedAt: $servedAt, selectedServices: $selectedServices, totalPrice: $totalPrice, paymentStatus: $paymentStatus}';
   }
 
   @override

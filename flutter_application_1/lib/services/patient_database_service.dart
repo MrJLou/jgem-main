@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 // You might need to import Patient model if it's used for return types or specific casting
 // import '../models/patient.dart'; 
@@ -128,7 +129,9 @@ class PatientDatabaseService {
         details: 'Real-time sync update from another device',
       );
     } catch (e) {
-      print('Error updating patient info from sync: $e'); // Consider a more robust logging/error handling
+      if (kDebugMode) {
+        print('Error updating patient info from sync: $e');
+      } // Consider a more robust logging/error handling
       rethrow;
     }
   }

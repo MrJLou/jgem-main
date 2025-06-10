@@ -11,10 +11,10 @@ class ViewQueueScreen extends StatefulWidget {
   const ViewQueueScreen({super.key, required this.queueService});
 
   @override
-  _ViewQueueScreenState createState() => _ViewQueueScreenState();
+  ViewQueueScreenState createState() => ViewQueueScreenState();
 }
 
-class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProviderStateMixin {
+class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   // State for Scheduled Appointments Tab
@@ -496,7 +496,7 @@ class _ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProv
       timeDisplay,
       appointment.patientId,
       appointment.doctorId,
-      appointment.consultationType ?? 'N/A',
+      appointment.consultationType,
     ];
     Color rowColor = Colors.white;
     Color textColor = Colors.black87;

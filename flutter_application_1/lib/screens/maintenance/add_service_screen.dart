@@ -74,7 +74,7 @@ class AddServiceScreen extends StatelessWidget {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
-              child: Text('Save Service'),
+              child: const Text('Save Service'),
             ),
           ],
         ),

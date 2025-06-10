@@ -50,10 +50,10 @@ class UpdateScreen extends StatefulWidget {
   const UpdateScreen({super.key});
 
   @override
-  _UpdateScreenState createState() => _UpdateScreenState();
+  UpdateScreenState createState() => UpdateScreenState();
 }
 
-class _UpdateScreenState extends State<UpdateScreen> {
+class UpdateScreenState extends State<UpdateScreen> {
   List<LogEntry> _recentLogs = [];
 
   @override
@@ -73,6 +73,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
+    if (!mounted) return;
     _loadLogs(); // Refresh logs when returning from the modification screen
   }
 
@@ -119,7 +120,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   Text(
                     'Modify patient details, status, and services', // Screen Subtitle
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withAlpha(230),
                       fontSize: 16, // Matches BackupScreen subtitle
                     ),
                   ),
@@ -254,13 +255,13 @@ class _UpdateScreenState extends State<UpdateScreen> {
           ),
           const SizedBox(height: 10),
           Container(
+            padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: Colors.grey[300]!),
+              color: Colors.white.withAlpha(230),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
+                  color: Colors.grey.withAlpha(26),
                   spreadRadius: 1,
                   blurRadius: 3,
                   offset: const Offset(0, 2),

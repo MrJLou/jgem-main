@@ -1,10 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For date formatting
 import 'package:flutter_application_1/screens/appointments/add_appointment_screen.dart'; 
 import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED for ApiService
-import 'package:flutter_application_1/models/patient.dart'; // ADDED
-import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // ADDED
 
 class AppointmentOverviewScreen extends StatefulWidget {
   const AppointmentOverviewScreen({super.key});
@@ -47,7 +46,9 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
       _filterAppointmentsForSelectedDate(); // Initial filter for the list view
       // _isDbInitialized = true; // Assuming ApiService handles DB readiness
     } catch (e) {
-      print("Error initializing or fetching all appointments: $e");
+      if (kDebugMode) {
+        print("Error initializing or fetching all appointments: $e");
+      }
       if (mounted) {
         setState(() {
           _errorMessage = "Failed to load appointments: ${e.toString()}";
@@ -81,12 +82,6 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
     _filterAppointmentsForSelectedDate(); // Filter from the already fetched all appointments
   }
 
-  bool _isPastSelectedDate() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final selectedDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    return selectedDay.isBefore(today);
-  }
 
   void _handleAppointmentSaved(Appointment newAppointmentFromForm) async {
     if (!mounted) return;
@@ -127,7 +122,9 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
       _filterAppointmentsForSelectedDate(); 
 
     } catch (e) {
-      print("Error saving appointment or adding to queue: $e");
+      if (kDebugMode) {
+        print("Error saving appointment or adding to queue: $e");
+      }
       if (mounted) {
         setState(() {
            _errorMessage = "Failed to save appointment: ${e.toString()}"; // Show error in UI
@@ -216,14 +213,10 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
               child: AddAppointmentScreen(
                 // Key is important if you need to forcefully re-init AddAppointmentScreen's state,
                 // e.g. when _selectedDate changes and you want its internal date to reset.
-                // key: ValueKey(_selectedDate), // This would re-create AddAppointmentScreen state on date change
-                selectedDate: _selectedDate,
+                key: ValueKey(_selectedDate), // This would re-create AddAppointmentScreen state on date change
+                initialDate: _selectedDate,
                 existingAppointments: List<Appointment>.from(_allCalendarAppointments), // Pass all for conflict check
-                onAppointmentSaved: _handleAppointmentSaved,
-                onCancel: () {
-                  // Optional: handle cancel from AddAppointmentScreen, e.g., clear selection or show message
-                  // For now, AddAppointmentScreen's internal _clearForm handles it.
-                },
+                onAppointmentAdded: _handleAppointmentSaved,
               ),
             ),
           ),
@@ -313,7 +306,7 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
                                       final appointment = _appointments[index];
                                       String subtitleText = 
                                           'Time: ${appointment.time.format(context)}';
-                                      if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty) {
+                                      if (appointment.consultationType.isNotEmpty) {
                                         subtitleText += ' (${appointment.consultationType}';
                                         if (appointment.durationMinutes != null && appointment.durationMinutes! > 0) {
                                           subtitleText += ', ${appointment.durationMinutes} mins';

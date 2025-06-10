@@ -176,25 +176,19 @@ class FAQScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.teal[700],
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        color: Colors.black.withAlpha(26),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: TextField(
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
-          hintText: 'Search FAQs...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+          hintText: 'Search in FAQ...',
+          hintStyle: TextStyle(color: Colors.white.withAlpha(179)),
+          prefixIcon: Icon(Icons.search, color: Colors.white.withAlpha(179)),
           filled: true,
-          fillColor: Colors.white.withOpacity(0.2),
+          fillColor: Colors.white.withAlpha(51),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

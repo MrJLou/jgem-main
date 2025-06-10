@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart';
@@ -36,10 +37,10 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, required this.accessLevel});
 
   @override
-  _DashboardScreenState createState() => _DashboardScreenState();
+  DashboardScreenState createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isHovered = false;
   final Map<int, bool> _hoveredItems = {};
@@ -169,21 +170,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void initState() {
-    print('DEBUG: DashboardScreen initState START');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen initState START');
+    }
     super.initState();
     _queueService = QueueService();
-    print('DEBUG: DashboardScreen initState calling _configureMenuForRole');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen initState calling _configureMenuForRole');
+    }
     _configureMenuForRole();
-    print('DEBUG: DashboardScreen initState calling _loadInitialData');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen initState calling _loadInitialData');
+    }
     _loadInitialData();
-    print('DEBUG: DashboardScreen initState END');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen initState END');
+    }
   }
 
   void _configureMenuForRole() {
-    print('DEBUG: Received accessLevel in _configureMenuForRole: ${widget.accessLevel}');
+    if (kDebugMode) {
+      print('DEBUG: Received accessLevel in _configureMenuForRole: ${widget.accessLevel}');
+    }
     List<String> allowedMenuKeys =
         _rolePermissions[widget.accessLevel] ?? _rolePermissions['patient']!;
-    print('DEBUG: allowedMenuKeys for ${widget.accessLevel}: $allowedMenuKeys');
+    if (kDebugMode) {
+      print('DEBUG: allowedMenuKeys for ${widget.accessLevel}: $allowedMenuKeys');
+    }
 
     List<String> tempTitles = [];
     List<Widget> tempScreens = [];
@@ -277,39 +290,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadAppointments() async {
-    if (!mounted) return;
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen _loadAppointments START');
+    }
+    if (!mounted) {
+      if (kDebugMode) {
+        print(
+          'DEBUG: DashboardScreen _loadAppointments NOT MOUNTED, returning early');
+      }
+      return;
+    }
     setState(() => _isLoading = true);
     try {
-      final apiAppointments = await ApiService.getAppointments(_selectedDate);
-      if (mounted) {
-        setState(() => _appointments = apiAppointments);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('Failed to load appointments: $e (local data shown)')),
-        );
-        if (_appointments.isEmpty) {
-          setState(() => _appointments = []);
+      final appointments = await ApiService.getAllAppointments();
+      if (!mounted) {
+        if (kDebugMode) {
+          print(
+            'DEBUG: DashboardScreen _loadAppointments NOT MOUNTED after fetch, returning');
         }
+        return;
       }
-      print('Failed to load appointments from API, using local/mock: $e');
+      if (kDebugMode) {
+        print(
+          'DEBUG: DashboardScreen _loadAppointments fetched ${appointments.length} appointments');
+      }
+      setState(() {
+        _appointments = appointments;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      if (kDebugMode) {
+        print('DEBUG: DashboardScreen _loadAppointments error: $e');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load appointments: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) {
+        if (kDebugMode) {
+          print(
+            'DEBUG: DashboardScreen _loadAppointments setting isLoading to false');
+        }
         setState(() => _isLoading = false);
       }
+    }
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen _loadAppointments END');
     }
   }
 
   void _loadInitialData() async {
-    print('DEBUG: DashboardScreen _loadInitialData START');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen _loadInitialData START');
+    }
     if (!mounted) {
-      print('DEBUG: DashboardScreen _loadInitialData NOT MOUNTED, returning');
+      if (kDebugMode) {
+        print('DEBUG: DashboardScreen _loadInitialData NOT MOUNTED, returning');
+      }
       return;
     }
     setState(() => _isLoading = true);
+    // Simulating a network call
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
     _appointments = [
       Appointment(
           id: '1',
@@ -318,6 +364,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           time: const TimeOfDay(hour: 9, minute: 0),
           doctorId: 'dr_smith_id',
           status: 'Confirmed',
+          selectedServices: [],
+          totalPrice: 0.0,
           consultationType: 'Regular checkup'),
       Appointment(
           id: '2',
@@ -326,16 +374,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
           time: const TimeOfDay(hour: 11, minute: 30),
           doctorId: 'dr_johnson_id',
           status: 'Pending',
+          selectedServices: [],
+          totalPrice: 0.0,
           consultationType: 'New patient consultation'),
     ];
     await _loadAppointments();
-    print('DEBUG: DashboardScreen _loadInitialData after _loadAppointments');
+    if (!mounted) return;
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen _loadInitialData after _loadAppointments');
+    }
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
-    print('DEBUG: DashboardScreen _loadInitialData END');
+    if (kDebugMode) {
+      print('DEBUG: DashboardScreen _loadInitialData END');
+    }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _saveAppointment() async {
@@ -358,6 +433,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           doctorId: _doctorController.text,
           status: 'Confirmed',
           consultationType: _notesController.text,
+          selectedServices: [],
+          totalPrice: 0.0,
         );
 
         await ApiService.saveAppointment(newAppointment);
@@ -533,9 +610,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? Colors.teal.withOpacity(0.15)
+                    ? Colors.teal.withAlpha(38)
                     : isItemHovered
-                        ? Colors.teal.withOpacity(0.08)
+                        ? Colors.teal.withAlpha(20)
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -595,7 +672,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
+                            color: Colors.black.withAlpha(26),
                             blurRadius: 2,
                             offset: const Offset(0, 1),
                           )
@@ -647,7 +724,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withAlpha(26),
                       blurRadius: 2,
                       offset: const Offset(0, 1),
                     )
@@ -793,7 +870,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: Colors.grey[100],
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.05), blurRadius: 2)
+                      color: Colors.black.withAlpha(26), blurRadius: 2)
                 ],
               ),
               child: SingleChildScrollView(
@@ -864,10 +941,10 @@ class AppointmentForm extends StatefulWidget {
   });
 
   @override
-  _AppointmentFormState createState() => _AppointmentFormState();
+  AppointmentFormState createState() => AppointmentFormState();
 }
 
-class _AppointmentFormState extends State<AppointmentForm> {
+class AppointmentFormState extends State<AppointmentForm> {
   Future<void> _selectTime(BuildContext context) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -1025,7 +1102,7 @@ Widget _buildAppointmentCard(Appointment appointment,
         children: [
           Text('Doctor ID: ${appointment.doctorId}'),
           Text('Time: ${appointment.time.format(context)}'),
-          if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
+          if (appointment.consultationType.isNotEmpty)
             Text('Consultation Type: ${appointment.consultationType}'),
         ],
       ),
@@ -1157,7 +1234,7 @@ class AppointmentCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text('Doctor ID: ${appointment.doctorId}'),
               Text('Time: ${appointment.time.format(context)}'),
-              if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
+              if (appointment.consultationType.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
                   child: Text('Consultation Type: ${appointment.consultationType}',
@@ -1199,7 +1276,7 @@ class AppointmentDetailDialog extends StatelessWidget {
             Text('Time: ${appointment.time.format(context)}'),
             Text('Doctor ID: ${appointment.doctorId}'),
             Text('Status: ${appointment.status}'),
-            if (appointment.consultationType != null && appointment.consultationType!.isNotEmpty)
+            if (appointment.consultationType.isNotEmpty)
               Text('Consultation Type: ${appointment.consultationType}'),
           ],
         ),
@@ -1221,10 +1298,10 @@ class LiveQueueDashboardView extends StatefulWidget {
       {super.key, required this.queueService, required this.appointments});
 
   @override
-  _LiveQueueDashboardViewState createState() => _LiveQueueDashboardViewState();
+  LiveQueueDashboardViewState createState() => LiveQueueDashboardViewState();
 }
 
-class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
+class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   final TextStyle cellStyle =
       const TextStyle(fontSize: 14, color: Colors.black87);
   DateTime _calendarSelectedDate = DateTime.now();
@@ -1239,29 +1316,41 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
 
   @override
   void initState() {
-    print('DEBUG: LiveQueueDashboardView initState START');
+    if (kDebugMode) {
+      print('DEBUG: LiveQueueDashboardView initState START');
+    }
     super.initState();
-    print('DEBUG: LiveQueueDashboardView initState calling _loadAppointments and _loadCombinedQueueData');
+    if (kDebugMode) {
+      print('DEBUG: LiveQueueDashboardView initState calling _loadAppointments and _loadCombinedQueueData');
+    }
     _loadAppointments().then((_) { // Load all appointments first
       _loadCombinedQueueData(_calendarSelectedDate); // Then load queue data for selected date
     });
-    print('DEBUG: LiveQueueDashboardView initState END');
+    if (kDebugMode) {
+      print('DEBUG: LiveQueueDashboardView initState END');
+    }
   }
   // ADDED: Method to load all appointments for the calendar view
   Future<void> _loadAppointments() async {
     if (!mounted) return;
-    print('DEBUG: LiveQueueDashboardView _loadAppointments START');
+    if (kDebugMode) {
+      print('DEBUG: LiveQueueDashboardView _loadAppointments START');
+    }
     try {
       final appointments = await ApiService.getAllAppointments();
       if (mounted) {
         setState(() {
           _allAppointmentsForCalendar = appointments;
           _filterDailyAppointments(); // Filter for the initially selected date
-          print('DEBUG: LiveQueueDashboardView _loadAppointments SUCCESS - Loaded ${appointments.length} appointments.');
+          if (kDebugMode) {
+            print('DEBUG: LiveQueueDashboardView _loadAppointments SUCCESS - Loaded ${appointments.length} appointments.');
+          }
         });
       }
     } catch (e) {
-      print('DEBUG: LiveQueueDashboardView _loadAppointments ERROR: $e');
+      if (kDebugMode) {
+        print('DEBUG: LiveQueueDashboardView _loadAppointments ERROR: $e');
+      }
       if (mounted) {
         setState(() {
           _allAppointmentsForCalendar = [];
@@ -1270,9 +1359,13 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     }
   }
   Future<void> _loadCombinedQueueData(DateTime selectedDateForQueue) async {
-    print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START for date: ${DateFormat.yMd().format(selectedDateForQueue)}');
+    if (kDebugMode) {
+      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData START for date: ${DateFormat.yMd().format(selectedDateForQueue)}');
+    }
     if (!mounted) {
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData NOT MOUNTED, returning');
+      if (kDebugMode) {
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData NOT MOUNTED, returning');
+      }
       return;
     }
     setState(() {
@@ -1293,15 +1386,21 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           item.originalAppointmentId!.isEmpty ||
           item.originalAppointmentId!.trim().isEmpty
         ).toList();
-        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today.');
-        print('DEBUG: Total active items: ${allActiveItems.length}, Walk-in items: ${walkInQueueItems.length}');
+        if (kDebugMode) {
+          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today.');
+        }
+        if (kDebugMode) {
+          print('DEBUG: Total active items: ${allActiveItems.length}, Walk-in items: ${walkInQueueItems.length}');
+        }
         // Debug: Print items that have originalAppointmentId
         final appointmentOriginatedItems = allActiveItems.where((item) => 
           item.originalAppointmentId != null && 
           item.originalAppointmentId!.isNotEmpty &&
           item.originalAppointmentId!.trim().isNotEmpty
         ).toList();
-        print('DEBUG: Items originated from appointments: ${appointmentOriginatedItems.length}');
+        if (kDebugMode) {
+          print('DEBUG: Items originated from appointments: ${appointmentOriginatedItems.length}');
+        }
       }
         // Load appointments for the selected date (not converted to queue items)
       final appointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
@@ -1317,7 +1416,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         return aTime.compareTo(bTime);
       });
 
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Found ${appointmentsForSelectedDate.length} appointments for ${DateFormat.yMd().format(selectedDateForQueue)}.');
+      if (kDebugMode) {
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Found ${appointmentsForSelectedDate.length} appointments for ${DateFormat.yMd().format(selectedDateForQueue)}.');
+      }
 
       // Sort walk-in queue items
       walkInQueueItems.sort((a, b) {
@@ -1332,11 +1433,15 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           _walkInQueueItems = walkInQueueItems;
           _appointmentsForSelectedDate = appointmentsForSelectedDate;
           _isLoadingQueueAndAppointments = false;
-          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Updated with ${walkInQueueItems.length} walk-ins and ${appointmentsForSelectedDate.length} appointments.');
+          if (kDebugMode) {
+            print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Updated with ${walkInQueueItems.length} walk-ins and ${appointmentsForSelectedDate.length} appointments.');
+          }
         });
       }
     } catch (e) {
-      print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData ERROR: $e');
+      if (kDebugMode) {
+        print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData ERROR: $e');
+      }
       if (mounted) {
         setState(() {
           _isLoadingQueueAndAppointments = false;
@@ -1361,9 +1466,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       // print('DEBUG: LiveQueueDashboardView _filterDailyAppointments Found ${_dailyAppointmentsForDisplay.length} appointments for display.');
     });
   }
-  void _refreshAllData() {
-    _loadCombinedQueueData(_calendarSelectedDate);
-  }  Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
+Future<void> _activateAndCallScheduledPatient(String appointmentId) async {
     if (!mounted) return;
     
     try {
@@ -1377,7 +1480,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         final patientDetails = await ApiService.getPatientById(originalAppointment.patientId);
         patientDisplayName = patientDetails.fullName;
             } catch (e) {
-        print('DEBUG: Could not fetch patient details for ${originalAppointment.patientId}: $e');
+        if (kDebugMode) {
+          print('DEBUG: Could not fetch patient details for ${originalAppointment.patientId}: $e');
+        }
       }
 
       // Create a new active queue item for the scheduled appointment with all appointment data
@@ -1389,7 +1494,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         queueNumber: 0, 
         status: 'in_consultation',
         paymentStatus: originalAppointment.paymentStatus ?? 'Pending',
-        conditionOrPurpose: originalAppointment.consultationType ?? 'Scheduled Consultation',
+        conditionOrPurpose: originalAppointment.consultationType,
         selectedServices: originalAppointment.selectedServices, // Transfer services from appointment
         totalPrice: originalAppointment.totalPrice, // Transfer total price from appointment
         createdAt: DateTime.now(),
@@ -1442,7 +1547,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       }
     } catch (e) {
       if (mounted) {
-        print("Error activating scheduled patient: $e");
+        if (kDebugMode) {
+          print("Error activating scheduled patient: $e");
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error activating: ${e.toString()}'),
@@ -1486,7 +1593,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withAlpha(15),
             blurRadius: 8,
             offset: const Offset(0, 4),
           )
@@ -1502,7 +1609,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                 Text(
                   'Welcome',
                   style: TextStyle(
-                      fontSize: 16, color: Colors.white.withOpacity(0.9)),
+                      fontSize: 16, color: Colors.white.withAlpha(230)),
                 ),
                 const Text(
                   'Valued User',
@@ -1516,17 +1623,14 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   'To keep the body in good health is a duty... otherwise we shall not be able to keep our mind strong and clear.',
                   style: TextStyle(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.85),
+                      color: Colors.white.withAlpha(217),
                       height: 1.4),
                 ),
               ],
             ),
           ),
-          Opacity(
-            opacity: 0.2,
-            child: Icon(Icons.medical_services_outlined,
-                size: 100, color: Colors.white.withOpacity(0.5)),
-          )
+          Icon(Icons.medical_services_outlined,
+              size: 100, color: Colors.white.withAlpha(26))
         ],
       ),
     );
@@ -1716,7 +1820,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   shape: BoxShape.circle,
                 ),
                 todayDecoration: BoxDecoration(
-                  color: Colors.teal[100]?.withOpacity(0.8),
+                  color: Colors.teal[100]?.withAlpha(200),
                   shape: BoxShape.circle,
                 ),
                 markerDecoration: BoxDecoration(
@@ -1793,7 +1897,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   }
 
   Widget _buildImageStyledAppointmentCard(Appointment appointment, {bool isHighlighted = false}) {
-    String details = appointment.consultationType ?? 'Scheduled';
+    String details = appointment.consultationType;
     if (details.isEmpty) details = 'Scheduled';
 
     return Card(
@@ -1808,8 +1912,8 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
               CircleAvatar(
                 radius: 20,
                 backgroundColor: isHighlighted
-                    ? Colors.white.withOpacity(0.2)
-                    : Colors.teal.withOpacity(0.1),
+                    ? Colors.white.withAlpha(50)
+                    : Colors.teal[500]?.withAlpha(26),
                 child: Icon(
                   Icons.person_outline,
                   color: isHighlighted ? Colors.white : Colors.teal[700],
@@ -1834,7 +1938,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                       details,
                       style: TextStyle(
                           color: isHighlighted
-                              ? Colors.white.withOpacity(0.85)
+                              ? Colors.white.withAlpha(217)
                               : Colors.grey[600],
                           fontSize: 12),
                       maxLines: 1,
@@ -1852,7 +1956,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                     appointment.time.format(context),
                     style: TextStyle(
                         color: isHighlighted
-                            ? Colors.white.withOpacity(0.9)
+                            ? Colors.white.withAlpha(230)
                             : Colors.grey[500],
                         fontSize: 11,
                         fontWeight: FontWeight.w500),
@@ -1964,7 +2068,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                   padding: const EdgeInsets.symmetric(
                       vertical: 8.0, horizontal: 4.0),
                   color: isSelectedMonth
-                      ? Colors.teal.withOpacity(0.2)
+                      ? Colors.teal[500]?.withAlpha(50)
                       : Colors.transparent,
                   child: Text(
                     months[index],
@@ -2362,7 +2466,7 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       timeString,
       appointment.patientId,
       appointment.doctorId,
-      appointment.consultationType ?? 'Consultation',
+      appointment.consultationType,
       appointment.status,
     ];    // Check if the appointment is already activated (in consultation or completed)
     bool isActivated = appointment.status.toLowerCase() == 'in consultation' || 
@@ -2479,7 +2583,9 @@ class _LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       }
     } catch (e) {
       if (mounted) {
-        print("Error updating queue item status: $e");
+        if (kDebugMode) {
+          print("Error updating queue item status: $e");
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Error updating status: ${e.toString()}"),

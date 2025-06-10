@@ -5,10 +5,10 @@ class ServiceSearchScreen extends StatefulWidget {
   const ServiceSearchScreen({super.key});
 
   @override
-  _ServiceSearchScreenState createState() => _ServiceSearchScreenState();
+  ServiceSearchScreenState createState() => ServiceSearchScreenState();
 }
 
-class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
+class ServiceSearchScreenState extends State<ServiceSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _hasSearched = false;
   bool _isLoading = false;
@@ -76,7 +76,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.2),
+            color: Colors.teal.withAlpha(51),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -113,7 +113,7 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
                 'Search and manage clinic services and procedures',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withAlpha(230),
                   fontSize: 16,
                   height: 1.5,
                 ),
@@ -127,11 +127,11 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
 
   Widget _buildSearchCard() {
     return Card(
-      elevation: 2,
+      elevation: 4,
+      shadowColor: Colors.teal.withAlpha(51),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(12.0),
       ),
-      shadowColor: Colors.teal.withOpacity(0.2),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -314,21 +314,16 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: service['availability'] == 'Available'
-                ? Colors.green.withOpacity(0.1)
-                : Colors.orange.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: service['availability'] == 'Available'
-                  ? Colors.green.withOpacity(0.5)
-                  : Colors.orange.withOpacity(0.5),
-            ),
+                ? Colors.green.withAlpha(26)
+                : Colors.orange.withAlpha(26),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             service['availability'],
             style: TextStyle(
               color: service['availability'] == 'Available'
-                  ? Colors.green[700]
-                  : Colors.orange[700],
+                  ? Colors.green.withAlpha(128)
+                  : Colors.orange.withAlpha(128),
               fontWeight: FontWeight.bold,
               fontSize: 12,
             ),
@@ -466,81 +461,24 @@ class _ServiceSearchScreenState extends State<ServiceSearchScreen> {
     });
 
     try {
-      // Create dummy services data for testing
-      _searchResults = [
-        {
-          'id': 'S001',
-          'name': 'General Consultation',
-          'category': 'General Medicine',
-          'duration': '30 mins',
-          'price': 75.00,
-          'description': 'Standard medical consultation with a general practitioner',
-          'availability': 'Available',
-        },
-        {
-          'id': 'S002',
-          'name': 'Complete Blood Count',
-          'category': 'Laboratory',
-          'duration': '15 mins',
-          'price': 45.00,
-          'description': 'Comprehensive blood test analyzing red cells, white cells, and platelets',
-          'availability': 'Available',
-        },
-        {
-          'id': 'S003',
-          'name': 'X-Ray Chest',
-          'category': 'Radiology',
-          'duration': '20 mins',
-          'price': 120.00,
-          'description': 'Chest X-ray imaging for diagnostic purposes',
-          'availability': 'Maintenance',
-        },
-        {
-          'id': 'S004',
-          'name': 'Dental Cleaning',
-          'category': 'Dental',
-          'duration': '45 mins',
-          'price': 85.00,
-          'description': 'Professional dental cleaning and checkup',
-          'availability': 'Available',
-        }
-      ];
-
-      // Filter by category if selected
-      if (_selectedCategory != 'All Categories') {
-        _searchResults = _searchResults.where((service) => 
-          service['category'] == _selectedCategory
-        ).toList();
-      }
-
-      // Filter by search term
-      if (_searchController.text.isNotEmpty) {
-        final searchTerm = _searchController.text.toLowerCase();
-        _searchResults = _searchResults.where((service) => 
-          service['name'].toString().toLowerCase().contains(searchTerm) ||
-          service['id'].toString().toLowerCase().contains(searchTerm)
-        ).toList();
-      }
-
+      final String searchTerm = _searchController.text;
+      final results = await ApiService.searchServices(
+          searchTerm: searchTerm, category: _selectedCategory); // Await the Future
+      if (!mounted) return;
       setState(() {
+        _searchResults = results;
         _isLoading = false;
+        _hasSearched = true;
       });
-
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _hasSearched = true;
         _searchResults = [];
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error searching for services: ${e.toString()}'),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+        SnackBar(content: Text('Error searching services: $e')),
       );
     }
   }

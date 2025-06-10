@@ -4,10 +4,10 @@ class UserRegistrationScreen extends StatefulWidget {
   const UserRegistrationScreen({super.key});
 
   @override
-  _UserRegistrationScreenState createState() => _UserRegistrationScreenState();
+  UserRegistrationScreenState createState() => UserRegistrationScreenState();
 }
 
-class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
+class UserRegistrationScreenState extends State<UserRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
@@ -521,7 +521,6 @@ class _UserRegistrationScreenState extends State<UserRegistrationScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
-      // TODO: Implement user registration logic
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(

@@ -8,10 +8,10 @@ class ModifyServicesScreen extends StatefulWidget {
   const ModifyServicesScreen({super.key});
 
   @override
-  _ModifyServicesScreenState createState() => _ModifyServicesScreenState();
+  ModifyServicesScreenState createState() => ModifyServicesScreenState();
 }
 
-class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
+class ModifyServicesScreenState extends State<ModifyServicesScreen> {
   final TextEditingController _serviceCategoryController =
       TextEditingController();
   final TextEditingController _specificServiceController =
@@ -50,6 +50,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
       });
 
       if (results.isEmpty && !fetchInitial && searchCategory.isNotEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content:
@@ -57,6 +58,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -92,6 +94,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
 
   Future<void> _saveService() async {
     if (_specificServiceController.text.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Service Name cannot be empty.'),
@@ -101,6 +104,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
     }
     final double? price = double.tryParse(_servicePriceController.text);
     if (_servicePriceController.text.isNotEmpty && price == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Invalid Price format.'),
@@ -143,6 +147,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
 
       ClinicService savedService =
           await ApiService.saveClinicService(clinicService);
+      if (!mounted) return;
 
       // Log the update
       RecentUpdateLogService.addLog(
@@ -162,15 +167,18 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
       _searchOrFilterServices(
           categoryOverride: currentCategory.isNotEmpty ? currentCategory : "");
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Error saving service: $e'),
             backgroundColor: Colors.redAccent),
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -205,6 +213,7 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
           _serviceCategoryController.text.trim();
       try {
         await ApiService.deleteClinicService(serviceId);
+        if (!mounted) return;
         // Log the deletion
         RecentUpdateLogService.addLog(
             'Service', 'Deleted service: $serviceName (ID: $serviceId)');
@@ -220,15 +229,18 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
                 ? currentCategoryAfterDelete
                 : ""); // Refresh list
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text('Error deleting service: $e'),
               backgroundColor: Colors.redAccent),
         );
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -394,12 +406,12 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
               flex: 3,
               child: Container(
                 decoration: BoxDecoration(
-                    color: Colors.teal[50]?.withOpacity(0.5),
+                    color: Colors.teal[50]?.withAlpha(128),
                     borderRadius: BorderRadius.circular(12.0),
                     border: Border.all(color: Colors.teal[300]!, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.2),
+                        color: Colors.grey.withAlpha(51),
                         spreadRadius: 1,
                         blurRadius: 3,
                         offset: const Offset(0, 2),
@@ -470,9 +482,10 @@ class _ModifyServicesScreenState extends State<ModifyServicesScreen> {
                                             const EdgeInsets.symmetric(
                                                 horizontal: 16.0,
                                                 vertical: 8.0),
-                                        leading: Icon(
-                                            Icons.medical_services_outlined,
-                                            color: Colors.teal[700]),
+                                        leading: CircleAvatar(
+                                          backgroundColor: Colors.teal[50]?.withAlpha(128),
+                                          child: const Icon(Icons.build_circle_outlined, color: Colors.teal),
+                                        ),
                                         title: Text(service.serviceName,
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.bold)),

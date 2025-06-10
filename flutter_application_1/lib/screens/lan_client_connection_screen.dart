@@ -59,6 +59,7 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
     final accessCode = _accessCodeController.text.trim();
 
     if (serverIp.isEmpty || portStr.isEmpty || accessCode.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill in all fields')),
       );
@@ -67,6 +68,7 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
 
     final port = int.tryParse(portStr);
     if (port == null || port < 1024 || port > 65535) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid port (1024-65535)')),
       );
@@ -81,13 +83,16 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
     try {
       final connected = await LanClientService.connectToServer(serverIp, port, accessCode);
       
+      if (!mounted) return;
       if (connected) {
         await _saveConnection();
+        if (!mounted) return;
         setState(() {
           _isConnected = true;
           _connectionStatus = 'Connected successfully';
         });
         
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Connected to LAN server successfully'),
@@ -98,11 +103,13 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         // Get server status
         await _getServerStatus();
       } else {
+        if (!mounted) return;
         setState(() {
           _isConnected = false;
           _connectionStatus = 'Connection failed';
         });
         
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to connect to server. Check IP, port, and access code.'),
@@ -111,11 +118,13 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isConnected = false;
         _connectionStatus = 'Connection error: $e';
       });
       
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Connection error: $e'),
@@ -123,9 +132,11 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         ),
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -137,6 +148,7 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
 
     try {
       final status = await LanClientService.getServerStatus();
+      if (!mounted) return;
       if (status != null) {
         setState(() {
           _isConnected = true;
@@ -151,20 +163,24 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isConnected = false;
         _connectionStatus = 'Connection check failed';
         _serverStatus = null;
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _getServerStatus() async {
     final status = await LanClientService.getServerStatus();
+    if (!mounted) return;
     if (status != null) {
       setState(() {
         _serverStatus = status;
@@ -179,7 +195,9 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
 
     try {
       final dbPath = await LanClientService.downloadDatabase();
+      if (!mounted) return;
       if (dbPath != null) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Database downloaded to: $dbPath'),
@@ -187,6 +205,7 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
           ),
         );
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to download database'),
@@ -195,6 +214,8 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Download error: $e'),
@@ -202,9 +223,11 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
         ),
       );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

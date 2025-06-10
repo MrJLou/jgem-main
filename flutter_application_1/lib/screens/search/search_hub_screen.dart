@@ -77,7 +77,7 @@ class SearchHubScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (context) => PatientSearchScreen()),
+                            builder: (context) => const PatientSearchScreen()),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -142,7 +142,7 @@ class SearchHubScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

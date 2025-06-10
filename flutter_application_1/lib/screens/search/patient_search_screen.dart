@@ -2,23 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../models/patient.dart';
-import '../../models/medical_record.dart';
 import 'dart:async';
 
 class PatientSearchScreen extends StatefulWidget {
   const PatientSearchScreen({super.key});
 
   @override
-  _PatientSearchScreenState createState() => _PatientSearchScreenState();
+  PatientSearchScreenState createState() => PatientSearchScreenState();
 }
 
-class _PatientSearchScreenState extends State<PatientSearchScreen> {
+class PatientSearchScreenState extends State<PatientSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   bool _hasSearched = false;
   bool _isLoading = false;
   Patient? _foundPatient;
-  List<MedicalRecord> _medicalRecords = [];
   List<Patient> _searchResults = [];
   String? _errorMessage;
   Map<String, dynamic>? _patientData;
@@ -231,7 +229,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   Widget _buildResultsPane() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.teal[50]?.withOpacity(0.5),
+        color: Colors.teal[50]?.withAlpha(128),
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: Colors.teal[300]!,
@@ -239,7 +237,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withAlpha(51),
             spreadRadius: 1,
             blurRadius: 3,
             offset: const Offset(0, 2),
@@ -320,7 +318,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.1),
+            color: Colors.teal.withAlpha(26),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -548,7 +546,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15),
                         elevation: 2,
-                        shadowColor: Colors.teal.withOpacity(0.4),
+                        shadowColor: Colors.teal.withAlpha(102),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -912,7 +910,6 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
       setState(() {
         // _foundPatient is already set
-        _medicalRecords = medicalRecords;
         _patientData = {
           'firstName': firstName,
           'lastName': lastName,
@@ -944,7 +941,6 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         _isLoading = false;
         _foundPatient = null; // Clear patient if details fetch failed
         _patientData = null;
-        _medicalRecords = [];
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1024,7 +1020,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         border: Border.all(color: Colors.teal[100]!),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.1),
+            color: Colors.teal.withAlpha(26),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -1170,7 +1166,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                     borderRadius: BorderRadius.circular(8)),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.teal[100],
+                    backgroundColor: Colors.teal[50]?.withAlpha(128),
                     child: Text(
                       patient.fullName.isNotEmpty
                           ? patient.fullName[0].toUpperCase()
@@ -1181,9 +1177,8 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                   ),
                   title: Text(patient.fullName,
                       style: const TextStyle(fontWeight: FontWeight.w500)),
-                  subtitle: Text('Patient ID: ${patient.id}'),
-                  trailing: Icon(Icons.arrow_forward_ios,
-                      size: 16, color: Colors.teal[600]),
+                  subtitle: Text(patient.id, style: TextStyle(color: Colors.grey.withAlpha(170))),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                   onTap: () {
                     _fetchPatientDetailsAndSetState(patient);
                   },
@@ -1401,106 +1396,12 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     return const SizedBox.shrink();
   }
 
-  void _searchPatient() async {
-    if (_searchController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white),
-              SizedBox(width: 10),
-              Expanded(
-                  child: Text(
-                      'Please enter either Patient ID or Surname to search')),
-            ],
-          ),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          margin: const EdgeInsets.all(10),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _hasSearched = true;
-      _foundPatient = null;
-      _patientData = null;
-      _medicalRecords = [];
-      _searchResults = [];
-      _errorMessage = null;
-    });
-
-    try {
-      List<Patient> tempPatientsList = [];
-      String searchInput = _searchController.text.trim();
-
-      if (searchInput.isNotEmpty) {
-        tempPatientsList = await ApiService.searchPatients(searchInput);
-      }
-
-      if (tempPatientsList.isNotEmpty) {
-        if (tempPatientsList.length == 1) {
-          await _fetchPatientDetailsAndSetState(tempPatientsList.first);
-        } else {
-          // Multiple patients found
-          setState(() {
-            _searchResults = tempPatientsList;
-            _foundPatient = null;
-            _patientData = null; // Ensure this is cleared
-            _isLoading = false;
-          });
-        }
-      } else {
-        // No patients found
-        setState(() {
-          _foundPatient = null;
-          _searchResults = []; // Ensure cleared
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _foundPatient = null;
-        _medicalRecords = [];
-        _searchResults = [];
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('Error searching for patient: $_errorMessage'),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          margin: const EdgeInsets.all(10),
-        ),
-      );
-    }
-  }
-
   void _resetSearch() {
     setState(() {
       _searchController.clear();
       _hasSearched = false;
       _foundPatient = null;
       _patientData = null;
-      _medicalRecords = [];
       _searchResults = [];
       _errorMessage = null;
       _isLoading = false;

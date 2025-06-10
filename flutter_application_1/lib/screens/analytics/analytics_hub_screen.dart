@@ -7,10 +7,10 @@ class AnalyticsHubScreen extends StatefulWidget {
   const AnalyticsHubScreen({super.key});
 
   @override
-  _AnalyticsHubScreenState createState() => _AnalyticsHubScreenState();
+  AnalyticsHubScreenState createState() => AnalyticsHubScreenState();
 }
 
-class _AnalyticsHubScreenState extends State<AnalyticsHubScreen>
+class AnalyticsHubScreenState extends State<AnalyticsHubScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   

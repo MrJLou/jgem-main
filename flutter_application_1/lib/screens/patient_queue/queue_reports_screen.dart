@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 // import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // Not directly used for instantiation here
 import 'package:intl/intl.dart'; // For date formatting
@@ -10,10 +11,10 @@ class QueueReportsScreen extends StatefulWidget {
   const QueueReportsScreen({super.key});
 
   @override
-  _QueueReportsScreenState createState() => _QueueReportsScreenState();
+  QueueReportsScreenState createState() => QueueReportsScreenState();
 }
 
-class _QueueReportsScreenState extends State<QueueReportsScreen> {
+class QueueReportsScreenState extends State<QueueReportsScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
   late Future<List<Map<String, dynamic>>> _reportsFuture;
@@ -72,6 +73,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
               ),
             ) ??
             false;
+        if (!mounted) return;
         if (!overwrite) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content:
@@ -80,6 +82,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         } else {
           // User confirmed overwrite, so delete the existing report first
           await _dbHelper.deleteQueueReport(existingReportForDate['id']);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -93,6 +96,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
 
       final reportId =
           await _queueService.saveDailyReportToDb(reportData: reportData);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
@@ -119,6 +123,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           ) ??
           false;
 
+      if (!mounted) return;
       if (exportNow) {
         // Fetch the just saved report data to pass its full data to export function
         // The `reportData` variable already holds what we need for export.
@@ -148,8 +153,10 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
             ) ??
             false;
 
+        if (!mounted) return;
         if (clearQueue) {
           int clearedCount = await _queueService.clearTodaysActiveQueue();
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -160,6 +167,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content:
@@ -177,7 +185,9 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           typedQueueData =
               List<Map<String, dynamic>>.from(jsonDecode(report['queueData']));
         } catch (e) {
-          print("Error decoding queueData in _viewAndExportReport: $e");
+          if (kDebugMode) {
+            print("Error decoding queueData in _viewAndExportReport: $e");
+          }
         }
       } else if (report['queueData'] is List) {
         typedQueueData = List<Map<String, dynamic>>.from(report['queueData']);
@@ -245,7 +255,9 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           dataForPdf['queueData'] = List<Map<String, dynamic>>.from(
               jsonDecode(dataForPdf['queueData']));
         } catch (e) {
-          print("Error decoding queueData for PDF export: $e");
+          if (kDebugMode) {
+            print("Error decoding queueData for PDF export: $e");
+          }
           dataForPdf['queueData'] = []; // Fallback to empty list
         }
       } else if (dataForPdf['queueData'] == null) {
@@ -253,6 +265,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
       }
 
       final filePath = await _queueService.exportDailyReportToPdf(dataForPdf);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Report exported to: $filePath'),
@@ -260,6 +273,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
             duration: const Duration(seconds: 5)),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Error exporting report: $e'),

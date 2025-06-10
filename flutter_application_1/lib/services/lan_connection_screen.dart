@@ -67,6 +67,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
       _syncInterval = prefs.getInt('sync_interval_minutes') ?? 5;
       _syncIntervalController.text = _syncInterval.toString();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading connection info: $e')),
       );
@@ -91,6 +92,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
 
       await _loadConnectionInfo();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error toggling server: $e')),
       );
@@ -112,10 +114,12 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
         _accessCode = newCode;
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Access code regenerated successfully')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error regenerating access code: $e')),
       );
@@ -134,6 +138,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
     try {
       final success = await LanSyncService.syncNow();
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success
@@ -144,6 +149,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
 
       await _loadConnectionInfo();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error during synchronization: $e')),
       );
@@ -174,10 +180,12 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
         _syncInterval = value;
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sync interval updated successfully')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error updating sync interval: $e')),
       );
@@ -222,10 +230,12 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
 
       await _loadConnectionInfo();
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Server port updated successfully')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error updating server port: $e')),
       );
@@ -244,6 +254,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
     try {
       final instructions = await LanSyncService.getDbBrowserInstructions();
 
+      if (!mounted) return;
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -271,6 +282,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error getting instructions: $e')),
       );

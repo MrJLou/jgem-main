@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Added import for DateFormat
 import '../../services/api_service.dart'; // Added import
@@ -8,11 +9,11 @@ class ModifyPatientDetailsScreen extends StatefulWidget {
   const ModifyPatientDetailsScreen({super.key});
 
   @override
-  _ModifyPatientDetailsScreenState createState() =>
-      _ModifyPatientDetailsScreenState();
+  ModifyPatientDetailsScreenState createState() =>
+      ModifyPatientDetailsScreenState();
 }
 
-class _ModifyPatientDetailsScreenState
+class ModifyPatientDetailsScreenState
     extends State<ModifyPatientDetailsScreen> {
   final _formKey = GlobalKey<FormState>(); // Added form key
   final TextEditingController _searchController = TextEditingController();
@@ -49,6 +50,7 @@ class _ModifyPatientDetailsScreenState
       });
       try {
         final results = await ApiService.searchPatients(searchTerm);
+        if (!mounted) return;
         setState(() {
           _searchResults = results;
           _isLoading = false;
@@ -62,6 +64,7 @@ class _ModifyPatientDetailsScreenState
           );
         }
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });
@@ -73,6 +76,7 @@ class _ModifyPatientDetailsScreenState
         );
       }
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a Patient ID or Name to search.'),
@@ -124,6 +128,7 @@ class _ModifyPatientDetailsScreenState
 
   Future<void> _updatePatientDetails() async {
     if (_selectedPatient == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No patient selected to update.'),
@@ -134,6 +139,7 @@ class _ModifyPatientDetailsScreenState
     }
 
     if (!(_formKey.currentState?.validate() ?? false)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please correct the errors in the form.'),
@@ -153,6 +159,7 @@ class _ModifyPatientDetailsScreenState
         birthDate =
             DateFormat('yyyy-MM-dd').parseStrict(_birthDateController.text);
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Invalid Birth Date format. Please use YYYY-MM-DD.'),
@@ -182,6 +189,7 @@ class _ModifyPatientDetailsScreenState
       );
 
       await ApiService.updatePatient(updatedPatient);
+      if (!mounted) return;
 
       // Log the update
       RecentUpdateLogService.addLog('Patient Detail',
@@ -210,6 +218,7 @@ class _ModifyPatientDetailsScreenState
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isUpdating = false;
       });
@@ -528,7 +537,9 @@ class _ModifyPatientDetailsScreenState
                               .parseStrict(_birthDateController.text);
                         } catch (e) {
                           // If parsing fails, initialDateTime remains DateTime.now()
-                          print('Error parsing date for DatePicker: $e');
+                          if (kDebugMode) {
+                            print('Error parsing date for DatePicker: $e');
+                          }
                         }
                       }
                       final DateTime? picked = await showDatePicker(

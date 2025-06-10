@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/active_patient_queue_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
@@ -9,13 +10,14 @@ import 'package:uuid/uuid.dart';
 import '../../models/bill_item.dart';
 import 'dart:convert'; // Added for jsonEncode in payment processing
 import 'dart:io'; // Added for PDF
-import 'dart:typed_data'; // Added for PDF
 import 'package:pdf/pdf.dart'; // Added for PDF
 import 'package:pdf/widgets.dart' as pw; // Added for PDF
-import 'package:path_provider/path_provider.dart'; // Added for PDF
+
 import 'package:printing/printing.dart'; // Added for PDF
 import 'package:open_filex/open_filex.dart'; // Added for opening PDF
 import 'package:flutter/services.dart' show rootBundle; // Added for loading image asset
+import 'package:flutter_application_1/models/user.dart';
+import '../../models/appointment.dart';
 
 enum InvoiceFlowStep { patientSelection, invoiceGenerated, paymentProcessing, paymentComplete }
 
@@ -23,10 +25,10 @@ class InvoiceScreen extends StatefulWidget {
   const InvoiceScreen({super.key});
 
   @override
-  _InvoiceScreenState createState() => _InvoiceScreenState();
+  InvoiceScreenState createState() => InvoiceScreenState();
 }
 
-class _InvoiceScreenState extends State<InvoiceScreen> {
+class InvoiceScreenState extends State<InvoiceScreen> {
   List<ActivePatientQueueItem> _inConsultationPatients = [];
   ActivePatientQueueItem? _selectedPatientQueueItem;
   Patient? _detailedPatientForInvoice;
@@ -65,12 +67,14 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         _currentUserId = user.id;
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error: Could not identify current user. Please log in again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Could not identify current user. Please log in again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -99,12 +103,14 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       setState(() {
         _isLoadingPatients = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error fetching patients: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error fetching patients: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -170,7 +176,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             borderRadius: BorderRadius.circular(4),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withAlpha(15),
                 blurRadius: 5,
                 offset: const Offset(0, 2),
               ),
@@ -194,12 +200,12 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   }
 
   void _resetInvoiceAndPaymentState() {
-    _generatedInvoiceNumber = null;
-    _currentBillItems = [];
-    _invoiceDate = null;
-    _amountPaidController.clear();
-    _paymentChange = 0.0;
-    _paymentReferenceNumber = null;
+      _generatedInvoiceNumber = null;
+      _currentBillItems = [];
+      _invoiceDate = null;
+      _amountPaidController.clear();
+      _paymentChange = 0.0;
+      _paymentReferenceNumber = null;
     _generatedPdfBytes = null;
   }
   
@@ -219,7 +225,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           fetchedPatientDetails = Patient.fromJson(patientDataMap);
         }
       } catch (e) {
-        print("Error fetching patient details for invoice: $e");
+        if (kDebugMode) {
+          print("Error fetching patient details for invoice: $e");
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error fetching patient details: ${e.toString()}'), backgroundColor: Colors.red),
@@ -337,7 +345,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         // Based on `recordInvoiceAndPayment` it can take an empty list and use patient.totalPrice
         // if `billItemsJson` is empty.
     }
-    
+
     try {
       final result = await _dbHelper.recordInvoiceAndPayment(
         displayInvoiceNumber: displayInvNum,
@@ -361,7 +369,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       bool paymentAndServeSuccess = await _queueService.markPaymentSuccessfulAndServe(processedPatientItem.queueEntryId);
       if (!paymentAndServeSuccess) {
         // Even if DB record is fine, if queue update fails, it's a partial success. Log or notify.
-        print('Warning: Payment recorded in DB, but failed to update queue status for ${processedPatientItem.queueEntryId}');
+        if (kDebugMode) {
+          print('Warning: Payment recorded in DB, but failed to update queue status for ${processedPatientItem.queueEntryId}');
+        }
         // Potentially show a different message or offer a retry for queue update.
       }
 
@@ -389,7 +399,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           await _savePdfInvoice(pdfBytes, displayInvNum); // displayInvNum is _generatedInvoiceNumber
         }
       } catch (pdfError) {
-        print('Error auto-saving PDF after payment: $pdfError');
+        if (kDebugMode) {
+          print('Error auto-saving PDF after payment: $pdfError');
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Payment successful, but failed to auto-save PDF: $pdfError'), backgroundColor: Colors.orange),
@@ -403,223 +415,390 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         _currentStep = InvoiceFlowStep.paymentComplete;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment successful! Reference: $_paymentReferenceNumber. Change: ₱${_paymentChange.toStringAsFixed(2)}'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment successful! Reference: $_paymentReferenceNumber. Change: ₱${_paymentChange.toStringAsFixed(2)}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
 
     } catch (e) {
-      print('Error processing payment: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing payment: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('Error processing payment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing payment: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   // --- PDF Generation and Handling Methods ---
 
+  /// Breaks long words in a string by inserting zero-width spaces
+  /// to prevent text layout overflow errors in the PDF generator.
+  String _forceWrap(String text, {int chunkLength = 35}) {
+    if (text.isEmpty) {
+      return text;
+    }
+    final buffer = StringBuffer();
+    for (var i = 0; i < text.length; i++) {
+      buffer.write(text[i]);
+      if ((i + 1) % chunkLength == 0 && i < text.length - 1) {
+        buffer.write('\u200B'); // Zero-width space
+      }
+    }
+    return buffer.toString();
+  }
+
   Future<Uint8List> _generatePdfInvoiceBytes() async {
     final pdf = pw.Document();
 
-    // Invoice Details
-    final String invoiceNumber = _generatedInvoiceNumber ?? 'INV-XXXXXX';
-    final String patientName = _detailedPatientForInvoice?.fullName ??
-        _selectedPatientQueueItem?.patientName ??
-        'N/A';
-    final String patientAddress = _detailedPatientForInvoice?.address ?? 'N/A';
-    final String patientContact =
-        _detailedPatientForInvoice?.contactNumber ?? 'N/A';
-    final DateTime issueDate = _invoiceDate ?? DateTime.now();
-    final DateTime dueDate = issueDate.add(const Duration(days: 30));
+    // Load custom fonts from assets
+    final fontData = await rootBundle.load("assets/fonts/NotoSans-Regular.ttf");
+    final ttf = pw.Font.ttf(fontData);
+    final boldFontData = await rootBundle.load("assets/fonts/NotoSans-Bold.ttf");
+    final boldTtf = pw.Font.ttf(boldFontData);
+    final theme = pw.ThemeData.withFont(base: ttf, bold: boldTtf);
 
+    // --- 1. Data Preparation ---
+    final String invoiceNumber = _generatedInvoiceNumber ?? '598647';
+    final DateTime issueDate = _invoiceDate ?? DateTime.now();
     final List<BillItem> items = _currentBillItems;
-    final double subtotal =
-        items.fold(0.0, (sum, item) => sum + item.itemTotal);
+    final double subtotal = items.fold(0.0, (sum, item) => sum + item.itemTotal);
+    // No tax or discount as per request
     final double totalAmount = subtotal;
 
-    // Define custom colors
-    final tealColor = PdfColor.fromHex('#00796B'); // Colors.teal[700]
-    final lightTealColor = PdfColor.fromHex('#B2DFDB'); // Colors.teal[100]
+    // Patient Info
+    final patient = _detailedPatientForInvoice;
+    final patientInfo = {
+      'Name': _forceWrap(patient?.fullName ?? 'Joseph Frey'),
+      'Address': _forceWrap(patient?.address ?? '3681 Derek Drive Wooster, OH 44691'),
+      'Phone Number': _forceWrap(patient?.contactNumber ?? '224 555 7777'),
+      'Email': _forceWrap(patient?.email ?? 'josephfrey@email.com'),
+    };
 
-    final boldStyle = pw.TextStyle(fontWeight: pw.FontWeight.bold);
-    final normalStyle = const pw.TextStyle();
-
-    // Load logo
-    pw.Widget logoWidget;
-    try {
-      final ByteData logoData =
-          await rootBundle.load('assets/images/slide1.png');
-      final Uint8List logoBytes = logoData.buffer.asUint8List();
-      logoWidget = pw.Image(pw.MemoryImage(logoBytes), width: 80, height: 80);
-    } catch (e) {
-      print('Error loading logo for PDF: $e');
-      logoWidget = pw.Container(
-          width: 80,
-          height: 80,
-          decoration:
-              pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey)),
-          child: pw.Center(
-              child: pw.Text('Logo Not Found',
-                  style: const pw.TextStyle(
-                      fontSize: 10, color: PdfColors.grey))));
+    // Doctor Info Fetching
+    User? doctor;
+    if (_selectedPatientQueueItem?.originalAppointmentId != null &&
+        _selectedPatientQueueItem!.originalAppointmentId!.isNotEmpty) {
+      try {
+        Appointment? appointment = await _dbHelper.appointmentDbService
+            .getAppointmentById(_selectedPatientQueueItem!.originalAppointmentId!);
+        if (appointment != null) {
+          doctor =
+              await _dbHelper.userDbService.getUserById(appointment.doctorId);
+        }
+      } catch (e) {
+        debugPrint("Error fetching doctor details for PDF: $e");
+      }
     }
+    final doctorInfo = {
+      'Name': _forceWrap(doctor?.fullName ?? 'Dr. Anne Manning'), // Fallback to template name
+      'Address': _forceWrap('Pathology'), // No specific field for this, using placeholder
+    };
 
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => [
-          // HEADER
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+    // --- 2. Styles & Colors ---
+    final baseColor = PdfColor.fromHex('#E0F7FA'); // Very light cyan
+    final accentColor = PdfColor.fromHex('#00838F'); // Darker cyan/teal
+    final fontColor = PdfColor.fromHex('#424242'); // Dark Grey
+
+    final normalStyle = pw.TextStyle(fontSize: 9, color: fontColor);
+    final boldStyle =
+        pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: fontColor);
+    final accentBoldStyle = boldStyle.copyWith(color: accentColor);
+
+    // --- 3. Reusable Widgets ---
+    pw.Widget buildInfoTable(String title, Map<String, String> data) {
+      return pw.Table(
+        border: pw.TableBorder.all(color: accentColor, width: 1),
+        columnWidths: {
+          0: const pw.FlexColumnWidth(1.5),
+          1: const pw.FlexColumnWidth(3),
+        },
+        children: [
+          pw.TableRow(
+            decoration: pw.BoxDecoration(color: baseColor),
             children: [
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  logoWidget,
-                  pw.SizedBox(height: 10),
-                  pw.Text('J-GEM Medical and Diagnostic Clinic',
-                      style: boldStyle.copyWith(color: tealColor)),
-                  pw.Text('123 Health St, Wellness City'),
-                  pw.Text('contact@jgem-clinic.com'),
-                ],
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: pw.Text(title, style: accentBoldStyle.copyWith(fontSize: 10)),
               ),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
+              pw.Container(), // Empty cell for the title row
+            ],
+          ),
+          ...data.entries.map((e) {
+            return pw.TableRow(
+              verticalAlignment: pw.TableCellVerticalAlignment.middle,
+              children: [
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: pw.Text(e.key, style: accentBoldStyle),
+                ),
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: pw.Text(e.value, style: normalStyle),
+                ),
+              ],
+            );
+          }),
+        ],
+      );
+    }
+    
+    // --- 4. PDF Page Structure ---
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        theme: theme,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              // --- Header ---
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('INVOICE',
                       style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold,
-                          fontSize: 40,
-                          color: tealColor)),
-                  pw.SizedBox(height: 10),
-                  pw.Text('Invoice #: $invoiceNumber', style: boldStyle),
-                  pw.Text(
-                      'Date of Issue: ${DateFormat('MM/dd/yyyy').format(issueDate)}',
-                      style: normalStyle),
-                  pw.Text(
-                      'Due Date: ${DateFormat('MM/dd/yyyy').format(dueDate)}',
-                      style: normalStyle),
+                          color: accentColor,
+                          fontSize: 32,
+                          fontWeight: pw.FontWeight.bold)),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text('J-Gem Medical and Diagnostic Clinic',
+                          style: boldStyle.copyWith(fontSize: 14)),
+                      pw.SizedBox(height: 2),
+                      pw.Text('107 George Avenue Mobile, AL 36610',
+                          style: normalStyle),
+                      pw.Text('jgemclinic@gmail.com | 0936 467 2988',
+                          style: normalStyle),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-          pw.SizedBox(height: 40),
+              pw.SizedBox(height: 30),
 
-          // BILLED TO
-          pw.Text('BILLED TO:', style: boldStyle.copyWith(color: tealColor)),
-          pw.SizedBox(height: 5),
-          pw.Text(patientName, style: boldStyle),
-          if (patientAddress != 'N/A')
-            pw.Text(patientAddress, style: normalStyle),
-          if (patientContact != 'N/A')
-            pw.Text(patientContact, style: normalStyle),
-          pw.SizedBox(height: 30),
-
-          // ITEMS TABLE
-          pw.Table.fromTextArray(
-            headerStyle: boldStyle.copyWith(color: PdfColors.white),
-            headerDecoration: pw.BoxDecoration(color: tealColor),
-            cellPadding: const pw.EdgeInsets.all(8),
-            cellAlignments: {
-              0: pw.Alignment.centerLeft,
-              1: pw.Alignment.centerRight,
-              2: pw.Alignment.centerRight,
-              3: pw.Alignment.centerRight,
-            },
-            data: <List<String>>[
-              <String>['DESCRIPTION', 'QTY', 'RATE', 'AMOUNT'],
-              ...items.map((item) => [
-                    item.description,
-                    item.quantity.toString(),
-                    '₱${item.unitPrice.toStringAsFixed(2)}',
-                    '₱${item.itemTotal.toStringAsFixed(2)}',
-                  ]),
-            ],
-            rowDecoration: const pw.BoxDecoration(
-                border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5))),
-            oddRowDecoration: pw.BoxDecoration(color: lightTealColor.shade(0.3)),
-          ),
-
-          pw.SizedBox(height: 20),
-
-          // TOTALS
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.end,
-            children: [
-              pw.SizedBox(
-                width: 250,
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Subtotal:'),
-                          pw.Text('₱${subtotal.toStringAsFixed(2)}')
-                        ]),
-                    pw.SizedBox(height: 5),
-                    pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Discount:'),
-                          pw.Text('₱0.00')
-                        ]),
-                    pw.SizedBox(height: 5),
-                    pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Tax (0%):'),
-                          pw.Text('₱0.00')
-                        ]),
-                    pw.Divider(height: 10, thickness: 1.5),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              // --- Main Content: Two Columns ---
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // --- Left Column ---
+                  pw.Expanded(
+                    flex: 7,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                       children: [
-                        pw.Text('TOTAL:',
-                            style: boldStyle.copyWith(fontSize: 14)),
-                        pw.Text('₱${totalAmount.toStringAsFixed(2)}',
-                            style: boldStyle.copyWith(
-                                fontSize: 14, color: tealColor)),
+                        // Invoice #
+                        pw.Container(
+                          decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: accentColor)),
+                          child: pw.Column(children: [
+                            pw.Container(
+                                width: double.infinity,
+                                color: baseColor,
+                                padding: const pw.EdgeInsets.all(4),
+                                child: pw.Text('INVOICE #',
+                                    textAlign: pw.TextAlign.center,
+                                    style: accentBoldStyle)),
+                            pw.Container(
+                                width: double.infinity,
+                                padding: const pw.EdgeInsets.all(6),
+                                child: pw.Text(invoiceNumber,
+                                    textAlign: pw.TextAlign.center,
+                                    style: normalStyle.copyWith(fontSize: 11))),
+                          ]),
+                        ),
+                        pw.SizedBox(height: 15),
+                        buildInfoTable('PATIENT INFORMATION', patientInfo),
+                        pw.SizedBox(height: 15),
+                        buildInfoTable('DOCTOR INFORMATION', doctorInfo),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  pw.SizedBox(width: 30),
+                  // --- Right Column ---
+                  pw.Expanded(
+                    flex: 4,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        // Invoice Date
+                        pw.Container(
+                          decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: accentColor)),
+                          child: pw.Column(children: [
+                            pw.Container(
+                                width: double.infinity,
+                                color: baseColor,
+                                padding: const pw.EdgeInsets.all(4),
+                                child: pw.Text('INVOICE DATE',
+                                    textAlign: pw.TextAlign.center,
+                                    style: accentBoldStyle)),
+                            pw.Container(
+                                width: double.infinity,
+                                padding: const pw.EdgeInsets.all(6),
+                                child: pw.Text(DateFormat('dd-MMM-yy').format(issueDate),
+                                    textAlign: pw.TextAlign.center,
+                                    style: normalStyle.copyWith(fontSize: 11))),
+                          ]),
+                        ),
+                        pw.SizedBox(height: 15),
+                        // Total Due
+                        pw.Container(
+                          decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: accentColor)),
+                          child: pw.Column(children: [
+                            pw.Container(
+                                width: double.infinity,
+                                color: baseColor,
+                                padding: const pw.EdgeInsets.all(4),
+                                child: pw.Text('TOTAL DUE',
+                                    textAlign: pw.TextAlign.center,
+                                    style: accentBoldStyle)),
+                            pw.Container(
+                                width: double.infinity,
+                                padding: const pw.EdgeInsets.all(6),
+                                child: pw.Text('₱${totalAmount.toStringAsFixed(2)}',
+                                    textAlign: pw.TextAlign.center,
+                                    style: boldStyle.copyWith(fontSize: 14))),
+                          ]),
+                        ),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+              pw.SizedBox(height: 30),
+
+              // --- Services Table ---
+              pw.Table(
+                border: pw.TableBorder.all(color: accentColor, width: 1),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1.5),
+                  1: const pw.FlexColumnWidth(4),
+                  2: const pw.FlexColumnWidth(2),
+                  3: const pw.FlexColumnWidth(2),
+                  4: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  // Header Row
+                  pw.TableRow(
+                    decoration: pw.BoxDecoration(color: baseColor),
+                    children: [
+                      // Manually align headers
+                      pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('DATE', style: accentBoldStyle)),
+                      pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('SERVICE DESCRIPTION', style: accentBoldStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('TOTAL FEE', style: accentBoldStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('CO-PAY', style: accentBoldStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('BALANCE', style: accentBoldStyle)),
+                    ],
+                  ),
+                  // Data Rows
+                  ...items.map((item) {
+                    final fee = item.itemTotal;
+                    const copay =
+                        0.00; // Co-pay is not in the data model, using placeholder
+                    final balance = fee - copay;
+                    return pw.TableRow(
+                      verticalAlignment: pw.TableCellVerticalAlignment.middle,
+                      children: [
+                        pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text(DateFormat('dd-MMM-yy').format(issueDate), style: normalStyle)),
+                        pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text(_forceWrap(item.description), style: normalStyle)),
+                        pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱${fee.toStringAsFixed(2)}', style: normalStyle)),
+                        pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱${copay.toStringAsFixed(2)}', style: normalStyle)),
+                        pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱${balance.toStringAsFixed(2)}', style: normalStyle)),
+                      ],
+                    );
+                  }),
+                  // Empty Rows
+                  ...List.generate(
+                    7 - items.length > 0 ? 7 - items.length : 0,
+                    (i) => pw.TableRow(children: [
+                      pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('', style: normalStyle)),
+                      pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('', style: normalStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱ -', style: normalStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱ -', style: normalStyle)),
+                      pw.Container(alignment: pw.Alignment.centerRight, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('₱ -', style: normalStyle)),
+                    ]),
+                  ),
+                ],
+              ),
+
+              // --- Footer ---
+              pw.Spacer(), // Pushes footer to the bottom
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  // Left side: Terms
+                  pw.Expanded(
+                    flex: 7,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                         pw.Text('Terms & Conditions', style: accentBoldStyle),
+                         pw.SizedBox(height: 2),
+                         pw.Text('Please send payment within 30 days.', style: normalStyle),
+                         pw.SizedBox(height: 8),
+                         pw.Text('We accept Visa, Master Card, etc.', style: normalStyle),
+                      ]
+                    ),
+                  ),
+                  pw.SizedBox(width: 20),
+                  // Right side: Totals
+                  pw.Expanded(
+                    flex: 5,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text('SUB TOTAL', style: normalStyle),
+                            pw.Text('₱${subtotal.toStringAsFixed(2)}', style: normalStyle),
+                          ]
+                        ),
+                        pw.Divider(color: accentColor),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          color: accentColor,
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Text('TOTAL', style: boldStyle.copyWith(color: PdfColors.white)),
+                              pw.Text('₱${totalAmount.toStringAsFixed(2)}', style: boldStyle.copyWith(color: PdfColors.white)),
+                            ]
+                          ),
+                        ),
+                      ]
+                    )
+                  )
+                ]
+              ),
+               pw.SizedBox(height: 40),
+               pw.Align(
+                alignment: pw.Alignment.bottomRight,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                  pw.Container(height: 1, width: 150, color: fontColor),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Signature', style: normalStyle),
+                ]),
               ),
             ],
-          ),
-          pw.Spacer(), // Pushes footer to bottom
-
-          // TERMS
-          pw.Text('TERMS & CONDITIONS',
-              style: boldStyle.copyWith(color: tealColor)),
-          pw.SizedBox(height: 5),
-          pw.Text(
-            '1. Payment is due within 30 days from the date of issue. A late fee of 1.5% per month will be charged on overdue accounts.\n'
-            '2. Please quote the invoice number when making payments.\n'
-            '3. All checks should be made payable to "J-GEM Medical and Diagnostic Clinic".',
-            style: const pw.TextStyle(fontSize: 8),
-          ),
-        ],
-        footer: (context) {
-          return pw.Column(children: [
-            pw.Divider(color: PdfColors.grey),
-            pw.SizedBox(height: 5),
-            pw.Text(
-                'Thank you for your business! | J-GEM Medical and Diagnostic Clinic | 123 Health St, Wellness City',
-                textAlign: pw.TextAlign.center,
-                style:
-                    const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
-          ]);
+          );
         },
       ),
     );
+
     return pdf.save();
   }
 
@@ -641,7 +820,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
       if (!await invoiceDir.exists()) {
         await invoiceDir.create(recursive: true);
-        print("Created Invoice directory at: ${invoiceDir.path}");
+        debugPrint("Created Invoice directory at: ${invoiceDir.path}");
       }
       final filePath = '${invoiceDir.path}/$invoiceNumber.pdf';
       final file = File(filePath);
@@ -661,7 +840,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         );
       }
     } catch (e) {
-      print("Error saving PDF relative to database path: $e");
+      debugPrint("Error saving PDF relative to database path: $e");
       if(mounted) { // Ensure widget is still mounted before showing SnackBar
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error saving PDF: ${e.toString()}'), backgroundColor: Colors.red),
@@ -682,9 +861,11 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         onLayout: (PdfPageFormat format) async => pdfBytes,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error printing PDF: ${e.toString()}'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error printing PDF: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -759,7 +940,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     final patient = _selectedPatientQueueItem!;
     double subtotal =
         _currentBillItems.fold(0.0, (sum, item) => sum + item.itemTotal);
-    double discount = 0.00;
+    double discount = 0.00; 
     double taxAmount = 0.0; // Tax removed
     double total = subtotal - discount + taxAmount; // Tax is now 0
 
@@ -768,116 +949,53 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // HEADER
+          // Simplified Header for UI
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Image.asset(
-                'assets/images/slide1.png',
-                width: 120,
-                height: 60,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 120,
-                  height: 60,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration:
-                      BoxDecoration(border: Border.all(color: Colors.grey)),
-                  child:
-                      const Text("Logo", style: TextStyle(color: Colors.grey)),
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text("Invoice",
-                      style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[800])),
-                  const SizedBox(height: 10),
-                  Text("INVOICE DETAILS:",
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700])),
-                  Text("Invoice #: ${_generatedInvoiceNumber ?? 'N/A'}"),
-                  Text(
-                      "Date of Issue: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!)}"),
-                  Text(
-                      "Due Date: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!.add(const Duration(days: 30)))}"),
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 30),
-          // BILLED TO
-          Text("BILLED TO:",
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.blue[800])),
-          const SizedBox(height: 4),
-          Text(_detailedPatientForInvoice?.fullName ?? patient.patientName),
-          Text(_detailedPatientForInvoice?.address ?? "Street Address Line 01"),
-          const Text("Street Address Line 02"),
-          const SizedBox(height: 30),
-
-          // ITEMS TABLE
-          _buildItemsTable(),
-          const SizedBox(height: 10),
-
-          // TERMS AND TOTALS
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("TERMS",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[800])),
-                    const SizedBox(height: 4),
-                    const Text("Text here"),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    _buildTotalRow("Subtotal", subtotal),
-                    _buildTotalRow("Discount", discount, isDiscount: true),
-                    _buildTotalRow("Tax (0%)", taxAmount),
-                    const Divider(thickness: 1.5),
-                    _buildTotalRow("TOTAL", total, isTotal: true),
-                  ],
-                ),
-              ),
+              Text("Invoice", style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.teal[800])),
+              Image.asset('assets/images/slide1.png', width: 80, height: 80),
             ],
           ),
           const SizedBox(height: 20),
-          Text("CONDITIONS/INSTRUCTIONS",
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.blue[800])),
-          const SizedBox(height: 4),
-          const Text("Text here"),
+                    Text("Invoice #: ${_generatedInvoiceNumber ?? 'N/A'}"),
+          Text("Date: ${DateFormat('MM/dd/yyyy').format(_invoiceDate!)}"),
+          const Divider(height: 30),
+
+          // Simplified Patient Info
+          Text("Patient:", style: Theme.of(context).textTheme.titleMedium),
+          Text(_detailedPatientForInvoice?.fullName ?? patient.patientName),
+          Text(_detailedPatientForInvoice?.address ?? "N/A"),
+          const Divider(height: 30),
+          
+          // Items Table - using the same one for consistency
+          _buildItemsTable(),
+          const SizedBox(height: 20),
+
+          // Simplified Totals
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _buildTotalRow("Subtotal", subtotal),
+                  const Divider(thickness: 1.5),
+                    _buildTotalRow("TOTAL", total, isTotal: true),
+                  ],
+              ),
+            ],
+          ),
           const SizedBox(height: 30),
 
           // BUTTONS
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              ElevatedButton(
-                  onPressed: () async {
-                    if (_generatedInvoiceNumber == null ||
-                        _currentBillItems.isEmpty) {
-                      return;
-                    }
-                    final pdfBytes = await _generatePdfInvoiceBytes();
-                    if (mounted) {
-                      await _printPdfInvoice(pdfBytes);
+               ElevatedButton(
+                onPressed: () async {
+                    if (_generatedPdfBytes != null) {
+                      await _printPdfInvoice(_generatedPdfBytes!);
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -885,15 +1003,10 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   child: const Text("Print Invoice",
                       style: TextStyle(color: Colors.black54))),
               const SizedBox(width: 10),
-              ElevatedButton(
-                  onPressed: () async {
-                    if (_generatedInvoiceNumber == null ||
-                        _currentBillItems.isEmpty) {
-                      return;
-                    }
-                    final pdfBytes = await _generatePdfInvoiceBytes();
-                    if (mounted) {
-                      await _savePdfInvoice(pdfBytes, _generatedInvoiceNumber!);
+               ElevatedButton(
+                onPressed: () async {
+                     if (_generatedPdfBytes != null && _generatedInvoiceNumber != null) {
+                      await _savePdfInvoice(_generatedPdfBytes!, _generatedInvoiceNumber!);
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -931,18 +1044,13 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          color: Colors.blue[800],
+          color: Colors.teal[700],
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
           child: const Row(
             children: [
               Expanded(
-                  flex: 3,
+                  flex: 7, // Merged ITEM/SERVICE and DESCRIPTION
                   child: Text("ITEM/SERVICE",
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold))),
-              Expanded(
-                  flex: 4,
-                  child: Text("DESCRIPTION",
                       style: TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold))),
               Expanded(
@@ -973,17 +1081,22 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           itemBuilder: (context, index) {
             final item = _currentBillItems[index];
             return Container(
-              color: Colors.yellow[100],
+              color: Colors.teal[50],
               padding:
                   const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
               child: Row(
                 children: [
                   Expanded(
-                      flex: 3,
-                      child: Text(item.description.length > 15
-                          ? "${item.description.substring(0, 15)}..."
-                          : item.description)),
-                  Expanded(flex: 4, child: Text(item.description)),
+                    flex: 7, // Merged and adjusted flex
+                    child: Tooltip( // Added tooltip for long descriptions
+                      message: item.description,
+                      child: Text(
+                        item.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                   Expanded(
                       flex: 1,
                       child: Text(item.quantity.toString(),
@@ -1003,7 +1116,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             );
           },
         ),
-        Divider(color: Colors.blue[800], thickness: 2, height: 2),
+        Divider(color: Colors.teal[700], thickness: 2, height: 2),
       ],
     );
   }
@@ -1113,33 +1226,33 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ElevatedButton.icon(
-                icon: const Icon(Icons.print_outlined),
-                label: const Text("Print Receipt"),
-                onPressed: () async {
-                  if (_generatedInvoiceNumber == null || _currentBillItems.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cannot print receipt: Invoice data missing.'), backgroundColor: Colors.orange),
-                    );
-                    return;
-                  }
-                  final pdfBytes = await _generatePdfInvoiceBytes();
+          ElevatedButton.icon(
+            icon: const Icon(Icons.print_outlined),
+            label: const Text("Print Receipt"),
+            onPressed: () async {
+              if (_generatedInvoiceNumber == null || _currentBillItems.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cannot print receipt: Invoice data missing.'), backgroundColor: Colors.orange),
+                );
+                return;
+              }
+              final pdfBytes = await _generatePdfInvoiceBytes();
                   if (mounted) {
                     // Check if the widget is still in the tree
-                    await _printPdfInvoice(pdfBytes);
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-              ),
+                await _printPdfInvoice(pdfBytes);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          ),
               const SizedBox(width: 15),
-              ElevatedButton(
-                onPressed: () {
-                  _fetchInConsultationPatients(); // Resets to patient selection
-                },
+          ElevatedButton(
+            onPressed: () {
+              _fetchInConsultationPatients(); // Resets to patient selection
+            },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
                 child: const Text("New Invoice/Payment"),
-              ),
-            ],
+          ),
+        ],
           ),
         ],
       ),
@@ -1243,8 +1356,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         return _buildPaymentProcessingView();
       case InvoiceFlowStep.paymentComplete:
         return _buildPaymentCompleteView();
-      default:
-        return const Center(child: Text("Something went wrong."));
     }
   }
 
@@ -1272,7 +1383,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           fetchedPatientDetails = Patient.fromJson(patientDataMap);
         }
       } catch (e) {
-        print("Error fetching patient details for unpaid invoice: $e");
+        if (kDebugMode) {
+          print("Error fetching patient details for unpaid invoice: $e");
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error fetching patient details: ${e.toString()}'), backgroundColor: Colors.red),
@@ -1393,7 +1506,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       }
 
     } catch (e) {
-      print("Error saving unpaid invoice: $e");
+      if (kDebugMode) {
+        print("Error saving unpaid invoice: $e");
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save unpaid invoice: ${e.toString()}'), backgroundColor: Colors.red),
@@ -1442,7 +1557,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12.0),
                   boxShadow: [
-                    BoxShadow(color: Colors.grey.withOpacity(0.3), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, 2)),
+                    BoxShadow(color: Colors.grey.withAlpha(20), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, 2)),
                   ],
                 ),
                 child: Column(
@@ -1465,7 +1580,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12.0),
                   boxShadow: [
-                    BoxShadow(color: Colors.grey.withOpacity(0.3), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, 2)),
+                    BoxShadow(color: Colors.grey.withAlpha(25), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, 2)),
                   ],
                 ),
                 child: SingleChildScrollView( 

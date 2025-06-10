@@ -76,6 +76,21 @@ class UserDatabaseService {
     return null;
   }
 
+  // Get user by ID
+  Future<User?> getUserById(String id) async {
+    final db = await _dbHelper.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      DatabaseHelper.tableUsers,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isNotEmpty) {
+      return User.fromJson(maps.first);
+    }
+    return null;
+  }
+
   // Update user
   Future<int> updateUser(Map<String, dynamic> user) async {
     final db = await _dbHelper.database;

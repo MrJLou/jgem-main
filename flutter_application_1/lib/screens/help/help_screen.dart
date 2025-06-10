@@ -153,7 +153,7 @@ class HelpScreen extends StatelessWidget {
         color: Colors.teal[700],
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withAlpha(26),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -167,7 +167,7 @@ class HelpScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withAlpha(51),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -206,7 +206,7 @@ class HelpScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withAlpha(51),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -217,7 +217,7 @@ class HelpScreen extends StatelessWidget {
                   child: Text(
                     'Our support team is available 24/7 to assist you with any questions or concerns',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withAlpha(90),
                       fontSize: 14,
                     ),
                   ),
@@ -253,7 +253,7 @@ class HelpScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

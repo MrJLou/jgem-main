@@ -4,10 +4,10 @@ class MedicalRecordsScreen extends StatefulWidget {
   const MedicalRecordsScreen({super.key});
 
   @override
-  _MedicalRecordsScreenState createState() => _MedicalRecordsScreenState();
+  MedicalRecordsScreenState createState() => MedicalRecordsScreenState();
 }
 
-class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
+class MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
       name: 'John Doe',
@@ -151,7 +151,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

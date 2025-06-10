@@ -4,10 +4,10 @@ class SerologyTestReportScreen extends StatefulWidget {
   const SerologyTestReportScreen({super.key});
 
   @override
-  _SerologyTestReportScreen createState() => _SerologyTestReportScreen();
+  SerologyTestReportScreenState createState() => SerologyTestReportScreenState();
 }
 
-class _SerologyTestReportScreen extends State<SerologyTestReportScreen> {
+class SerologyTestReportScreenState extends State<SerologyTestReportScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
       name: 'Angela Cruz',
@@ -149,7 +149,7 @@ class _SerologyTestReportScreen extends State<SerologyTestReportScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

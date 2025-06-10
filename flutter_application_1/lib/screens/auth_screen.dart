@@ -9,10 +9,10 @@ class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  _AuthScreenState createState() => _AuthScreenState();
+  AuthScreenState createState() => AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
+class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   late PageController _pageController;
   late AnimationController _slideAnimationController;
   late AnimationController _fadeAnimationController;
@@ -154,9 +154,13 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     setState(() => _isLoading = true);
     try {
       final isLoggedIn = await AuthService.isLoggedIn();
-      if (isLoggedIn && mounted) {
+      if (!mounted) return;
+
+      if (isLoggedIn) {
         final credentials = await AuthService.getSavedCredentials();
-        if (credentials != null && mounted) {
+        if (!mounted) return;
+
+        if (credentials != null) {
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
@@ -215,6 +219,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
         final response =
             await ApiService.login(username, _loginPasswordController.text);
+        
+        if (!mounted) return;
+        
         final userRole = response['user']?.role;
 
         if (userRole == null) {
@@ -233,26 +240,22 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           accessLevel: userRole,
         );
 
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DashboardScreen(accessLevel: userRole),
-            ),
-            (route) => false,
-          );
-        }
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(accessLevel: userRole),
+          ),
+          (route) => false,
+        );
       } catch (e) {
         if (_loginUsernameController.text.isNotEmpty) {
           await LoginRateLimiter.recordFailedAttempt(
               _loginUsernameController.text);
         }
+        if (!mounted) return;
         setState(() {
-          _loginErrorMessage = e.toString().contains('Too many attempts')
-              ? 'Login failed: Too many attempts. Please try again later.'
-              : e.toString().contains('Invalid credentials')
-                  ? 'Login failed: Invalid username or password.'
-                  : 'Login failed: An unexpected error occurred. ${e.toString()}';
+          _loginErrorMessage = e.toString();
         });
       } finally {
         if (mounted) {
@@ -305,19 +308,26 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           securityQuestion3: _selectedSecurityQuestion3,
           securityAnswer3: hashedSecurityAnswer3,
         );
+        await LoginRateLimiter.recordSuccessfulLogin(
+            _signupUsernameController.text);
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Account created successfully! Please log in.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          _switchToTab(0);
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Signup successful! Please log in with your new credentials.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _switchToTab(0);
       } catch (e) {
+        if (_signupUsernameController.text.isNotEmpty) {
+          await LoginRateLimiter.recordFailedAttempt(
+              _signupUsernameController.text);
+        }
+        if (!mounted) return;
         setState(() {
-          _signupErrorMessage = 'Sign up failed: ${e.toString()}';
+          _signupErrorMessage = e.toString();
         });
       } finally {
         if (mounted) {
@@ -346,10 +356,10 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.grey[100],
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : FadeTransition(
@@ -363,7 +373,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                       color: Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withAlpha(13),
                           blurRadius: 10,
                           offset: const Offset(2, 0),
                         ),
@@ -403,7 +413,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                               height: 60,
                               width: 60,
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(30),
                                 gradient: LinearGradient(
                                   colors: [
                                     Colors.teal[400]!,
@@ -484,17 +494,29 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                     height: 300,
                     width: 300,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        colors: [Colors.teal[200]!, Colors.teal[400]!],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.medical_services,
-                      size: 120,
                       color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(25),
+                          blurRadius: 30,
+                          offset: const Offset(0, 15),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(35.0),
+                        child: Image.asset(
+                          'assets/images/slide1.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.local_hospital_outlined,
+                            size: 100,
+                            color: Colors.teal[700],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

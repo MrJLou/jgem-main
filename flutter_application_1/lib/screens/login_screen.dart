@@ -4,7 +4,6 @@ import 'dart:math' as math; // Added for rotation
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../widgets/login_rate_limiter.dart';
 import 'dashboard_screen.dart';
 import 'forgot_password_screen.dart';
 import 'signup_screen.dart';
@@ -13,10 +12,10 @@ class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  LoginScreenState createState() => LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
@@ -283,7 +282,6 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -299,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen>
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withAlpha(50),
                         blurRadius: 10,
                         offset: const Offset(2, 0),
                       ),
@@ -314,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen>
                         width: 60,
                         decoration: BoxDecoration(
                           color: Colors.teal[700],
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(30),
                         ),
                         child: const Icon(
                           Icons.medical_services_rounded,
@@ -394,7 +392,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   "Manage patient records securely.",
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withAlpha(230),
                                   ),
                                 ),
                               ),
@@ -404,7 +402,7 @@ class _LoginScreenState extends State<LoginScreen>
                               FadeTransition(
                                 opacity: _fadeAnimation, // Using the existing fade animation
                                 child: _imageRotationController == null // Guard condition
-                                    ? SizedBox(
+                                    ? const SizedBox(
                                         width: 220,
                                         height: 220) // Placeholder if not initialized
                                     : AnimatedBuilder(
@@ -434,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen>
                                                       borderRadius: BorderRadius.all(Radius.elliptical(shadowWidth / 2, shadowHeight / 2)),
                                                       boxShadow: [
                                                         BoxShadow(
-                                                          color: Colors.black.withOpacity(shadowOpacity),
+                                                          color: Colors.black.withAlpha((255 * shadowOpacity).round()),
                                                           blurRadius: shadowBlur,
                                                           spreadRadius: shadowSpread,
                                                         ),
@@ -474,9 +472,8 @@ class _LoginScreenState extends State<LoginScreen>
                                               width: 200, // Slightly smaller to give shadow space
                                               height: 200,
                                               decoration: BoxDecoration(
-                                                color: Colors.white.withOpacity(0.95),
                                                 shape: BoxShape.circle,
-                                                // Removed original BoxShadow to use the new dynamic one
+                                                color: Colors.white.withAlpha(242),
                                               ),
                                               child: ClipOval(
                                                 child: Padding(

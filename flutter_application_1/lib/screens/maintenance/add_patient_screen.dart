@@ -73,7 +73,7 @@ class AddPatientScreen extends StatelessWidget {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
-              child: Text('Save Patient'),
+              child: const Text('Save Patient'),
             ),
           ],
         ),

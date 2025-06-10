@@ -4,11 +4,11 @@ class ClinicalMicroscopyReportScreen extends StatefulWidget {
   const ClinicalMicroscopyReportScreen({super.key});
 
   @override
-  _ClinicalMicroscopyReportScreenState createState() =>
-      _ClinicalMicroscopyReportScreenState();
+  ClinicalMicroscopyReportScreenState createState() =>
+      ClinicalMicroscopyReportScreenState();
 }
 
-class _ClinicalMicroscopyReportScreenState
+class ClinicalMicroscopyReportScreenState
     extends State<ClinicalMicroscopyReportScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
@@ -155,7 +155,7 @@ class _ClinicalMicroscopyReportScreenState
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

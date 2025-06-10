@@ -25,6 +25,8 @@ class ActivePatientQueueItem {
   final DateTime?
       consultationStartedAt; // Timestamp when patient status changes to 'in_consultation'
   final String? originalAppointmentId; // ADDED: To link back to the original appointment if applicable
+  final String? doctorId; // ADDED: To assign a doctor to the queue entry
+  final String? doctorName; // ADDED: To display doctor's name easily
   const ActivePatientQueueItem({
     required this.queueEntryId,
     this.patientId,
@@ -44,6 +46,8 @@ class ActivePatientQueueItem {
     this.removedAt,
     this.consultationStartedAt,
     this.originalAppointmentId, // ADDED
+    this.doctorId, // ADDED
+    this.doctorName, // ADDED
   });
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? services;
@@ -101,6 +105,8 @@ class ActivePatientQueueItem {
           ? DateTime.parse(json['consultationStartedAt'] as String)
           : null,
       originalAppointmentId: json['originalAppointmentId'] as String?, // ADDED
+      doctorId: json['doctorId'] as String?, // ADDED
+      doctorName: json['doctorName'] as String?, // ADDED
     );
   }
   Map<String, dynamic> toJson() {
@@ -125,6 +131,8 @@ class ActivePatientQueueItem {
       'removedAt': removedAt?.toIso8601String(),
       'consultationStartedAt': consultationStartedAt?.toIso8601String(),
       'originalAppointmentId': originalAppointmentId, // ADDED
+      'doctorId': doctorId, // ADDED
+      'doctorName': doctorName, // ADDED
     };
   }
 
@@ -147,6 +155,8 @@ class ActivePatientQueueItem {
     DateTime? removedAt,
     DateTime? consultationStartedAt,
     String? originalAppointmentId, // ADDED
+    String? doctorId, // ADDED
+    String? doctorName, // ADDED
   }) {
     return ActivePatientQueueItem(
       queueEntryId: queueEntryId ?? this.queueEntryId,
@@ -168,6 +178,8 @@ class ActivePatientQueueItem {
       consultationStartedAt:
           consultationStartedAt ?? this.consultationStartedAt,
       originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId, // ADDED
+      doctorId: doctorId ?? this.doctorId, // ADDED
+      doctorName: doctorName ?? this.doctorName, // ADDED
     );
   }
 }

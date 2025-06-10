@@ -4,11 +4,11 @@ class ChemistryTestReportScreen extends StatefulWidget {
   const ChemistryTestReportScreen({super.key});
 
   @override
-  _ChemistryTestReportScreenState createState() =>
-      _ChemistryTestReportScreenState();
+  ChemistryTestReportScreenState createState() =>
+      ChemistryTestReportScreenState();
 }
 
-class _ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
+class ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
   final List<PatientRecord> _records = [
     PatientRecord(
       name: 'Sophia Martinez',
@@ -154,7 +154,7 @@ class _ChemistryTestReportScreenState extends State<ChemistryTestReportScreen> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withAlpha(26),
                     blurRadius: 5,
                     offset: const Offset(0, 2),
                   ),

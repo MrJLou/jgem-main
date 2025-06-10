@@ -7,10 +7,10 @@ class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
 
   @override
-  _SignUpScreenState createState() => _SignUpScreenState();
+  SignUpScreenState createState() => SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen>
+class SignUpScreenState extends State<SignUpScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _fullNameController = TextEditingController();
@@ -249,7 +249,7 @@ class _SignUpScreenState extends State<SignUpScreen>
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withAlpha(13),
                   blurRadius: 10,
                   offset: const Offset(2, 0),
                 ),
@@ -344,7 +344,7 @@ class _SignUpScreenState extends State<SignUpScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withAlpha(230),
                             ),
                           ),
                         ),
@@ -625,9 +625,9 @@ class _SignUpScreenState extends State<SignUpScreen>
                               // Sign Up Button
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal[700],
+                                  backgroundColor: Colors.teal[700]?.withAlpha(179),
                                   padding: const EdgeInsets.symmetric(
-                                      vertical: 16.0),
+                                      vertical: 14, horizontal: 32),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -843,7 +843,7 @@ class _SignUpScreenState extends State<SignUpScreen>
             obscureText
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            color: Colors.teal[700]?.withOpacity(0.7),
+            color: Colors.teal[700]?.withAlpha(179),
           ),
           onPressed: toggleObscure,
         ),

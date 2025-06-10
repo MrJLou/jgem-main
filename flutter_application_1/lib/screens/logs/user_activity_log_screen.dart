@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 
@@ -5,10 +6,10 @@ class UserActivityLogScreen extends StatefulWidget {
   const UserActivityLogScreen({super.key});
 
   @override
-  _UserActivityLogScreenState createState() => _UserActivityLogScreenState();
+  UserActivityLogScreenState createState() => UserActivityLogScreenState();
 }
 
-class _UserActivityLogScreenState extends State<UserActivityLogScreen> {
+class UserActivityLogScreenState extends State<UserActivityLogScreen> {
   List<Map<String, dynamic>> _logs = [];
   bool _isLoading = false;
 
@@ -24,7 +25,9 @@ class _UserActivityLogScreenState extends State<UserActivityLogScreen> {
       final db = DatabaseHelper();
       _logs = await db.getUserActivityLogs();
     } catch (e) {
-      print('Error fetching logs: $e');
+      if (kDebugMode) {
+        print('Error fetching logs: $e');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Error loading activity logs')),
@@ -48,7 +51,9 @@ class _UserActivityLogScreenState extends State<UserActivityLogScreen> {
           '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
       return '$date $time';
     } catch (e) {
-      print('Error formatting timestamp: $timestamp, Error: $e');
+      if (kDebugMode) {
+        print('Error formatting timestamp: $timestamp, Error: $e');
+      }
       return 'Invalid Date'; // Fallback for parsing errors
     }
   }

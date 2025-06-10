@@ -4,10 +4,10 @@ class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
 
   @override
-  _FeedbackScreenState createState() => _FeedbackScreenState();
+  FeedbackScreenState createState() => FeedbackScreenState();
 }
 
-class _FeedbackScreenState extends State<FeedbackScreen> {
+class FeedbackScreenState extends State<FeedbackScreen> {
   final _formKey = GlobalKey<FormState>();
   String _feedbackType = 'General Feedback';
   final TextEditingController _titleController = TextEditingController();
@@ -90,7 +90,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         color: Colors.teal[700],
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withAlpha(26),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -104,7 +104,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withAlpha(51),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(

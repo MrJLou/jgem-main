@@ -88,7 +88,7 @@ class ApiService {
         newPassword,
       );
     } catch (e) {
-      print('ApiService: Failed to reset password: $e');
+      debugPrint('ApiService: Failed to reset password: $e');
       throw Exception(
           'Failed to reset password: Check details or try again later.');
     }
@@ -98,7 +98,7 @@ class ApiService {
     try {
       return await _dbHelper.getUserSecurityDetails(username);
     } catch (e) {
-      print('ApiService: Failed to get user security details: $e');
+      debugPrint('ApiService: Failed to get user security details: $e');
       throw Exception('Failed to retrieve user security information.');
     }
   }
@@ -148,10 +148,10 @@ class ApiService {
       // If appointment is cancelled, remove its scheduled entry from the live queue
       if (newStatus.toLowerCase() == 'cancelled') {
         await _queueService.removeScheduledEntryForAppointment(id);
-        print("ApiService: Appointment $id cancelled, removed from queue.");
+        debugPrint("ApiService: Appointment $id cancelled, removed from queue.");
       }
     } catch (e) {
-      print("ApiService: Error in updateAppointmentStatus for $id: $e");
+      debugPrint("ApiService: Error in updateAppointmentStatus for $id: $e");
       throw Exception('Failed to update status: $e');
     }
   }
@@ -162,12 +162,12 @@ class ApiService {
       if (result > 0) {
         // If appointment is deleted, also remove its scheduled entry from the live queue
         await _queueService.removeScheduledEntryForAppointment(id);
-        print("ApiService: Appointment $id deleted, removed from queue.");
+        debugPrint("ApiService: Appointment $id deleted, removed from queue.");
         return true;
       }
       return false;
     } catch (e) {
-      print("ApiService: Error in deleteAppointment for $id: $e");
+      debugPrint("ApiService: Error in deleteAppointment for $id: $e");
       throw Exception('Failed to delete appointment: $e');
     }
   }
@@ -262,7 +262,7 @@ class ApiService {
       // _dbHelper.getActiveQueueItem already returns ActivePatientQueueItem? or throws an error
       return await _dbHelper.getActiveQueueItem(queueEntryId);
     } catch (e) {
-      print('ApiService: Failed to get active queue item: $e');
+      debugPrint('ApiService: Failed to get active queue item: $e');
       // Rethrow or handle as specific exception type if necessary
       throw Exception('Failed to load active queue item: $e');
     }
@@ -320,7 +320,7 @@ class ApiService {
 
       await _dbHelper.updateActiveQueueItem(updatedItem);
     } catch (e) {
-      print('ApiService: Failed to update active patient status: $e');
+      debugPrint('ApiService: Failed to update active patient status: $e');
       // Rethrow or handle as specific exception type if necessary
       throw Exception('Failed to update active patient status: $e');
     }
@@ -335,7 +335,7 @@ class ApiService {
           .map((data) => ActivePatientQueueItem.fromJson(data))
           .toList();
     } catch (e) {
-      print('ApiService: Failed to search patients in active queue: $e');
+      debugPrint('ApiService: Failed to search patients in active queue: $e');
       throw Exception('Failed to search patients in active queue: $e');
     }
   }
@@ -344,7 +344,7 @@ class ApiService {
     try {
       return await _dbHelper.addToActiveQueue(item);
     } catch (e) {
-      print('ApiService: Failed to add to active queue: $e');
+      debugPrint('ApiService: Failed to add to active queue: $e');
       throw Exception('Failed to add patient to active queue: $e');
     }
   }
@@ -356,7 +356,7 @@ class ApiService {
       final servicesData = await _dbHelper.searchServicesByCategory(category);
       return servicesData.map((data) => ClinicService.fromJson(data)).toList();
     } catch (e) {
-      print('ApiService: Failed to search services by category: $e');
+      debugPrint('ApiService: Failed to search services by category: $e');
       throw Exception('Failed to search services by category: $e');
     }
   }
@@ -367,7 +367,7 @@ class ApiService {
       final servicesData = await _dbHelper.searchServicesByName(serviceName);
       return servicesData.map((data) => ClinicService.fromJson(data)).toList();
     } catch (e) {
-      print('ApiService: Failed to search services by name: $e');
+      debugPrint('ApiService: Failed to search services by name: $e');
       throw Exception('Failed to search services by name: $e');
     }
   }
@@ -380,7 +380,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('ApiService: Failed to get service by ID: $e');
+      debugPrint('ApiService: Failed to get service by ID: $e');
       throw Exception('Failed to get service by ID: $e');
     }
   }
@@ -393,7 +393,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('ApiService: Failed to get service by name: $e');
+      debugPrint('ApiService: Failed to get service by name: $e');
       throw Exception('Failed to get service by name: $e');
     }
   }
@@ -423,7 +423,7 @@ class ApiService {
             id: newId); // Return service with the new ID from DB
       }
     } catch (e) {
-      print('ApiService: Failed to save clinic service: $e');
+      debugPrint('ApiService: Failed to save clinic service: $e');
       throw Exception('Failed to save clinic service: $e');
     }
   }
@@ -432,7 +432,7 @@ class ApiService {
     try {
       return await _dbHelper.deleteClinicService(id);
     } catch (e) {
-      print('ApiService: Failed to delete clinic service: $e');
+      debugPrint('ApiService: Failed to delete clinic service: $e');
       throw Exception('Failed to delete clinic service: $e');
     }
   }
@@ -442,7 +442,7 @@ class ApiService {
       final servicesData = await _dbHelper.getAllClinicServices();
       return servicesData.map((data) => ClinicService.fromJson(data)).toList();
     } catch (e) {
-      print('ApiService: Failed to get all clinic services: $e');
+      debugPrint('ApiService: Failed to get all clinic services: $e');
       throw Exception('Failed to load all clinic services: $e');
     }
   }
@@ -496,23 +496,23 @@ class ApiService {
       final exportedPath = await exportDatabaseForSharing();
 
       // Print instructions for connecting with DB Browser
-      print('================================================');
-      print('DB BROWSER CONNECTION INFORMATION:');
-      print('Database Path: $dbPath');
-      print('Exported Path: $exportedPath');
-      print('To view live changes in DB Browser:');
-      print('1. Open DB Browser for SQLite');
-      print('2. Select "Open Database" and navigate to the path above');
-      print('3. Set to "Read and Write" mode');
-      print('4. Check "Keep updating the SQL view as the database changes"');
-      print('================================================');
+      debugPrint('================================================');
+      debugPrint('DB BROWSER CONNECTION INFORMATION:');
+      debugPrint('Database Path: $dbPath');
+      debugPrint('Exported Path: $exportedPath');
+      debugPrint('To view live changes in DB Browser:');
+      debugPrint('1. Open DB Browser for SQLite');
+      debugPrint('2. Select "Open Database" and navigate to the path above');
+      debugPrint('3. Set to "Read and Write" mode');
+      debugPrint('4. Check "Keep updating the SQL view as the database changes"');
+      debugPrint('================================================');
     } catch (e) {
       // Handle gracefully if setup fails
-      print(
+      debugPrint(
           'DB Browser setup info: Unable to access external storage. Using internal storage instead.');
       final appDir = await getApplicationDocumentsDirectory();
       final dbPath = join(appDir.path, 'patient_management.db');
-      print('Database Path: $dbPath');
+      debugPrint('Database Path: $dbPath');
     }
   }
 
@@ -555,9 +555,9 @@ class ApiService {
       await _dbHelper.database; // Ensure database is initialized      // Initialize LAN sync service
       try {
         await LanSyncService.initialize(_dbHelper);
-        print('LAN sync service initialized successfully');
+        debugPrint('LAN sync service initialized successfully');
       } catch (e) {
-        print('LAN sync service initialization failed: $e');
+        debugPrint('LAN sync service initialization failed: $e');
         // Continue execution even if this fails
       }
 
@@ -565,7 +565,7 @@ class ApiService {
       try {
         await setupLiveDbBrowserView();
       } catch (e) {
-        print('DB Browser setup not available on this platform: $e');
+        debugPrint('DB Browser setup not available on this platform: $e');
         // Continue execution even if this fails
       }
 
@@ -574,7 +574,7 @@ class ApiService {
     } catch (e) {
       // More detailed error information for debugging
       final errorDetails = e.toString();
-      print('Database initialization failed with error: $errorDetails');
+      debugPrint('Database initialization failed with error: $errorDetails');
       
       // Provide more specific error messages based on the type of failure
       if (errorDetails.contains('network') || errorDetails.contains('NetworkInfo') || errorDetails.contains('wifi')) {
@@ -597,7 +597,7 @@ class ApiService {
       try {
         await synchronizeDatabase();
       } catch (e) {
-        print('Periodic sync error: $e');
+        debugPrint('Periodic sync error: $e');
       } finally {
         _startPeriodicSync(); // Schedule next sync
       }
@@ -697,7 +697,7 @@ class ApiService {
     try {
       await _dbHelper.incrementServiceSelectionCounts(serviceIds);
     } catch (e) {
-      print('ApiService: Failed to increment service usage counts: $e');
+      debugPrint('ApiService: Failed to increment service usage counts: $e');
       // Depending on requirements, you might want to throw this exception
       // or handle it silently if it's not critical for the user flow.
       // For now, just printing.
@@ -725,8 +725,20 @@ class ApiService {
     try {
       return await _dbHelper.getDashboardStatistics();
     } catch (e) {
-      print('ApiService: Failed to get dashboard statistics: $e');
+      debugPrint('ApiService: Failed to get dashboard statistics: $e');
       throw Exception('Failed to get dashboard statistics: $e');
+    }
+  }
+
+  // Method to create a new appointment
+  static Future<String> createAppointment(Appointment appointment) async {
+    try {
+      // This calls DatabaseHelper.insertAppointment, which returns an Appointment
+      final savedAppointment = await _dbHelper.insertAppointment(appointment); 
+      return savedAppointment.id;
+    } catch (e) {
+      debugPrint('Error in ApiService.createAppointment: $e');
+      throw Exception('Failed to create appointment: $e');
     }
   }
 }

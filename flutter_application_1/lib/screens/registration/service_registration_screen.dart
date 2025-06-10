@@ -4,10 +4,10 @@ class ServiceRegistrationScreen extends StatefulWidget {
   const ServiceRegistrationScreen({super.key});
 
   @override
-  _ServiceRegistrationScreenState createState() => _ServiceRegistrationScreenState();
+  ServiceRegistrationScreenState createState() => ServiceRegistrationScreenState();
 }
 
-class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> with SingleTickerProviderStateMixin {
+class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -51,7 +51,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withOpacity(0.7),
+          unselectedLabelColor: Colors.white.withAlpha(179),
           indicatorColor: Colors.white,
           indicatorWeight: 3,
           indicatorPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -306,7 +306,7 @@ class _ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> w
                 ),
                 minimumSize: const Size(double.infinity, 50),
                 elevation: 3,
-                shadowColor: Colors.teal.withOpacity(0.3),
+                shadowColor: Colors.teal.withAlpha(77),
               ),
               child: const Text(
                 'Register New Service',

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(MaterialApp(
+  runApp(const MaterialApp(
     home: PreviousConsultationScreen(),
   ));
 }
@@ -10,11 +10,11 @@ class PreviousConsultationScreen extends StatefulWidget {
   const PreviousConsultationScreen({super.key});
 
   @override
-  _PreviousConsultationScreenState createState() =>
-      _PreviousConsultationScreenState();
+  PreviousConsultationScreenState createState() =>
+      PreviousConsultationScreenState();
 }
 
-class _PreviousConsultationScreenState
+class PreviousConsultationScreenState
     extends State<PreviousConsultationScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   List<Map<String, dynamic>> _consultations = [];
@@ -60,6 +60,7 @@ class _PreviousConsultationScreenState
       },
     ];
 
+    if (!mounted) return;
     setState(() {
       _consultations = mockData;
       _isLoading = false;
@@ -186,7 +187,7 @@ class _PreviousConsultationScreenState
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withAlpha(26),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                   ),
@@ -233,7 +234,7 @@ class _PreviousConsultationScreenState
                         ),
                         elevation: 5,
                   ),
-                      child: Row(
+                      child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -338,10 +339,10 @@ class ConsultationCard extends StatefulWidget {
   });
 
   @override
-  _ConsultationCardState createState() => _ConsultationCardState();
+  ConsultationCardState createState() => ConsultationCardState();
 }
 
-class _ConsultationCardState extends State<ConsultationCard> {
+class ConsultationCardState extends State<ConsultationCard> {
   bool _isHovering = false;
   bool _isPressed = false;
 
@@ -368,8 +369,8 @@ class _ConsultationCardState extends State<ConsultationCard> {
             boxShadow: [
               BoxShadow(
                 color: _isHovering
-                    ? Colors.black.withOpacity(0.1)
-                    : Colors.black.withOpacity(0.05),
+                    ? Colors.black.withAlpha(26)
+                    : Colors.black.withAlpha(13),
                 blurRadius: _isHovering ? 10 : 5,
                 offset: Offset(0, _isHovering ? 5 : 2),
               ),
@@ -398,7 +399,7 @@ class _ConsultationCardState extends State<ConsultationCard> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1ABC9C).withOpacity(0.1),
+                      color: Colors.black.withAlpha(26),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(

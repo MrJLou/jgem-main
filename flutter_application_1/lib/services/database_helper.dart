@@ -32,7 +32,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 24; // Incremented version from 23 to 24
+  static const int _databaseVersion = 25; // Incremented version from 24 to 25
 
   // Tables
   static const String tableUsers = 'users';
@@ -75,7 +75,7 @@ class DatabaseHelper {
       _instanceDatabase = db; // Store the successfully opened database.
       _dbOpenCompleter!.complete(db);
     } catch (e) {
-      print('DATABASE_HELPER: Database initialization failed: $e');
+      debugPrint('DATABASE_HELPER: Database initialization failed: $e');
       _dbOpenCompleter!.completeError(e);
       // Reset completer AND instanceDatabase on failure to allow a subsequent attempt to re-initialize.
       _dbOpenCompleter = null;
@@ -114,12 +114,12 @@ class DatabaseHelper {
 
     if (await workspaceDatabaseFileWithDbExt.exists()) {
         path = workspaceDatabasePathWithDbExt;
-        print('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (with .db ext): $path');
+        debugPrint('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (with .db ext): $path');
     } else if (await workspaceDatabaseFileWithoutDbExt.exists()) {
         path = workspaceDatabasePathWithoutDbExt;
-        print('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (WITHOUT .db ext): $path');
+        debugPrint('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (WITHOUT .db ext): $path');
     } else {
-        print('DATABASE_HELPER: Database not found in workspace root (tried with/without .db: $workspaceDatabasePathWithDbExt AND $workspaceDatabasePathWithoutDbExt). Trying platform-specific locations.');
+        debugPrint('DATABASE_HELPER: Database not found in workspace root (tried with/without .db: $workspaceDatabasePathWithDbExt AND $workspaceDatabasePathWithoutDbExt). Trying platform-specific locations.');
         
         // Platform-specific fallback logic
         if (!kIsWeb && Platform.isWindows) {
@@ -128,15 +128,15 @@ class DatabaseHelper {
 
             if (await projectDbFileInSubfolder.exists()) {
               path = projectDatabasesSubfolderPath;
-              print('DATABASE_HELPER: [WINDOWS_PROJECT_DATABASES] Using database from project_root/databases/: $path');
+              debugPrint('DATABASE_HELPER: [WINDOWS_PROJECT_DATABASES] Using database from project_root/databases/: $path');
             } else {
               try {
                 final Directory docDir = await getApplicationDocumentsDirectory();
                 path = join(docDir.path, DatabaseHelper._databaseName);
-                print('DATABASE_HELPER: [WINDOWS_APP_DOCS] Using app documents directory for database: $path');
+                debugPrint('DATABASE_HELPER: [WINDOWS_APP_DOCS] Using app documents directory for database: $path');
               } catch (e) {
                 path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root itself
-                print('DATABASE_HELPER: [WINDOWS_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+                debugPrint('DATABASE_HELPER: [WINDOWS_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
               }
             }
         } else if (!kIsWeb && Platform.isAndroid) {
@@ -145,7 +145,7 @@ class DatabaseHelper {
               try {
                   storageDir = await getExternalStorageDirectory();
               } catch (e) {
-                  print('DATABASE_HELPER: [ANDROID_DEBUG] Failed to get external storage, trying app docs. Error: $e');
+                  debugPrint('DATABASE_HELPER: [ANDROID_DEBUG] Failed to get external storage, trying app docs. Error: $e');
               }
 
               if (storageDir != null) {
@@ -153,37 +153,37 @@ class DatabaseHelper {
                 final File externalDbFile = File(potentialPath);
                 if (await externalDbFile.exists()) {
                     path = potentialPath;
-                    print('DATABASE_HELPER: [ANDROID_EXTERNAL_STORAGE] Using existing database from external storage: $path');
+                    debugPrint('DATABASE_HELPER: [ANDROID_EXTERNAL_STORAGE] Using existing database from external storage: $path');
                 } else {
-                    print('DATABASE_HELPER: [ANDROID_INFO] DB not in external storage ($potentialPath) or dir unavailable. Defaulting to app documents dir.');
+                    debugPrint('DATABASE_HELPER: [ANDROID_INFO] DB not in external storage ($potentialPath) or dir unavailable. Defaulting to app documents dir.');
                     final docDir = await getApplicationDocumentsDirectory();
                     path = join(docDir.path, DatabaseHelper._databaseName);
-                    print('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (external check done): $path');
+                    debugPrint('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (external check done): $path');
                 }
               } else { // externalDir was null
                 final docDir = await getApplicationDocumentsDirectory();
                 path = join(docDir.path, DatabaseHelper._databaseName);
-                print('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (externalDir was null): $path');
+                debugPrint('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (externalDir was null): $path');
               }
             } catch (e) { 
               path = normalize(join(projectRoot, DatabaseHelper._databaseName)); 
-              print('DATABASE_HELPER: [ANDROID_PROJECT_ROOT_FALLBACK] Using project root (all other paths failed): $path. Error: $e');
+              debugPrint('DATABASE_HELPER: [ANDROID_PROJECT_ROOT_FALLBACK] Using project root (all other paths failed): $path. Error: $e');
             }
         } else if (!kIsWeb && (Platform.isIOS || Platform.isLinux || Platform.isMacOS)) {
             try {
               final docDir = await getApplicationDocumentsDirectory();
               path = join(docDir.path, DatabaseHelper._databaseName);
-              print('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_APP_DOCS] Using app documents directory: $path');
+              debugPrint('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_APP_DOCS] Using app documents directory: $path');
             } catch (e) {
               path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root
-              print('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+              debugPrint('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
             }
         } else {
             if (kIsWeb) {
-                 print('DATABASE_HELPER: [WEB] Web platform detected. Database name: "${DatabaseHelper._databaseName}" will be used by sqflite_common_ffi_web (typically IndexedDB).');
+                 debugPrint('DATABASE_HELPER: [WEB] Web platform detected. Database name: "${DatabaseHelper._databaseName}" will be used by sqflite_common_ffi_web (typically IndexedDB).');
                  path = DatabaseHelper._databaseName; // For web, path is usually just the name for IndexedDB.
             } else {
-                print('DATABASE_HELPER: [UNKNOWN_PLATFORM] Using project root as a last resort for database: $projectRoot/${DatabaseHelper._databaseName}');
+                debugPrint('DATABASE_HELPER: [UNKNOWN_PLATFORM] Using project root as a last resort for database: $projectRoot/${DatabaseHelper._databaseName}');
                 path = normalize(join(projectRoot, DatabaseHelper._databaseName));
             }
         }
@@ -196,7 +196,7 @@ class DatabaseHelper {
       final Directory directory = Directory(dirname(path));
       if (!await directory.exists()) {
         await directory.create(recursive: true);
-        print(
+        debugPrint(
             'DATABASE_HELPER: Created directory for database at ${directory.path}');
       }
       
@@ -205,20 +205,20 @@ class DatabaseHelper {
       try {
         await testFile.writeAsString('test');
         await testFile.delete();
-        print('DATABASE_HELPER: Directory is writable');
+        debugPrint('DATABASE_HELPER: Directory is writable');
       } catch (e) {
-        print('DATABASE_HELPER: Directory write test failed: $e');
+        debugPrint('DATABASE_HELPER: Directory write test failed: $e');
         throw Exception('Database directory is not writable: ${directory.path}');
       }
     } catch (e) {
-      print(
+      debugPrint(
           'DATABASE_HELPER: Error creating or verifying directory for database. Error: $e');
       throw Exception('Failed to prepare database directory: $e');
-    }    print(
+    }    debugPrint(
         '================================================================================');
-    print('DATABASE_HELPER: FINAL DATABASE PATH TO BE OPENED:');
-    print(_instanceDbPath);
-    print(
+    debugPrint('DATABASE_HELPER: FINAL DATABASE PATH TO BE OPENED:');
+    debugPrint(_instanceDbPath);
+    debugPrint(
         '================================================================================');
 
     // --- DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs --- 
@@ -237,12 +237,12 @@ class DatabaseHelper {
         // }
       );
     } catch (e) {
-      print('DATABASE_HELPER: Failed to open database at $_instanceDbPath');
-      print('DATABASE_HELPER: Error details: $e');
+      debugPrint('DATABASE_HELPER: Failed to open database at $_instanceDbPath');
+      debugPrint('DATABASE_HELPER: Error details: $e');
       
       // Try to recover by using a different path or cleaning up
       if (e.toString().contains('unable to open database file')) {
-        print('DATABASE_HELPER: Attempting recovery by trying alternative path...');
+        debugPrint('DATABASE_HELPER: Attempting recovery by trying alternative path...');
         
         // Try alternative path in user's temp directory
         try {
@@ -254,7 +254,7 @@ class DatabaseHelper {
             await altDirectory.create(recursive: true);
           }
           
-          print('DATABASE_HELPER: Trying alternative path: $altPath');
+          debugPrint('DATABASE_HELPER: Trying alternative path: $altPath');
           _instanceDbPath = altPath;
           
           openedDb = await openDatabase(
@@ -264,9 +264,9 @@ class DatabaseHelper {
             onUpgrade: _onUpgrade,
           );
           
-          print('DATABASE_HELPER: Successfully opened database at alternative path');
+          debugPrint('DATABASE_HELPER: Successfully opened database at alternative path');
         } catch (altError) {
-          print('DATABASE_HELPER: Alternative path also failed: $altError');
+          debugPrint('DATABASE_HELPER: Alternative path also failed: $altError');
           throw Exception('Unable to open database at any location. Original error: $e, Alternative error: $altError');
         }
       } else {
@@ -276,12 +276,12 @@ class DatabaseHelper {
 
     // Clear the active_patient_queue table every time the database is initialized
     // This ensures it starts fresh for the day.
-    print(
-        'DATABASE_HELPER: Clearing ${DatabaseHelper.tableActivePatientQueue} after DB open/creation/upgrade.'); // Updated usage
-    await openedDb
-        .delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
-    print(
-        'DATABASE_HELPER: ${DatabaseHelper.tableActivePatientQueue} cleared.'); // Updated usage
+    // print(
+    //     'DATABASE_HELPER: Clearing ${DatabaseHelper.tableActivePatientQueue} after DB open/creation/upgrade.'); // Updated usage
+    // await openedDb
+    //     .delete(DatabaseHelper.tableActivePatientQueue); // Updated usage
+    // print(
+    //     'DATABASE_HELPER: ${DatabaseHelper.tableActivePatientQueue} cleared.'); // Updated usage
 
     return openedDb;
   }
@@ -309,7 +309,7 @@ class DatabaseHelper {
         updatedAt TEXT 
       )
     ''');
-    print('DATABASE_HELPER: Created $tableUsers table');
+    debugPrint('DATABASE_HELPER: Created $tableUsers table');
 
     // Patients table
     await db.execute('''
@@ -347,7 +347,7 @@ class DatabaseHelper {
         updatedAt TEXT 
       )
     ''');
-    print('DATABASE_HELPER: Created $tablePatients table');
+    debugPrint('DATABASE_HELPER: Created $tablePatients table');
 
     // Appointments table (Updated Schema - notes and createdById removed)
     await db.execute('''
@@ -372,7 +372,7 @@ class DatabaseHelper {
         FOREIGN KEY (doctorId) REFERENCES users(id)
       )
     ''');
-    print('DATABASE_HELPER: Created $tableAppointments table (schema updated)');
+    debugPrint('DATABASE_HELPER: Created $tableAppointments table (schema updated)');
 
     // Medical Records table
     await db.execute('''
@@ -442,7 +442,7 @@ class DatabaseHelper {
         FOREIGN KEY (createdByUserId) REFERENCES $tableUsers (id) 
       )
     ''');
-    print('DATABASE_HELPER: Created $tablePatientBills table (schema updated for invoicing)');
+    debugPrint('DATABASE_HELPER: Created $tablePatientBills table (schema updated for invoicing)');
 
     // Bill Items table (Ensure this definition is present and correct)
     await db.execute('''
@@ -458,7 +458,7 @@ class DatabaseHelper {
         FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)
       )
     ''');
-    print('DATABASE_HELPER: Created $tableBillItems table');
+    debugPrint('DATABASE_HELPER: Created $tableBillItems table');
 
     // Payments table (MODIFIED - added invoiceNumber link, ensured billId is present)
     await db.execute('''
@@ -479,7 +479,7 @@ class DatabaseHelper {
         FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)
       )
     ''');
-    print('DATABASE_HELPER: Created $tablePayments table (schema updated)');
+    debugPrint('DATABASE_HELPER: Created $tablePayments table (schema updated)');
 
     // Sync Log table for tracking changes
     await db.execute('''
@@ -517,24 +517,25 @@ class DatabaseHelper {
         patientId TEXT,
         patientName TEXT NOT NULL,
         arrivalTime TEXT NOT NULL,
-        queueNumber INTEGER DEFAULT 0, -- Queue number for daily sequencing
+        queueNumber INTEGER NOT NULL,
         gender TEXT,
         age INTEGER,
         conditionOrPurpose TEXT,
-        selectedServices TEXT, -- JSON string of List<Map<String, dynamic>> for selected services
-        totalPrice REAL, -- Total estimated price
-        status TEXT NOT NULL, -- 'waiting', 'in_consultation', 'completed', 'removed'
-        paymentStatus TEXT DEFAULT 'Pending', -- Added column
+        selectedServices TEXT,
+        totalPrice REAL,
+        status TEXT NOT NULL,
+        paymentStatus TEXT,
         createdAt TEXT NOT NULL,
         addedByUserId TEXT,
-        servedAt TEXT,          -- New field
-        removedAt TEXT,         -- New field
-        consultationStartedAt TEXT, -- New field
+        servedAt TEXT,
+        removedAt TEXT,
+        consultationStartedAt TEXT,
         originalAppointmentId TEXT,
-        FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
-        FOREIGN KEY (addedByUserId) REFERENCES $tableUsers (id) ON DELETE SET NULL
+        doctorId TEXT,
+        doctorName TEXT
       )
     ''');
+    debugPrint('DATABASE_HELPER: Table $tableActivePatientQueue created');
 
     // Create admin user by default
     await _createDefaultAdmin(db);
@@ -548,7 +549,7 @@ class DatabaseHelper {
 
   // Database upgrade
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    print("DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
+    debugPrint("DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
     // Each upgrade case should fall through to the next one if not breaking.
     // Example: if (oldVersion < 2) { ... } if (oldVersion < 3) { ... }
     // This ensures all migrations from the oldVersion up to newVersion are applied.
@@ -557,37 +558,37 @@ class DatabaseHelper {
       // Migrations for versions before 23
       // Note: This block assumes prior migrations up to version 22 were correctly handled.
       // If you are jumping many versions, ensure all intermediate steps are covered.
-      print("DATABASE_HELPER: Applying migrations for versions < 23.");
+      debugPrint("DATABASE_HELPER: Applying migrations for versions < 23.");
       List<Map> tables;
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableMedicalRecords'");
       if (tables.isEmpty) {
            await db.execute(''' CREATE TABLE ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
-           print("DATABASE_HELPER: (Upgrade) Created $tableMedicalRecords because it was missing.");
+           debugPrint("DATABASE_HELPER: (Upgrade) Created $tableMedicalRecords because it was missing.");
       }
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableClinicServices'");
       if (tables.isEmpty) {
           await db.execute(''' CREATE TABLE ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
-           print("DATABASE_HELPER: (Upgrade) Created $tableClinicServices because it was missing.");
+           debugPrint("DATABASE_HELPER: (Upgrade) Created $tableClinicServices because it was missing.");
       }
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableUserActivityLog'");
       if (tables.isEmpty) {
           await db.execute(''' CREATE TABLE ${DatabaseHelper.tableUserActivityLog} (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, actionDescription TEXT NOT NULL, targetRecordId TEXT, targetTable TEXT, timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT, FOREIGN KEY (userId) REFERENCES $tableUsers (id)) ''');
-          print("DATABASE_HELPER: (Upgrade) Created $tableUserActivityLog because it was missing.");
+          debugPrint("DATABASE_HELPER: (Upgrade) Created $tableUserActivityLog because it was missing.");
       }
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tablePatientBills'");
       if (tables.isEmpty) {
          await db.execute(''' CREATE TABLE $tablePatientBills (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, billDate TEXT NOT NULL, totalAmount REAL NOT NULL, status TEXT NOT NULL, notes TEXT, FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE CASCADE) ''');
-          print("DATABASE_HELPER: (Upgrade) Created $tablePatientBills because it was missing (original schema).");
+          debugPrint("DATABASE_HELPER: (Upgrade) Created $tablePatientBills because it was missing (original schema).");
       }
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableBillItems'");
       if (tables.isEmpty) {
           await db.execute(''' CREATE TABLE $tableBillItems (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT NOT NULL, serviceId TEXT, description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unitPrice REAL NOT NULL, itemTotal REAL NOT NULL, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE CASCADE, FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)) ''');
-          print("DATABASE_HELPER: (Upgrade) Created $tableBillItems because it was missing.");
+          debugPrint("DATABASE_HELPER: (Upgrade) Created $tableBillItems because it was missing.");
       }
       tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tablePayments'");
       if (tables.isEmpty) {
            await db.execute(''' CREATE TABLE $tablePayments (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT, patientId TEXT NOT NULL, referenceNumber TEXT UNIQUE NOT NULL, paymentDate TEXT NOT NULL, amountPaid REAL NOT NULL, paymentMethod TEXT NOT NULL, receivedByUserId TEXT NOT NULL, notes TEXT, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE SET NULL, FOREIGN KEY (patientId) REFERENCES $tablePatients (id), FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)) ''');
-           print("DATABASE_HELPER: (Upgrade) Created $tablePayments because it was missing (original schema).");
+           debugPrint("DATABASE_HELPER: (Upgrade) Created $tablePayments because it was missing (original schema).");
       }
       await _addColumnIfNotExists(db, tableAppointments, 'originalAppointmentId', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'consultationStartedAt', 'TEXT');
@@ -600,7 +601,7 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 24) {
-      print("DATABASE_HELPER: Upgrading to version 24: Modifying $tablePatientBills and $tablePayments for enhanced invoicing.");
+      debugPrint("DATABASE_HELPER: Upgrading to version 24: Modifying $tablePatientBills and $tablePayments for enhanced invoicing.");
       await _addColumnIfNotExists(db, tablePatientBills, 'invoiceNumber', 'TEXT');
       await _addColumnIfNotExists(db, tablePatientBills, 'dueDate', 'TEXT');
       await _addColumnIfNotExists(db, tablePatientBills, 'subtotal', 'REAL');
@@ -610,16 +611,27 @@ class DatabaseHelper {
       
       try {
         await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoiceNumber ON $tablePatientBills (invoiceNumber) WHERE invoiceNumber IS NOT NULL;');
-        print("DATABASE_HELPER: Ensured unique index on $tablePatientBills(invoiceNumber).");
+        debugPrint("DATABASE_HELPER: Ensured unique index on $tablePatientBills(invoiceNumber).");
       } catch (e) {
-        print("DATABASE_HELPER: Warning - Could not create unique index on $tablePatientBills(invoiceNumber). This might be due to existing data. $e");
+        debugPrint("DATABASE_HELPER: Warning - Could not create unique index on $tablePatientBills(invoiceNumber). This might be due to existing data. $e");
       }
 
       await _addColumnIfNotExists(db, tablePayments, 'invoiceNumber', 'TEXT'); 
       await _addColumnIfNotExists(db, tablePayments, 'totalBillAmount', 'REAL'); 
-      print("DATABASE_HELPER: Schema changes for v24 applied to $tablePatientBills and $tablePayments.");
+      debugPrint("DATABASE_HELPER: Schema changes for v24 applied to $tablePatientBills and $tablePayments.");
     }
-    print("DATABASE_HELPER: Database upgrade process completed.");
+
+    if (oldVersion < 25) {
+      try {
+        await db.execute('ALTER TABLE $tableActivePatientQueue ADD COLUMN doctorId TEXT');
+        await db.execute('ALTER TABLE $tableActivePatientQueue ADD COLUMN doctorName TEXT');
+        debugPrint('DATABASE_HELPER: Upgraded $tableActivePatientQueue, added doctorId and doctorName columns.');
+      } catch (e) {
+        debugPrint('DATABASE_HELPER: Error upgrading $tableActivePatientQueue to v25: $e. Columns might already exist.');
+      }
+    }
+
+    debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
 
   Future<void> _addColumnIfNotExists(Database db, String tableName, String columnName, String columnType) async {
@@ -627,9 +639,9 @@ class DatabaseHelper {
     bool columnExists = result.any((column) => column['name'] == columnName);
     if (!columnExists) {
       await db.execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
-      print('DATABASE_HELPER: Added column $columnName to $tableName');
+      debugPrint('DATABASE_HELPER: Added column $columnName to $tableName');
     } else {
-      print('DATABASE_HELPER: Column $columnName already exists in $tableName');
+      debugPrint('DATABASE_HELPER: Column $columnName already exists in $tableName');
     }
   }
 
@@ -772,7 +784,7 @@ class DatabaseHelper {
       orderBy: 'date DESC, time DESC',
     );
     return List.generate(maps.length, (i) {
-      return Appointment.fromJson(maps[i]);
+      return Appointment.fromMap(maps[i]);
     });
   }
 
@@ -881,40 +893,40 @@ class DatabaseHelper {
   }
 
   // Apply changes from server
-  Future<void> _applyServerChanges(List<dynamic> changes) async {
-    final db = await database;
-    final batch = db.batch();
+  // Future<void> _applyServerChanges(List<dynamic> changes) async {
+  //   final db = await database;
+  //   final batch = db.batch();
 
-    for (final change in changes) {
-      final String tableName = change['tableName'];
-      final String recordId = change['recordId'];
-      final String action = change['action'];
-      final Map<String, dynamic> data = change['data'];
+  //   for (final change in changes) {
+  //     final String tableName = change['tableName'];
+  //     final String recordId = change['recordId'];
+  //     final String action = change['action'];
+  //     final Map<String, dynamic> data = change['data'];
 
-      switch (action) {
-        case 'insert':
-          batch.insert(tableName, data);
-          break;
-        case 'update':
-          batch.update(
-            tableName,
-            data,
-            where: 'id = ?',
-            whereArgs: [recordId],
-          );
-          break;
-        case 'delete':
-          batch.delete(
-            tableName,
-            where: 'id = ?',
-            whereArgs: [recordId],
-          );
-          break;
-      }
-    }
+  //     switch (action) {
+  //       case 'insert':
+  //         batch.insert(tableName, data);
+  //         break;
+  //       case 'update':
+  //         batch.update(
+  //           tableName,
+  //           data,
+  //           where: 'id = ?',
+  //           whereArgs: [recordId],
+  //         );
+  //         break;
+  //       case 'delete':
+  //         batch.delete(
+  //           tableName,
+  //           where: 'id = ?',
+  //           whereArgs: [recordId],
+  //         );
+  //         break;
+  //     }
+  //   }
 
-    await batch.commit();
-  }
+  //   await batch.commit();
+  // }
 
   // Export database for sharing - platform-safe implementation
   Future<String> exportDatabase() async {
@@ -932,7 +944,7 @@ class DatabaseHelper {
           try {
             directory = await getExternalStorageDirectory();
           } catch (e) {
-            print('External storage not available: $e');
+            debugPrint('External storage not available: $e');
             // Fall back to application documents directory
             directory = await getApplicationDocumentsDirectory();
           }
@@ -947,7 +959,7 @@ class DatabaseHelper {
             }
           }
         } catch (e) {
-          print('Error exporting to external location: $e');
+          debugPrint('Error exporting to external location: $e');
           // Continue with original path
         }
       }
@@ -955,7 +967,7 @@ class DatabaseHelper {
       // Return original path if we couldn't copy
       return dbPath;
     } catch (e) {
-      print('Database export error: $e');
+      debugPrint('Database export error: $e');
       throw Exception('Failed to export database: $e');
     }
   }
@@ -1150,7 +1162,7 @@ To view live changes in DB Browser:
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_patient_id ON $tableActivePatientQueue (patientId)');
 
-    print('DATABASE_HELPER: Ensured all indexes are created.');
+    debugPrint('DATABASE_HELPER: Ensured all indexes are created.');
   }
 
   // DAILY QUEUE REPORT METHODS
@@ -1346,8 +1358,8 @@ To view live changes in DB Browser:
     // or if a specific date range mechanism is added here later.
     final now = DateTime.now();
     final todayDate = DateFormat('yyyy-MM-dd').format(now);
-    final startOfToday = DateTime(now.year, now.month, now.day).toIso8601String();
-    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toIso8601String();
+    // final startOfToday = DateTime(now.year, now.month, now.day).toIso8601String();
+    // final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999).toIso8601String();
 
     // Filter by today's arrivalTime
     whereClauses.add('DATE(arrivalTime) = DATE(?)');
@@ -1418,7 +1430,7 @@ To view live changes in DB Browser:
     final count = await db.delete(DatabaseHelper.tableActivePatientQueue);
     // Optionally log this as a bulk operation if needed, though logChange is per-record.
     // For simplicity, not logging each deletion during a clear.
-    print(
+    debugPrint(
         'DATABASE_HELPER: Cleared $count entries from $tableActivePatientQueue.');
     return count;
   }
@@ -1464,7 +1476,7 @@ To view live changes in DB Browser:
       where: 'arrivalTime >= ? AND arrivalTime <= ?',
       whereArgs: [startOfDay, endOfDay],
     );
-    print(
+    debugPrint(
         'DATABASE_HELPER: Deleted $count items from $tableActivePatientQueue for date ${DateFormat('yyyy-MM-dd').format(date)}');
     return count;
   }
@@ -1711,11 +1723,11 @@ To view live changes in DB Browser:
             whereArgs: [billId],
           );
           if (updateCount > 0) {
-            print('DATABASE_HELPER: Updated status to Paid for billId: $billId');
+            debugPrint('DATABASE_HELPER: Updated status to Paid for billId: $billId');
             // Optionally log this change too if your sync logic requires tracking bill status updates
             await logChange(DatabaseHelper.tablePatientBills, billId, 'update', executor: txn);
           } else {
-            print('DATABASE_HELPER: Warning - Tried to update status for billId: $billId but no row was updated.');
+            debugPrint('DATABASE_HELPER: Warning - Tried to update status for billId: $billId but no row was updated.');
             // This might happen if the billId is incorrect or already deleted.
           }
         }
@@ -1732,10 +1744,10 @@ To view live changes in DB Browser:
         where: 'queueEntryId = ?',
         whereArgs: [queueEntryId],
       );
-      print("DatabaseHelper: Deleted active queue item with queueEntryId: $queueEntryId, rows affected: $result");
+      debugPrint("DatabaseHelper: Deleted active queue item with queueEntryId: $queueEntryId, rows affected: $result");
       return result;
     } catch (e) {
-      print("DatabaseHelper: Error deleting active queue item with queueEntryId $queueEntryId: $e");
+      debugPrint("DatabaseHelper: Error deleting active queue item with queueEntryId $queueEntryId: $e");
       return 0; // Or throw, depending on error handling strategy
     }
   }
@@ -1773,9 +1785,9 @@ To view live changes in DB Browser:
           }
         }
       });
-      print('DatabaseHelper: Incremented selection count for services: $serviceIds');
+      debugPrint('DatabaseHelper: Incremented selection count for services: $serviceIds');
     } catch (e) {
-      print('DatabaseHelper: Error incrementing service selection counts: $e');
+      debugPrint('DatabaseHelper: Error incrementing service selection counts: $e');
     }
   }
 
@@ -1831,12 +1843,12 @@ To view live changes in DB Browser:
             newService.toJson(),
             conflictAlgorithm: ConflictAlgorithm.ignore,
           );
-          print('DATABASE_HELPER: Seeded service: ${newService.serviceName}');
+          debugPrint('DATABASE_HELPER: Seeded service: ${newService.serviceName}');
         } catch (e) {
-          print('DATABASE_HELPER: Error seeding service ${newService.serviceName}: $e');
+          debugPrint('DATABASE_HELPER: Error seeding service ${newService.serviceName}: $e');
         }
       } else {
-        print('DATABASE_HELPER: Service already exists, not seeding: ${serviceData['name']}');
+        debugPrint('DATABASE_HELPER: Service already exists, not seeding: ${serviceData['name']}');
       }
     }
   }
@@ -1929,7 +1941,7 @@ To view live changes in DB Browser:
       await txn.insert(tablePayments, paymentData);
     });
 
-    print('DATABASE_HELPER: Successfully recorded invoice $displayInvoiceNumber and payment $paymentReferenceNumber.');
+    debugPrint('DATABASE_HELPER: Successfully recorded invoice $displayInvoiceNumber and payment $paymentReferenceNumber.');
     return {
       'invoiceNumber': displayInvoiceNumber,
       'paymentReferenceNumber': paymentReferenceNumber,
@@ -2005,7 +2017,7 @@ To view live changes in DB Browser:
       }
     });
 
-    print('DATABASE_HELPER: Successfully recorded UNPAID invoice $displayInvoiceNumber.');
+    debugPrint('DATABASE_HELPER: Successfully recorded UNPAID invoice $displayInvoiceNumber.');
     return displayInvoiceNumber; 
   }
 
@@ -2062,7 +2074,7 @@ To view live changes in DB Browser:
   /// Resets the database by deleting all records from all tables, except for the admin user and clinic services.
   Future<void> resetDatabase() async {
     final db = await database;
-    print('DATABASE_HELPER: Starting database reset...');
+    debugPrint('DATABASE_HELPER: Starting database reset...');
 
     // ClinicServices is now excluded from this list.
     final List<String> tablesToClear = [
@@ -2082,7 +2094,7 @@ To view live changes in DB Browser:
       // Clear all specified tables completely
       for (final table in tablesToClear) {
         await txn.delete(table);
-        print('DATABASE_HELPER: Cleared table: $table');
+        debugPrint('DATABASE_HELPER: Cleared table: $table');
       }
 
       // Clear users table, but keep the admin
@@ -2091,15 +2103,15 @@ To view live changes in DB Browser:
         where: "role != ?",
         whereArgs: ['admin'],
       );
-      print('DATABASE_HELPER: Cleared table: $tableUsers (except admin)');
+      debugPrint('DATABASE_HELPER: Cleared table: $tableUsers (except admin)');
 
       // Re-seed the initial clinic services to restore them if they were accidentally wiped.
       // This is safe to run multiple times as it checks for existence before inserting.
       await _seedInitialClinicServicesWithExecutor(txn);
-      print('DATABASE_HELPER: Ensured initial clinic services are present.');
+      debugPrint('DATABASE_HELPER: Ensured initial clinic services are present.');
     });
 
-    print('DATABASE_HELPER: Database reset completed successfully.');
+    debugPrint('DATABASE_HELPER: Database reset completed successfully.');
   }
 
   Future<Map<String, int>> getDashboardStatistics() async {
