@@ -32,7 +32,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 25; // Incremented version from 24 to 25
+  static const int _databaseVersion = 27; // Incremented version from 26 to 27
 
   // Tables
   static const String tableUsers = 'users';
@@ -349,7 +349,7 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Created $tablePatients table');
 
-    // Appointments table (Updated Schema - notes and createdById removed)
+    // Appointments table
     await db.execute('''
       CREATE TABLE $tableAppointments (
         id TEXT PRIMARY KEY,
@@ -360,19 +360,23 @@ class DatabaseHelper {
         consultationType TEXT,
         durationMinutes INTEGER,
         status TEXT,
-        createdAt TEXT,
-        originalAppointmentId TEXT, 
-        consultationStartedAt TEXT, 
-        servedAt TEXT,               
-        selectedServices TEXT,      
-        totalPrice REAL,            
+        consultationStartedAt TEXT,
+        servedAt TEXT,
+        selectedServices TEXT,
+        totalPrice REAL,
         paymentStatus TEXT,
+        originalAppointmentId TEXT,
+        cancelledAt TEXT,
+        cancellationReason TEXT,
+        notes TEXT,
+        isWalkIn INTEGER DEFAULT 0,
+        createdAt TEXT,
         updatedAt TEXT,
-        FOREIGN KEY (patientId) REFERENCES patients(id),
-        FOREIGN KEY (doctorId) REFERENCES users(id)
+        FOREIGN KEY (patientId) REFERENCES $tablePatients(id),
+        FOREIGN KEY (doctorId) REFERENCES $tableUsers(id)
       )
     ''');
-    debugPrint('DATABASE_HELPER: Created $tableAppointments table (schema updated)');
+    debugPrint('DATABASE_HELPER: Created $tableAppointments table');
 
     // Medical Records table
     await db.execute('''
@@ -545,51 +549,26 @@ class DatabaseHelper {
 
     // Create Indexes (for new databases v7+)
     await _createIndexes(db);
+
+    debugPrint("DATABASE_HELPER: All tables created in batch.");
   }
 
   // Database upgrade
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint("DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
-    // Each upgrade case should fall through to the next one if not breaking.
-    // Example: if (oldVersion < 2) { ... } if (oldVersion < 3) { ... }
-    // This ensures all migrations from the oldVersion up to newVersion are applied.
 
     if (oldVersion < 23) {
-      // Migrations for versions before 23
-      // Note: This block assumes prior migrations up to version 22 were correctly handled.
-      // If you are jumping many versions, ensure all intermediate steps are covered.
+      // A consolidated block for migrations that should have happened before v23
       debugPrint("DATABASE_HELPER: Applying migrations for versions < 23.");
-      List<Map> tables;
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableMedicalRecords'");
-      if (tables.isEmpty) {
-           await db.execute(''' CREATE TABLE ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
-           debugPrint("DATABASE_HELPER: (Upgrade) Created $tableMedicalRecords because it was missing.");
-      }
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableClinicServices'");
-      if (tables.isEmpty) {
-          await db.execute(''' CREATE TABLE ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
-           debugPrint("DATABASE_HELPER: (Upgrade) Created $tableClinicServices because it was missing.");
-      }
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableUserActivityLog'");
-      if (tables.isEmpty) {
-          await db.execute(''' CREATE TABLE ${DatabaseHelper.tableUserActivityLog} (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, actionDescription TEXT NOT NULL, targetRecordId TEXT, targetTable TEXT, timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT, FOREIGN KEY (userId) REFERENCES $tableUsers (id)) ''');
-          debugPrint("DATABASE_HELPER: (Upgrade) Created $tableUserActivityLog because it was missing.");
-      }
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tablePatientBills'");
-      if (tables.isEmpty) {
-         await db.execute(''' CREATE TABLE $tablePatientBills (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, billDate TEXT NOT NULL, totalAmount REAL NOT NULL, status TEXT NOT NULL, notes TEXT, FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE CASCADE) ''');
-          debugPrint("DATABASE_HELPER: (Upgrade) Created $tablePatientBills because it was missing (original schema).");
-      }
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableBillItems'");
-      if (tables.isEmpty) {
-          await db.execute(''' CREATE TABLE $tableBillItems (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT NOT NULL, serviceId TEXT, description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unitPrice REAL NOT NULL, itemTotal REAL NOT NULL, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE CASCADE, FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)) ''');
-          debugPrint("DATABASE_HELPER: (Upgrade) Created $tableBillItems because it was missing.");
-      }
-      tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='$tablePayments'");
-      if (tables.isEmpty) {
-           await db.execute(''' CREATE TABLE $tablePayments (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT, patientId TEXT NOT NULL, referenceNumber TEXT UNIQUE NOT NULL, paymentDate TEXT NOT NULL, amountPaid REAL NOT NULL, paymentMethod TEXT NOT NULL, receivedByUserId TEXT NOT NULL, notes TEXT, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE SET NULL, FOREIGN KEY (patientId) REFERENCES $tablePatients (id), FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)) ''');
-           debugPrint("DATABASE_HELPER: (Upgrade) Created $tablePayments because it was missing (original schema).");
-      }
+      // This creates tables that might be missing in very old versions.
+      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
+      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
+      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableUserActivityLog} (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, actionDescription TEXT NOT NULL, targetRecordId TEXT, targetTable TEXT, timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT, FOREIGN KEY (userId) REFERENCES $tableUsers (id)) ''');
+      await db.execute(''' CREATE TABLE IF NOT EXISTS $tablePatientBills (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, billDate TEXT NOT NULL, totalAmount REAL NOT NULL, status TEXT NOT NULL, notes TEXT, FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE CASCADE) ''');
+      await db.execute(''' CREATE TABLE IF NOT EXISTS $tableBillItems (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT NOT NULL, serviceId TEXT, description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unitPrice REAL NOT NULL, itemTotal REAL NOT NULL, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE CASCADE, FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)) ''');
+      await db.execute(''' CREATE TABLE IF NOT EXISTS $tablePayments (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT, patientId TEXT NOT NULL, referenceNumber TEXT UNIQUE NOT NULL, paymentDate TEXT NOT NULL, amountPaid REAL NOT NULL, paymentMethod TEXT NOT NULL, receivedByUserId TEXT NOT NULL, notes TEXT, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE SET NULL, FOREIGN KEY (patientId) REFERENCES $tablePatients (id), FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)) ''');
+
+      // Add columns that were introduced over time before v23
       await _addColumnIfNotExists(db, tableAppointments, 'originalAppointmentId', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'consultationStartedAt', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'servedAt', 'TEXT');
@@ -611,24 +590,30 @@ class DatabaseHelper {
       
       try {
         await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoiceNumber ON $tablePatientBills (invoiceNumber) WHERE invoiceNumber IS NOT NULL;');
-        debugPrint("DATABASE_HELPER: Ensured unique index on $tablePatientBills(invoiceNumber).");
       } catch (e) {
         debugPrint("DATABASE_HELPER: Warning - Could not create unique index on $tablePatientBills(invoiceNumber). This might be due to existing data. $e");
       }
 
       await _addColumnIfNotExists(db, tablePayments, 'invoiceNumber', 'TEXT'); 
       await _addColumnIfNotExists(db, tablePayments, 'totalBillAmount', 'REAL'); 
-      debugPrint("DATABASE_HELPER: Schema changes for v24 applied to $tablePatientBills and $tablePayments.");
     }
 
     if (oldVersion < 25) {
-      try {
-        await db.execute('ALTER TABLE $tableActivePatientQueue ADD COLUMN doctorId TEXT');
-        await db.execute('ALTER TABLE $tableActivePatientQueue ADD COLUMN doctorName TEXT');
-        debugPrint('DATABASE_HELPER: Upgraded $tableActivePatientQueue, added doctorId and doctorName columns.');
-      } catch (e) {
-        debugPrint('DATABASE_HELPER: Error upgrading $tableActivePatientQueue to v25: $e. Columns might already exist.');
-      }
+      await _addColumnIfNotExists(db, tableActivePatientQueue, 'doctorId', 'TEXT');
+      await _addColumnIfNotExists(db, tableActivePatientQueue, 'doctorName', 'TEXT');
+    }
+
+    if (oldVersion < 26) {
+      await _addColumnIfNotExists(db, tableAppointments, 'cancelledAt', 'TEXT');
+    }
+
+    if (oldVersion < 27) {
+      // This migration ensures columns from the Appointment model are present.
+      // The error "no column named cancelledAt" suggests a schema mismatch.
+      await _addColumnIfNotExists(db, tableAppointments, 'cancelledAt', 'TEXT');
+      await _addColumnIfNotExists(db, tableAppointments, 'cancellationReason', 'TEXT');
+      await _addColumnIfNotExists(db, tableAppointments, 'notes', 'TEXT');
+      await _addColumnIfNotExists(db, tableAppointments, 'isWalkIn', 'INTEGER DEFAULT 0');
     }
 
     debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
@@ -2129,5 +2114,14 @@ To view live changes in DB Browser:
       'cancelledAppointments': cancelledAppointments,
       'completedAppointments': completedAppointments,
     };
+  }
+
+  // Close database
+  Future<void> close() async {
+    final db = _instanceDatabase;
+    if (db != null) {
+      await db.close();
+      _instanceDatabase = null;
+    }
   }
 }

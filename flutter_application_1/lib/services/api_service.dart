@@ -46,6 +46,8 @@ class ApiService {
 
   static Future<void> register({
     required String fullName,
+    required String email,
+    required String contactNumber,
     required String username,
     required String password,
     required String role,
@@ -64,6 +66,8 @@ class ApiService {
         'username': username,
         'password': hashedPassword, // Store the hashed password
         'fullName': fullName,
+        'email': email,
+        'contactNumber': contactNumber,
         'role': role,
         'securityQuestion1': securityQuestion1,
         'securityAnswer1': securityAnswer1,

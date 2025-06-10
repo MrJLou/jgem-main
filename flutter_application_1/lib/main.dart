@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/signup_screen.dart';
-import 'screens/dashboard_screen.dart';
 import 'screens/dashboard_overview_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'screens/lan_client_connection_screen.dart';
@@ -50,7 +49,6 @@ class PatientRecordManagementApp extends StatelessWidget {
       routes: {
         '/auth': (context) => const AuthScreen(),
         '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignUpScreen(),
         '/dashboard': (context) => const DashboardScreen(
               accessLevel: 'admin',
             ), // Add route for DashboardScreen

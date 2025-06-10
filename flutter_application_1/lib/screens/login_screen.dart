@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import 'dashboard_screen.dart';
 import 'forgot_password_screen.dart';
-import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,7 +24,6 @@ class LoginScreenState extends State<LoginScreen>
   String? _errorMessage;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  int _selectedIndex = 0; // 0 for Sign In, 1 for Sign Up
 
   // State for interactive image rotation
   double _interactiveRotationAngle = 0.0; // Renamed from _rotationAngle and initialized
@@ -282,7 +280,7 @@ class LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    Theme.of(context);
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -326,36 +324,9 @@ class LoginScreenState extends State<LoginScreen>
                       _buildSideNavItem(
                         icon: Icons.login,
                         label: 'Sign In',
-                        isSelected: _selectedIndex == 0,
+                        isSelected: true,
                         onTap: () {
-                          setState(() {
-                            _selectedIndex = 0;
-                          });
-                        },
-                      ),
-
-                      // Sign Up Button
-                      _buildSideNavItem(
-                        icon: Icons.person_add,
-                        label: 'Sign Up',
-                        isSelected: _selectedIndex == 1,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageRouteBuilder(
-                              pageBuilder:
-                                  (context, animation, secondaryAnimation) =>
-                                      const SignUpScreen(),
-                              transitionsBuilder: (context, animation,
-                                  secondaryAnimation, child) {
-                                return FadeTransition(
-                                    opacity: animation, child: child);
-                              },
-                              transitionDuration: const Duration(
-                                  milliseconds:
-                                      300), // Adjust duration as needed
-                            ),
-                          );
+                          // No action needed as this is the only option
                         },
                       ),
                     ],
@@ -520,45 +491,6 @@ class LoginScreenState extends State<LoginScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 80),
-
-                                    // Don't have an account text
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        const Text("Don't have an account?"),
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              PageRouteBuilder(
-                                                pageBuilder: (context,
-                                                        animation,
-                                                        secondaryAnimation) =>
-                                                    const SignUpScreen(),
-                                                transitionsBuilder: (context,
-                                                    animation,
-                                                    secondaryAnimation,
-                                                    child) {
-                                                  return FadeTransition(
-                                                      opacity: animation,
-                                                      child: child);
-                                                },
-                                                transitionDuration: const Duration(
-                                                    milliseconds:
-                                                        300), // Adjust duration as needed
-                                              ),
-                                            );
-                                          },
-                                          child: Text(
-                                            'Sign Up',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: theme.primaryColor,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
 
                                     const SizedBox(height: 40),
 

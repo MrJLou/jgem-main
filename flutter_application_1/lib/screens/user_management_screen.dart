@@ -21,6 +21,8 @@ class UserManagementScreenState extends State<UserManagementScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _contactNumberController = TextEditingController();
 
   // Removed TextEditControllers for security questions
   final TextEditingController _securityAnswer1Controller =
@@ -82,6 +84,8 @@ class UserManagementScreenState extends State<UserManagementScreen> {
     _usernameController.clear();
     _fullNameController.clear();
     _passwordController.clear();
+    _emailController.clear();
+    _contactNumberController.clear();
     _securityAnswer1Controller.clear();
     _securityAnswer2Controller.clear();
     _securityAnswer3Controller.clear();
@@ -136,6 +140,8 @@ class UserManagementScreenState extends State<UserManagementScreen> {
           username: _usernameController.text,
           password: _passwordController.text,
           fullName: _fullNameController.text,
+          email: _emailController.text,
+          contactNumber: _contactNumberController.text,
           role: _selectedRole,
           securityQuestion1: _selectedSecurityQuestion1,
           securityAnswer1: hashedSecurityAnswer1,
@@ -353,6 +359,30 @@ class UserManagementScreenState extends State<UserManagementScreen> {
                   }
                   return null;
                 },
+                style: TextStyle(color: Colors.grey[800]),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _emailController,
+                decoration: _formFieldDecoration(
+                    label: 'Email Address', iconData: Icons.email_outlined),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value != null &&
+                      !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                          .hasMatch(value)) {
+                    return 'Enter a valid email address';
+                  }
+                  return null;
+                },
+                style: TextStyle(color: Colors.grey[800]),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _contactNumberController,
+                decoration: _formFieldDecoration(
+                    label: 'Contact Number', iconData: Icons.phone_outlined),
+                keyboardType: TextInputType.phone,
                 style: TextStyle(color: Colors.grey[800]),
               ),
               const SizedBox(height: 16),
