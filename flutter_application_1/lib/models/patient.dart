@@ -1,3 +1,5 @@
+import 'dart:math';
+
 class Patient {
   final String id;
   final String fullName;
@@ -107,5 +109,25 @@ class Patient {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  // Generate a 6-digit ID
+  static String generateId() {
+    final random = Random();
+    return (100000 + random.nextInt(900000)).toString(); // Generates number between 100000-999999
+  }
+
+  // Format an existing ID to ensure it's 6 digits
+  static String formatId(String id) {
+    // Remove any non-numeric characters
+    final numericId = id.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // If the ID is longer than 6 digits, take the last 6
+    if (numericId.length > 6) {
+      return numericId.substring(numericId.length - 6);
+    }
+    
+    // If the ID is shorter than 6 digits, pad with zeros
+    return numericId.padLeft(6, '0');
   }
 }

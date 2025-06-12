@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For formatting price
+import 'dart:async';
 import '../../services/api_service.dart'; // Added ApiService import
 import '../../models/clinic_service.dart'; // Added ClinicService import
 import '../../models/user.dart'; // ADDED for doctors
@@ -9,6 +10,9 @@ import '../../services/database_helper.dart';
 import '../../services/appointment_database_service.dart';
 import '../../models/active_patient_queue_item.dart';
 import '../../models/appointment.dart';
+import '../../models/patient.dart';
+import '../../services/patient_service.dart';
+import '../../services/user_service.dart';
 
 // Define Service data structure
 // class ServiceItem { // Removed ServiceItem class
@@ -36,17 +40,19 @@ class AddToQueueScreen extends StatefulWidget {
 
 class AddToQueueScreenState extends State<AddToQueueScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _patientNameController = TextEditingController();
   final TextEditingController _patientIdController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _genderController = TextEditingController();
   // final TextEditingController _conditionController = TextEditingController(); // Replaced
   final TextEditingController _otherConditionController =
       TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
   late AppointmentDatabaseService _appointmentDbService;
   bool _isAddingToQueue = false;
+
+  Timer? _patientSearchDebounce;
 
   // Predefined services - Will be fetched from DB
   List<ClinicService> _availableServices = []; // Changed to List<ClinicService>
@@ -60,12 +66,16 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   double _totalPrice = 0.0;
   bool _showOtherConditionField = false;
 
+  List<Patient>? _searchResults;
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
     _appointmentDbService = AppointmentDatabaseService(_dbHelper);
     _fetchAvailableServices();
     _fetchDoctors(); // ADDED
+    _loadDoctors();
   }
 
   Future<void> _fetchAvailableServices() async {
@@ -119,6 +129,18 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     }
   }
 
+  Future<void> _loadDoctors() async {
+    try {
+      final doctors = await UserService.getDoctors();
+      setState(() {
+        _doctors = doctors;
+      });
+    } catch (e) {
+      // Handle error
+      debugPrint('Error loading doctors: $e');
+    }
+  }
+
   int? _calculateAge(String birthDateString) {
     if (birthDateString.isEmpty) return null;
     try {
@@ -138,6 +160,40 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
       return null;
     }
+  }
+
+  Future<void> _searchPatients(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final results = await PatientService.searchPatients(query);
+      setState(() {
+        _searchResults = results;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      // Handle error
+      debugPrint('Error searching patients: $e');
+    }
+  }
+
+  void _onPatientSearchChanged(String query) {
+    if (_patientSearchDebounce?.isActive ?? false) _patientSearchDebounce!.cancel();
+    _patientSearchDebounce = Timer(const Duration(milliseconds: 500), () {
+      _searchPatients(query);
+    });
   }
 
   Future<void> _addPatientToQueue() async {
@@ -167,7 +223,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         return;
       }
 
-      final enteredPatientName = _patientNameController.text.trim();
+      final enteredPatientName = _searchController.text.trim();
       final enteredPatientId = _patientIdController.text.trim();
 
       // Call the new method in QueueService (you need to implement this in QueueService)
@@ -334,7 +390,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
             // Update controllers to reflect DB data being used
             _patientIdController.text = finalPatientIdToUse;
-            _patientNameController.text = finalPatientNameToUse;
+            _searchController.text = finalPatientNameToUse;
             _ageController.text = finalAgeToUse?.toString() ?? '';
             _genderController.text = finalGenderToUse;
           } else {
@@ -425,7 +481,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             ),
           );
           _formKey.currentState!.reset();
-          _patientNameController.clear();
+          _searchController.clear();
           _patientIdController.clear();
           _ageController.clear();
           _genderController.clear();
@@ -678,19 +734,32 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     fontWeight: FontWeight.w600,
                                     color: Colors.teal[700])),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _patientNameController,
-                              decoration: const InputDecoration(
-                                  labelText: 'Patient Name (Registered) *',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.person)),
-                              validator: (value) =>
-                                  value == null || value.isEmpty
-                                      ? 'Patient name is required'
-                                      : null,
+                            Column(
+                              children: [
+                                TextFormField(
+                                  controller: _searchController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Search Patient by Name or ID',
+                                    prefixIcon: _isLoading
+                                        ? Transform.scale(
+                                            scale: 0.5,
+                                            child:
+                                                const CircularProgressIndicator(),
+                                          )
+                                        : const Icon(Icons.search),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  onChanged: _onPatientSearchChanged,
+                                ),
+                                if (_searchResults != null &&
+                                    _searchResults!.isNotEmpty)
+                                  _buildSearchResultsList(),
+                              ],
                             ),
                             const SizedBox(height: 16),
-                            TextFormField(
+                            TextField(
                               controller: _patientIdController,
                               decoration: const InputDecoration(
                                   labelText:
@@ -925,6 +994,52 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     );
   }
 
+  Widget _buildSearchResultsList() {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(20),
+            spreadRadius: 1,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      constraints: const BoxConstraints(maxHeight: 200),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: _searchResults!.length,
+        itemBuilder: (context, index) {
+          final patient = _searchResults![index];
+          return ListTile(
+            title: Text(patient.fullName),
+            subtitle: Text('ID: ${patient.id}'),
+            onTap: () {
+              setState(() {
+                _searchController.text = patient.fullName;
+                _patientIdController.text = patient.id;
+                final age = _calculateAge(patient.birthDate.toIso8601String());
+                _ageController.text = age?.toString() ?? '';
+                _genderController.text = patient.gender;
+                _searchResults = null;
+              });
+            },
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            dense: true,
+            tileColor: Colors.white,
+            hoverColor: Colors.teal.withAlpha(20),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildQueueTable() {
     return StreamBuilder<List<ActivePatientQueueItem>>(
       stream: Stream.periodic(const Duration(seconds: 2)).asyncMap(
@@ -1111,12 +1226,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   @override
   void dispose() {
-    _patientNameController.dispose();
+    _patientSearchDebounce?.cancel();
     _patientIdController.dispose();
     _ageController.dispose();
     _genderController.dispose();
     // _conditionController.dispose(); // Removed
     _otherConditionController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 }

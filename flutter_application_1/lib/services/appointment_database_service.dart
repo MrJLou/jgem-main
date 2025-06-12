@@ -14,18 +14,37 @@ class AppointmentDatabaseService {
     final db = await _dbHelper.database;
     final appointmentMap = appointment.toMap();
 
-    if (appointmentMap['id'] == null) {
-      appointmentMap['id'] =
-          'appointment-${DateTime.now().millisecondsSinceEpoch}';
+    // Generate a unique ID if not provided
+    if (appointmentMap['id'] == null || appointmentMap['id'].isEmpty) {
+      appointmentMap['id'] = 'appointment-${DateTime.now().millisecondsSinceEpoch}-${(1000 + (DateTime.now().microsecond % 9000))}';
     }
+    
+    // Ensure createdAt is set
     if (appointmentMap['createdAt'] == null) {
       appointmentMap['createdAt'] = DateTime.now().toIso8601String();
     }
 
-    await db.insert(DatabaseHelper.tableAppointments, appointmentMap);
-    await _dbHelper.logChange(DatabaseHelper.tableAppointments, appointmentMap['id'], 'insert');
+    try {
+      // Check if ID already exists
+      final existingAppointment = await db.query(
+        DatabaseHelper.tableAppointments,
+        where: 'id = ?',
+        whereArgs: [appointmentMap['id']],
+        limit: 1
+      );
 
-    return Appointment.fromMap(appointmentMap);
+      if (existingAppointment.isNotEmpty) {
+        // Generate a new unique ID
+        appointmentMap['id'] = 'appointment-${DateTime.now().millisecondsSinceEpoch}-${(1000 + (DateTime.now().microsecond % 9000))}-${DateTime.now().second}';
+      }
+
+      await db.insert(DatabaseHelper.tableAppointments, appointmentMap);
+      await _dbHelper.logChange(DatabaseHelper.tableAppointments, appointmentMap['id'], 'insert');
+      return Appointment.fromMap(appointmentMap);
+    } catch (e) {
+      debugPrint('Error in insertAppointment: $e');
+      throw Exception('Failed to insert appointment: $e');
+    }
   }
 
   Future<int> updateAppointment(Appointment appointment) async {

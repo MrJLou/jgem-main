@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import 'package:intl/intl.dart';
 import '../models/appointment.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart';
@@ -251,41 +250,13 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Widget _buildNavigationItem(int index) {
-    return DashboardNavigationItem(
-      index: index,
-      selectedIndex: _selectedIndex,
-      isHovered: _isHovered,
-      icon: _menuIcons[index],
-      title: _menuTitles[index],
-      hoveredItems: _hoveredItems,
-      onTap: () => setState(() => _selectedIndex = index),
-      onHover: (index, isHovered) => setState(() => _hoveredItems[index] = isHovered),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_menuTitles.isEmpty && widget.accessLevel != 'patient') {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('J-Gem Medical and Diagnostic Clinic'),
-          backgroundColor: Colors.teal[700],
-        ),
-        body: const Center(child: CircularProgressIndicator()),
+    if (_menuTitles.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       );
     }
-    
-    if (_menuTitles.isEmpty && widget.accessLevel == 'patient') {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text("Patient Dashboard"),
-          backgroundColor: Colors.teal[700],
-        ),
-        body: const Center(child: Text("Welcome Patient! Limited view.")),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -427,71 +398,57 @@ class DashboardScreenState extends State<DashboardScreen> {
             onEnter: (_) => setState(() => _isHovered = true),
             onExit: (_) => setState(() => _isHovered = false),
             child: AnimatedContainer(
+              clipBehavior: Clip.hardEdge,
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
-              width: _isHovered ? 220 : 72, // Increased width when hovered
-              constraints: BoxConstraints(
-                minWidth: 72,
-                maxWidth: _isHovered ? 220 : 72, // Ensure max width constraint
-              ),
+              width: _isHovered ? 240 : 72,
               decoration: BoxDecoration(
-                color: Colors.grey[100],
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withAlpha(26), blurRadius: 2)
-                ],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    // First two navigation items
-                    ...List.generate(
-                      2,
-                      (index) => _buildNavigationItem(index),
-                    ),
-                    // Divider before Analytics Hub
-                    if (_isHovered)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Divider(thickness: 1, color: Colors.grey),
-                      )
-                    else
-                      const SizedBox(height: 8),
-
-                    // Analytics Hub and Report
-                    ...List.generate(
-                      2,
-                      (index) => _buildNavigationItem(index + 2),
-                    ),
-                    
-                    // Divider after Report
-                    if (_isHovered)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        child: Divider(thickness: 1, color: Colors.grey),
-                      )
-                    else
-                      const SizedBox(height: 8),
-                    // Remaining navigation items
-                    ...List.generate(
-                      _menuTitles.length - 4,
-                      (index) => _buildNavigationItem(index + 4),
-                    ),
-                  ],
+                color: const Color(0xFFF0F2F5),
+                border: Border(
+                  right: BorderSide(
+                    color: Colors.grey[300]!,
+                    width: 1.0,
+                  ),
                 ),
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.only(top: 16),
+                itemCount: _menuTitles.length,
+                itemBuilder: (context, index) {
+                  if (_menuTitles[index] == '---') {
+                    return const Divider(
+                      color: Colors.white30,
+                      height: 1,
+                      thickness: 0.5,
+                      indent: 16,
+                      endIndent: 16,
+                    );
+                  }
+                  return DashboardNavigationItem(
+                    index: index,
+                    selectedIndex: _selectedIndex,
+                    isHovered: _isHovered,
+                    icon: _menuIcons[index],
+                    title: _menuTitles[index],
+                    hoveredItems: _hoveredItems,
+                    onTap: () => setState(() => _selectedIndex = index),
+                    onHover: (index, isHovered) => setState(() => _hoveredItems[index] = isHovered),
+                  );
+                },
               ),
             ),
           ),
-           const VerticalDivider(thickness: 1, width: 1),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: (_selectedIndex < _screens.length)
-                ? _screens[_selectedIndex]
-                : const Center(child: Text("Screen not available")),
+          const VerticalDivider(width: 1, thickness: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: (_selectedIndex < _screens.length)
+                        ? _screens[_selectedIndex]
+                        : const Center(child: Text("Screen not available")),
+                  ),
           ),
-        ),
         ],
       ),
     );

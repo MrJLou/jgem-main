@@ -95,21 +95,10 @@ class InvoiceScreenState extends State<InvoiceScreen> {
               p.totalPrice! > 0)
           .toList();
 
-      if (mounted) {
-        setState(() {
-          _inConsultationPatients = validPatients;
-          _isLoadingPatients = false;
-        });
-
-        if (validPatients.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No patients currently in consultation or awaiting payment.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
+      setState(() {
+        _inConsultationPatients = validPatients;
+        _isLoadingPatients = false;
+      });
     } catch (e) {
       setState(() {
         _isLoadingPatients = false;
@@ -928,13 +917,11 @@ class InvoiceScreenState extends State<InvoiceScreen> {
                     color: Colors.green[700], fontWeight: FontWeight.bold)),
             selected: isSelected,
             onTap: () {
-              if (index < _inConsultationPatients.length) {
-                setState(() {
-                  _selectedPatientQueueItem = _inConsultationPatients[index];
-                  _currentStep = InvoiceFlowStep.patientSelection; // Back to selection, will show gen button
-                  _resetInvoiceAndPaymentState(); 
-                });
-              }
+              setState(() {
+                _selectedPatientQueueItem = patient;
+                _currentStep = InvoiceFlowStep.patientSelection; // Back to selection, will show gen button
+                _resetInvoiceAndPaymentState(); 
+              });
             },
           ),
         );

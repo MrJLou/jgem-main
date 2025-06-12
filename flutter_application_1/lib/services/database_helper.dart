@@ -773,6 +773,22 @@ class DatabaseHelper {
     });
   }
 
+  Future<List<Appointment>> getAppointmentsForRange(DateTime startDate, DateTime endDate) async {
+    final db = await database;
+    final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
+    final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      tableAppointments,
+      where: "DATE(date) BETWEEN ? AND ?",
+      whereArgs: [startDateStr, endDateStr],
+    );
+
+    return List.generate(maps.length, (i) {
+      return Appointment.fromMap(maps[i]);
+    });
+  }
+
   Future<void> updatePatientQueueFromSync(
       Map<String, dynamic> queueData) async {
     return appointmentDbService.updatePatientQueueFromSync(queueData);

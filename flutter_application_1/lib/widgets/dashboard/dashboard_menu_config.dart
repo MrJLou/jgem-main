@@ -1,7 +1,9 @@
 // Dashboard menu configuration and role management
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../screens/user_management_screen.dart';
 import '../../screens/registration/registration_hub_screen.dart';
+import '../../screens/registration/patient_registration_screen.dart';
 import '../../screens/search/search_hub_screen.dart';
 import '../../screens/laboratory/laboratory_hub_screen.dart';
 import '../../screens/patient_queue/patient_queue_hub_screen.dart';
@@ -22,9 +24,22 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => LiveQueueDashboardView(
           queueService: QueueService(), appointments: const []),
       'icon': Icons.dashboard_outlined
-    },
-    'Registration': {
-      'screen': (String accessLevel) => const RegistrationHubScreen(),
+    },    'Registration': {
+      'screen': (String accessLevel) {
+        if (kDebugMode) {
+          print('DEBUG: Registration screen factory called with accessLevel: "$accessLevel"');
+        }
+        if (accessLevel.trim().toLowerCase() == 'medtech') {
+          if (kDebugMode) {
+            print('DEBUG: Returning PatientRegistrationScreen for medtech');
+          }
+          return const PatientRegistrationScreen();
+        }
+        if (kDebugMode) {
+          print('DEBUG: Returning RegistrationHubScreen for non-medtech role');
+        }
+        return const RegistrationHubScreen(); // For admin
+      },
       'icon': Icons.app_registration
     },
     'User Management': {
@@ -77,56 +92,77 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
     },
+    '---': {
+      'screen': (String accessLevel) =>
+          const SizedBox.shrink(), // No screen for a divider
+      'icon': Icons.horizontal_rule, // No icon for a divider
+    }
   };
 
   static final Map<String, List<String>> rolePermissions = {
     'admin': [
       'Registration',
       'Maintenance',
+      '---',
       'Search',
       'Patient Laboratory Histories',
+      '---',
       'Patient Queue',
       'Appointment Schedule',
+      '---',
       'Analytics Hub',
       'Report',
       'Payment',
       'Billing',
+      '---',
       'Help',
       'About'
     ],
     'medtech': [
       'Dashboard',
+      '---',
       'Registration',
       'Search',
       'Patient Laboratory Histories',
+       '---',
       'Patient Queue',
       'Appointment Schedule',
+      '---',
       'Analytics Hub',
       'Report',
       'Payment',
       'Billing',
+      '---',
       'Help',
       'About'
     ],
     'doctor': [
       'Dashboard',
+      '---',
       'Search',
       'Patient Laboratory Histories',
+      '---',
       'Patient Queue',
       'Appointment Schedule',
+      '---',
       'Analytics Hub',
       'Report',
       'Payment',
       'Billing',
+      '---',
       'Help',
       'About'
     ],
-    'patient': ['Appointment Schedule', 'Help', 'About']
   };
-
   static MenuConfiguration configureMenuForRole(String accessLevel) {
+    if (kDebugMode) {
+      print('DEBUG: configureMenuForRole called with accessLevel: "$accessLevel"');
+    }
     List<String> allowedMenuKeys =
-        rolePermissions[accessLevel] ?? rolePermissions['patient']!;
+        rolePermissions[accessLevel] ?? [];
+    if (kDebugMode) {
+      print('DEBUG: allowedMenuKeys for $accessLevel: $allowedMenuKeys');
+    }
 
     List<String> tempTitles = [];
     List<Widget> tempScreens = [];
@@ -149,12 +185,18 @@ class DashboardMenuConfig {
       if (tempTitles.contains(key)) continue;
 
       if (allowedMenuKeys.contains(key)) {
+        if (kDebugMode) {
+          print('DEBUG: Adding menu item: $key');
+        }
         tempTitles.add(key);
         tempScreens.add(allMenuItems[key]!['screen'](accessLevel));
         tempIcons.add(allMenuItems[key]!['icon']);
       }
     }
 
+    if (kDebugMode) {
+      print('DEBUG: Final menu titles: $tempTitles');
+    }
     return MenuConfiguration(
       titles: tempTitles,
       screens: tempScreens,

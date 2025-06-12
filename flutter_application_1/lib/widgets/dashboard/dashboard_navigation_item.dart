@@ -36,7 +36,7 @@ class DashboardNavigationItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
-          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          margin: const EdgeInsets.fromLTRB(4, 2, 12, 2),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isSelected
@@ -49,30 +49,38 @@ class DashboardNavigationItem extends StatelessWidget {
                 ? Border.all(color: Colors.teal.withAlpha(75), width: 1)
                 : null,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? Colors.teal[700] : Colors.grey[600],
-                size: 24,
-              ),
-              if (isHovered) ...[
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: isSelected ? Colors.teal[700] : Colors.grey[800],
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis, // Prevent overflow
-                    maxLines: 1, // Limit to single line
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final bool canShowText = isHovered && constraints.maxWidth > 140;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    color: isSelected ? Colors.teal[700] : Colors.grey[600],
+                    size: 24,
                   ),
-                ),
-              ],
-            ],
+                  if (canShowText) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected
+                              ? Colors.teal[700]
+                              : Colors.grey[800],
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
         ),
       ),

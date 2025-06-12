@@ -5,7 +5,6 @@ import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/dashboard_overview_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'screens/lan_client_connection_screen.dart';
 import 'services/lan_connection_screen.dart';
@@ -92,7 +91,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
         }
 
         if (snapshot.hasData && snapshot.data == true) {
-          return const DashboardOverviewScreen();
+          return const LoginScreen();
         }
         return const LoginScreen();
       },

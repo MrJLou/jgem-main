@@ -496,7 +496,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                         controlAffinity:
                                             ListTileControlAffinity.leading,
                                         activeColor: Colors.teal,
-                                      )),
+                                     )),
                               const Divider(),
                             ]),
                     CheckboxListTile(
@@ -619,99 +619,135 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
         return StatefulBuilder(
           builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Register New Patient'),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: formKey,
-                  child: ReusablePatientFormFields(
-                    formType: FormType.mini,
-                    firstNameController: firstNameController,
-                    lastNameController: lastNameController,
-                    dobController: dobController,
-                    contactController: contactController,
-                    addressController: addressController,
-                    allergiesController: allergiesController,
-                    gender: selectedGender,
-                    onGenderChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          selectedGender = value;
-                        });
-                      }
-                    },
-                    bloodType: selectedBloodType,
-                    onBloodTypeChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          selectedBloodType = value;
-                        });
-                      }
-                    },
-                    bloodTypes: _dialogBloodTypes,
-                    isEditMode: false,
-                  ),
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.7, // Make dialog wider
+                height: MediaQuery.of(context).size.height * 0.8, // Make dialog taller
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Register New Patient',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal[800],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Form(
+                          key: formKey,
+                          child: ReusablePatientFormFields(
+                            formType: FormType.mini,
+                            firstNameController: firstNameController,
+                            lastNameController: lastNameController,
+                            dobController: dobController,
+                            contactController: contactController,
+                            addressController: addressController,
+                            allergiesController: allergiesController,
+                            gender: selectedGender,
+                            onGenderChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  selectedGender = value;
+                                });
+                              }
+                            },
+                            bloodType: selectedBloodType,
+                            onBloodTypeChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  selectedBloodType = value;
+                                });
+                              }
+                            },
+                            bloodTypes: _dialogBloodTypes,
+                            isEditMode: false,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                          child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          onPressed: isLoading
+                              ? null
+                              : () async {
+                                  if (formKey.currentState!.validate()) {
+                                    setState(() {
+                                      isLoading = true;
+                                    });
+
+                                    final now = DateTime.now();
+                                    Patient patientToSave = Patient(
+                                      id: 'temp_${now.millisecondsSinceEpoch}',
+                                      fullName: '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
+                                      birthDate: DateFormat('yyyy-MM-dd').parse(dobController.text),
+                                      gender: selectedGender,
+                                      contactNumber: contactController.text.trim(),
+                                      address: addressController.text.trim(),
+                                      bloodType: selectedBloodType,
+                                      allergies: allergiesController.text.trim(),
+                                      createdAt: now,
+                                      updatedAt: now,
+                                    );
+
+                                    try {
+                                      final newPatientId = await ApiService.createPatient(patientToSave);
+                                      final savedPatient = patientToSave.copyWith(id: newPatientId);
+                                      
+                                      if (!mounted) return;
+                                      Navigator.of(context).pop(savedPatient);
+                                    } catch (e) {
+                                      debugPrint("Error saving new patient from dialog: $e");
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Failed to save patient: ${e.toString()}'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    } finally {
+                                      setState(() {
+                                        isLoading = false;
+                                      });
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                          child: isLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Text('Save Patient', style: TextStyle(fontSize: 16, color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          if (formKey.currentState!.validate()) {
-                            setState(() {
-                              isLoading = true;
-                            });
-
-                            final now = DateTime.now();
-                            Patient patientToSave = Patient(
-                              id: 'temp_${now.millisecondsSinceEpoch}',
-                              fullName: '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
-                              birthDate: DateFormat('yyyy-MM-dd').parse(dobController.text),
-                              gender: selectedGender,
-                              contactNumber: contactController.text.trim(),
-                              address: addressController.text.trim(),
-                              bloodType: selectedBloodType,
-                              allergies: allergiesController.text.trim(),
-                              createdAt: now,
-                              updatedAt: now,
-                            );
-
-                            try {
-                              final newPatientId = await ApiService.createPatient(patientToSave);
-                              final savedPatient = patientToSave.copyWith(id: newPatientId);
-                              
-                              if (!mounted) return;
-                              Navigator.of(context).pop(savedPatient);
-                            } catch (e) {
-                              debugPrint("Error saving new patient from dialog: $e");
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Failed to save patient: ${e.toString()}'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            } finally {
-                              setState(() {
-                                isLoading = false;
-                              });
-                            }
-                          }
-                        },
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save Patient'),
-                ),
-              ],
             );
           },
         );
@@ -750,9 +786,6 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         return;
       }
 
-      // The conflict check is now implicitly handled by the backend during the API call.
-      // The _selectTime dialog already provides client-side guidance based on locally available data.
-
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -766,7 +799,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         }).toList();
 
         final appointmentToSave = Appointment(
-          id: 'temp_id', // Will be replaced by the ID from the database.
+          id: '', // Empty string to let the database generate the ID
           patientId: _selectedPatient!.id,
           doctorId: _selectedDoctor!.id,
           date: _selectedDate,
@@ -777,30 +810,28 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
               : 'General Consultation',
           selectedServices: servicesForDb,
           totalPrice: _totalPrice,
+          createdAt: DateTime.now(),
+          isWalkIn: false,
         );
-        
-        // Assumes ApiService.createAppointment handles the database transaction
-        // and returns the ID of the newly created appointment.
-        final newAppointmentId = await ApiService.createAppointment(appointmentToSave);
-        // Assumes Appointment model has a copyWith method to update the ID.
-        final savedAppointment = appointmentToSave.copyWith(id: newAppointmentId);
 
-        // Use callback to notify parent and update the appointments list in the UI
+        // Save the appointment and get it back with the generated ID
+        final savedAppointment = await ApiService.saveAppointment(appointmentToSave);
+
+        // Notify parent about the new appointment
         widget.onAppointmentAdded(savedAppointment);
         
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Appointment for ${_selectedPatient!.fullName} at ${_selectedTime.format(context)} saved successfully!'),
-              backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Appointment saved successfully!'),
+            backgroundColor: Colors.green),
         );
         _clearForm();
       } catch (e) {
         if (!mounted) return;
         setState(() {
-          _errorMessage = "Failed to save appointment: ${e.toString()}";
+          _errorMessage = e.toString();
         });
-        // The error from the backend (e.g., a scheduling conflict) will be shown here.
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
         );
@@ -822,6 +853,15 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     setState(() {
       _totalPrice = total;
     });
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _patientSearchController.dispose();
+    _patientSearchDebounce?.cancel();
+    _otherPurposeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -881,82 +921,73 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
-              child: Autocomplete<Patient>(
-                displayStringForOption: (Patient option) =>
-                    '${option.fullName} (ID: ${option.id})',
-                optionsBuilder: (TextEditingValue textEditingValue) {
-                  if (textEditingValue.text.isEmpty) {
-                    return const Iterable<Patient>.empty();
-                  }
-                  return _patientSearchResults;
-                },
-                onSelected: (Patient selection) {
-                  setState(() {
-                    _selectedPatient = selection;
-                    _patientSearchController.text = selection.fullName;
-                  });
-                },
-                fieldViewBuilder: (BuildContext context,
-                    TextEditingController fieldController,
-                    FocusNode fieldFocusNode,
-                    VoidCallback onFieldSubmitted) {
-                  _patientSearchController.addListener(() {
-                    fieldController.text = _patientSearchController.text;
-                  });
-
-                  return TextFormField(
-                    controller: fieldController,
-                    focusNode: fieldFocusNode,
-                    decoration: InputDecoration(
-                      labelText: 'Search for Patient',
-                      hintText: 'Type patient name or ID...',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: _isSearchingPatient
-                          ? Transform.scale(
-                              scale: 0.5,
-                              child: const CircularProgressIndicator(),
-                            )
-                          : const Icon(Icons.search),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.person_add_alt_1_outlined),
-                        tooltip: 'Register New Patient',
-                        onPressed: _showPatientRegistrationDialog,
-                      ),
-                    ),
-                    onChanged: _onPatientSearchChanged,
-                  );
-                },
-                optionsViewBuilder: (BuildContext context,
-                    AutocompleteOnSelected<Patient> onSelected,
-                    Iterable<Patient> options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 4.0,
-                      child: SizedBox(
-                        height: 200.0,
-                        child: ListView.builder(
-                          padding: EdgeInsets.zero,
-                          itemCount: options.length,
-                          itemBuilder: (BuildContext context, int index) {
-                            final Patient option = options.elementAt(index);
-                            return ListTile(
-                              title: Text(
-                                  '${option.fullName} (ID: ${option.id})'),
-                              onTap: () {
-                                onSelected(option);
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
+              child: TextFormField(
+                controller: _patientSearchController,
+                decoration: InputDecoration(
+                  labelText: 'Search for Patient',
+                  hintText: 'Type patient name or ID...',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: _isSearchingPatient
+                      ? Transform.scale(
+                          scale: 0.5,
+                          child: const CircularProgressIndicator(),
+                        )
+                      : const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    tooltip: 'Register New Patient',
+                    onPressed: _showPatientRegistrationDialog,
+                  ),
+                ),
+                onChanged: (value) {
+                  _onPatientSearchChanged(value);
                 },
               ),
             ),
           ],
         ),
+        if (_patientSearchResults.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withAlpha(20),
+                  spreadRadius: 1,
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            constraints: const BoxConstraints(maxHeight: 200),
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _patientSearchResults.length,
+              itemBuilder: (context, index) {
+                final patient = _patientSearchResults[index];
+                return ListTile(
+                  title: Text(patient.fullName),
+                  subtitle: Text('ID: ${patient.id}'),
+                  onTap: () {
+                    setState(() {
+                      _selectedPatient = patient;
+                      _patientSearchController.text = patient.fullName;
+                      _patientSearchResults = [];
+                    });
+                  },
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
+                  tileColor: Colors.white,
+                  hoverColor: Colors.teal.withAlpha(10),
+                );
+              },
+            ),
+          ),
         if (_selectedPatient != null)
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
@@ -1116,4 +1147,4 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       ],
     );
   }
-} 
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // For date formatting
+import 'package:table_calendar/table_calendar.dart';
 import 'package:flutter_application_1/screens/appointments/add_appointment_screen.dart'; 
 import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED for ApiService
@@ -66,11 +67,28 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
   void _filterAppointmentsForSelectedDate() {
     if (!mounted) return;
     setState(() {
-      _appointments = _allCalendarAppointments.where((appt) =>
+      // Get unique appointments for the selected date
+      final allAppointments = _allCalendarAppointments.where((appt) =>
         DateUtils.isSameDay(appt.date, _selectedDate)
       ).toList();
-      _appointments.sort((a, b) => (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute));
-      // print("Filtered ${_appointments.length} appointments for date: ${_selectedDate.toIso8601String().substring(0,10)}");
+
+      // Remove duplicates based on patient, date, and time
+      _appointments = [];
+      for (var appointment in allAppointments) {
+        bool isDuplicate = _appointments.any((existing) =>
+          existing.patientId == appointment.patientId &&
+          existing.time.hour == appointment.time.hour &&
+          existing.time.minute == appointment.time.minute
+        );
+        if (!isDuplicate) {
+          _appointments.add(appointment);
+        }
+      }
+
+      // Sort appointments by time
+      _appointments.sort((a, b) => 
+        (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute)
+      );
     });
   }
 
@@ -83,54 +101,64 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
   }
 
 
-  void _handleAppointmentSaved(Appointment newAppointmentFromForm) async {
+  void _handleAppointmentSaved(Appointment newAppointmentFromForm) {
     if (!mounted) return;
     
     setState(() {
-      _isLoading = true; // Show loading indicator while saving
-      _errorMessage = null; // Clear previous errors
+      _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
-      // Ensure the appointment from form has the correct status and other necessary defaults
-      final appointmentToSave = newAppointmentFromForm.copyWith(
-        status: 'Scheduled', // Ensure correct status
-        // id: newAppointmentFromForm.id.isNotEmpty ? newAppointmentFromForm.id : null, // Let DB handle ID if it's new, or keep if updating
-        // The ID from form is temporary (DateTime.now().millisecondsSinceEpoch.toString())
-        // The database_helper's insertAppointment creates its own ID.
-        // So, for a new appointment, the ID from the form is not really used by the DB insert.
-        // If we were to support *updating* appointments through this form, ID handling would be critical.
-        // For now, assuming new appointments.
-      );
+      // The appointment is already saved by AddAppointmentScreen.
+      // This handler's job is to update the local state.
+      
+      // Check if this appointment is already in our list to avoid visual duplication.
+      final isAlreadyInList = _allCalendarAppointments.any((existing) => existing.id == newAppointmentFromForm.id);
 
-      final savedAppointmentFromDb = await ApiService.saveAppointment(appointmentToSave); 
-
-      // Add to the master list
-      // To prevent duplicates if the appointment was an update, remove old one first.
-      // This assumes saveAppointment returns the appointment with a definitive ID.
-      _allCalendarAppointments.removeWhere((appt) => appt.id == savedAppointmentFromDb.id);
-      _allCalendarAppointments.add(savedAppointmentFromDb);
-      _allCalendarAppointments.sort((a, b) {
-          int dateComparison = a.date.compareTo(b.date);
-          if (dateComparison != 0) return dateComparison;
-          return (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute);
-        });
-
-      if (!DateUtils.isSameDay(_selectedDate, savedAppointmentFromDb.date)) {
-        // Optional: setState(() { _selectedDate = savedAppointmentFromDb.date; });
+      if (isAlreadyInList) {
+        if (kDebugMode) {
+          print("Info: _handleAppointmentSaved was called for an appointment that is already in the list. The list will be refreshed.");
+        }
+        // If it's already here, just refresh the view and exit.
+        _filterAppointmentsForSelectedDate();
+        return;
       }
-      _filterAppointmentsForSelectedDate(); 
+      
+      // The main bug was here: `ApiService.saveAppointment` was called a second time.
+      // That call has been removed to prevent duplicate entries in the database.
+
+      // This logic replaces a previous appointment at the same time for the same patient.
+      // This is useful if a cancelled appointment slot is being re-booked.
+      _allCalendarAppointments.removeWhere((appt) =>
+        appt.patientId == newAppointmentFromForm.patientId &&
+        DateUtils.isSameDay(appt.date, newAppointmentFromForm.date) &&
+        appt.time.hour == newAppointmentFromForm.time.hour &&
+        appt.time.minute == newAppointmentFromForm.time.minute
+      );
+      
+      _allCalendarAppointments.add(newAppointmentFromForm);
+      
+      // Sort the list after adding the new appointment.
+      _allCalendarAppointments.sort((a, b) {
+        int dateComparison = a.date.compareTo(b.date);
+        if (dateComparison != 0) return dateComparison;
+        return (a.time.hour * 60 + a.time.minute).compareTo(b.time.hour * 60 + b.time.minute);
+      });
+
+      // Refresh the filtered list for the UI.
+      _filterAppointmentsForSelectedDate();
 
     } catch (e) {
       if (kDebugMode) {
-        print("Error saving appointment or adding to queue: $e");
+        print("Error in _handleAppointmentSaved: $e");
       }
       if (mounted) {
         setState(() {
-           _errorMessage = "Failed to save appointment: ${e.toString()}"; // Show error in UI
+          _errorMessage = "Error updating appointment list: ${e.toString()}";
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save appointment: ${e.toString()}'), backgroundColor: Colors.red)
+          SnackBar(content: Text("Error updating appointment list: ${e.toString()}"), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -186,6 +214,99 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
     );
   }
 
+  Future<void> _showCalendarPicker() async {
+    final DateTime? picked = await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext context) {
+        DateTime? selectedDate = _selectedDate;
+        
+        return Dialog(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TableCalendar(
+                  firstDay: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDay: DateTime.now().add(const Duration(days: 365)),
+                  focusedDay: selectedDate,
+                  selectedDayPredicate: (day) => isSameDay(selectedDate, day),
+                  calendarFormat: CalendarFormat.month,
+                  eventLoader: (day) {
+                    return _allCalendarAppointments
+                        .where((appt) => isSameDay(appt.date, day))
+                        .toList();
+                  },
+                  calendarStyle: CalendarStyle(
+                    selectedDecoration: BoxDecoration(
+                      color: Colors.teal[700],
+                      shape: BoxShape.circle,
+                    ),
+                    todayDecoration: BoxDecoration(
+                      color: Colors.teal[100],
+                      shape: BoxShape.circle,
+                    ),
+                    markerDecoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    markersMaxCount: 1,
+                    markerSize: 5,
+                  ),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    selectedDate = selectedDay;
+                    Navigator.of(context).pop(selectedDay);
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancel', style: TextStyle(color: Colors.teal[700])),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      // Check if the picked date has appointments
+      final appointmentsForDay = _allCalendarAppointments.where(
+        (appt) => DateUtils.isSameDay(appt.date, picked)
+      ).toList();
+
+      if (appointmentsForDay.isNotEmpty) {
+        // Show time slots in a snackbar
+        if (mounted) {
+          final slots = appointmentsForDay
+            .map((appt) => appt.time.format(context))
+            .join(', ');
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Existing appointments at: $slots'),
+              duration: const Duration(seconds: 3),
+              backgroundColor: Colors.teal,
+            ),
+          );
+        }
+      }
+
+      setState(() {
+        _selectedDate = picked;
+      });
+      _filterAppointmentsForSelectedDate();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // final bool isPastDate = _isPastSelectedDate(); // No longer directly used for Add button enabling here
@@ -238,7 +359,7 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
                     ),
                   ),
                   
-                  // Date Navigation
+                  // Date Navigation with Calendar Picker
                   Card(
                     elevation: 2.0,
                     margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -254,9 +375,21 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
                             tooltip: 'Previous Day',
                             splashRadius: 20,
                           ),
-                          Text(
-                            DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.teal[800]),
+                          InkWell(
+                            onTap: _showCalendarPicker,
+                            child: Row(
+                              children: [
+                                Text(
+                                  DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[800]
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.calendar_today, color: Colors.teal[700], size: 20),
+                              ],
+                            ),
                           ),
                           IconButton(
                             icon: const Icon(Icons.chevron_right, color: Colors.teal),

@@ -12,11 +12,15 @@ import '../services/auth_service.dart';
 import '../services/lan_sync_service.dart';
 import '../models/clinic_service.dart';
 import './queue_service.dart';
+import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
   static final QueueService _queueService = QueueService();
   static String? _currentUserRole;
+  static const String baseUrl = 'http://your-api-base-url'; // Replace with your actual API base URL
 
   // Authentication Methods
   static Future<Map<String, dynamic>> login(
@@ -139,7 +143,12 @@ class ApiService {
 
   static Future<Appointment> saveAppointment(Appointment appointment) async {
     try {
-      return await _dbHelper.insertAppointment(appointment);
+      // Generate a unique ID for the appointment if not provided
+      final appointmentWithId = appointment.id.isEmpty 
+        ? appointment.copyWith(id: 'appointment-${DateTime.now().millisecondsSinceEpoch}-${(1000 + (DateTime.now().microsecond % 9000))}')
+        : appointment;
+      
+      return await _dbHelper.insertAppointment(appointmentWithId);
     } catch (e) {
       throw Exception('Failed to save appointment: $e');
     }
@@ -173,6 +182,14 @@ class ApiService {
     } catch (e) {
       debugPrint("ApiService: Error in deleteAppointment for $id: $e");
       throw Exception('Failed to delete appointment: $e');
+    }
+  }
+
+  static Future<List<Appointment>> getAppointmentsForRange(DateTime startDate, DateTime endDate) async {
+    try {
+      return await _dbHelper.getAppointmentsForRange(startDate, endDate);
+    } catch (e) {
+      throw Exception('Failed to fetch appointments for range: $e');
     }
   }
 
@@ -696,6 +713,25 @@ class ApiService {
     }
   }
 
+  static Future<User?> getUserById(String id) async {
+    try {
+      final db = await _dbHelper.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        DatabaseHelper.tableUsers,
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (maps.isNotEmpty) {
+        return User.fromJson(maps.first);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('ApiService: Failed to get user by ID: $e');
+      return null;
+    }
+  }
+
   static Future<void> incrementServiceUsage(List<String> serviceIds) async {
     if (serviceIds.isEmpty) return;
     try {
@@ -737,12 +773,38 @@ class ApiService {
   // Method to create a new appointment
   static Future<String> createAppointment(Appointment appointment) async {
     try {
+      // Generate a unique ID for the appointment
+      final newId = 'appointment-${DateTime.now().millisecondsSinceEpoch}';
+      final appointmentWithId = appointment.copyWith(id: newId);
+      
       // This calls DatabaseHelper.insertAppointment, which returns an Appointment
-      final savedAppointment = await _dbHelper.insertAppointment(appointment); 
+      final savedAppointment = await _dbHelper.insertAppointment(appointmentWithId); 
       return savedAppointment.id;
     } catch (e) {
       debugPrint('Error in ApiService.createAppointment: $e');
       throw Exception('Failed to create appointment: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>?> get(String endpoint) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: {
+          'Content-Type': 'application/json',
+          // Add any additional headers here (e.g., authorization)
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        print('API Error: $e');
+      }
+      return null;
     }
   }
 }

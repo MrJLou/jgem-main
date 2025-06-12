@@ -100,68 +100,62 @@ class _RegistrationHubScreenState extends State<RegistrationHubScreen> {
   }
 
   List<Widget> _buildRegistrationOptions(BuildContext context) {
-    final List<Widget> allOptions = [
-      _buildFeatureCard(
-        context,
-        icon: Icons.person_add_alt_1,
-        title: 'User Registration',
-        subtitle: 'Register new staff and administrators',
-        color: Colors.teal[700]!,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const UserRegistrationScreen(),
-          ),
-        ),
-      ),
-      const SizedBox(height: 20),
-      _buildFeatureCard(
-        context,
-        icon: Icons.accessible_forward,
-        title: 'Patient Registration',
-        subtitle: 'Register new patients',
-        color: Colors.teal[600]!,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const PatientRegistrationScreen(),
-          ),
-        ),
-      ),
-      const SizedBox(height: 20),
-      _buildFeatureCard(
-        context,
-        icon: Icons.medical_services_outlined,
-        title: 'Service Registration',
-        subtitle: 'Register medical services',
-        color: Colors.teal[500]!,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const ServiceRegistrationScreen(),
-          ),
-        ),
-      ),
-    ];
-
     if (_userRole == null) {
-      // Show a loading indicator or an empty state while role is being determined
       return [const Center(child: CircularProgressIndicator())];
     }
 
-    if (_userRole == 'medtech') {
-      // Find the patient registration card and return only it.
-      final patientRegistrationCard = allOptions.firstWhere(
-        (widget) =>
-            widget is Card &&
-            (widget.child as InkWell).onTap.toString().contains('PatientRegistrationScreen'),
-        orElse: () => const SizedBox.shrink(),
-      );
-      return [patientRegistrationCard];
-    }
+    final List<Widget> options = [];
 
-    // Admins and other roles see all options.
-    return allOptions;
+    // Patient Registration Card - available for admin and medtech
+    final patientRegistrationCard = _buildFeatureCard(
+      context,
+      icon: Icons.accessible_forward,
+      title: 'Patient Registration',
+      subtitle: 'Register new patients',
+      color: Colors.teal[600]!,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => const PatientRegistrationScreen()),
+      ),
+    );
+
+    if (_userRole == 'admin') {
+      options.addAll([
+        _buildFeatureCard(
+          context,
+          icon: Icons.person_add_alt_1,
+          title: 'User Registration',
+          subtitle: 'Register new staff and administrators',
+          color: Colors.teal[700]!,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const UserRegistrationScreen()),
+          ),
+        ),
+        const SizedBox(height: 20),
+        patientRegistrationCard,
+        const SizedBox(height: 20),
+        _buildFeatureCard(
+          context,
+          icon: Icons.medical_services_outlined,
+          title: 'Service Registration',
+          subtitle: 'Register medical services',
+          color: Colors.teal[500]!,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const ServiceRegistrationScreen()),
+          ),
+        ),
+      ]);
+    } else if (_userRole == 'medtech') {
+      options.add(patientRegistrationCard);
+    }
+    // For 'doctor' or any other role, options will be empty, showing nothing.
+
+    return options;
   }
 
   Widget _buildFeatureCard(

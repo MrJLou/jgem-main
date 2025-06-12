@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 import '../../services/queue_service.dart';
-import '../../models/active_patient_queue_item.dart'; // Import the model
-import '../../models/appointment.dart'; // ADDED: Appointment model
-import '../../services/api_service.dart'; // ADDED: ApiService
-import 'package:intl/intl.dart'; // ADDED: For date formatting
+import '../../models/active_patient_queue_item.dart';
+import '../../models/appointment.dart';
+import '../../services/api_service.dart';
+import '../../models/user.dart';
+import '../../models/patient.dart';
+import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+class _AppointmentDisplayItem {
+  final Appointment appointment;
+  final String patientName;
+  final String doctorName;
+
+  _AppointmentDisplayItem({
+    required this.appointment,
+    required this.patientName,
+    required this.doctorName,
+  });
+}
 
 class ViewQueueScreen extends StatefulWidget {
   final QueueService queueService;
@@ -18,8 +33,9 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   late TabController _tabController;
 
   // State for Scheduled Appointments Tab
-  late Future<List<Appointment>> _appointmentsFuture;
+  late Future<List<_AppointmentDisplayItem>> _appointmentItemsFuture;
   DateTime _selectedAppointmentDate = DateTime.now();
+  DateTime _focusedDay = DateTime.now();
   bool _isLoadingAppointments = false;
 
   // State for Live Queue Tab
@@ -31,8 +47,11 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabSelection);
-    _loadAppointmentsForSelectedDate();
+    _appointmentItemsFuture =
+        _prepareAppointmentDisplayItems(_selectedAppointmentDate);
     _loadLiveQueue();
+    // Initialize the cache for the current month
+    _initializeCache();
   }
 
   @override
@@ -49,14 +68,24 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         // in the AppBar (like the calendar icon) to update based on the
         // current _tabController.index.
       });
+      if (_tabController.index == 1 && _monthAppointments.isEmpty) {
+        _cacheAppointmentsForMonth(_focusedDay);
+      }
     }
   }
 
   void _loadAppointmentsForSelectedDate() {
     setState(() {
       _isLoadingAppointments = true;
-      _appointmentsFuture = ApiService.getAppointments(_selectedAppointmentDate);
-      _isLoadingAppointments = false;
+      _appointmentItemsFuture =
+          _prepareAppointmentDisplayItems(_selectedAppointmentDate);
+      _appointmentItemsFuture.whenComplete(() {
+        if (mounted) {
+          setState(() {
+            _isLoadingAppointments = false;
+          });
+        }
+      });
     });
   }
 
@@ -150,19 +179,56 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     }
   }
 
-  Future<void> _pickDateForAppointments(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedAppointmentDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
-    );
-    if (picked != null && picked != _selectedAppointmentDate) {
-      setState(() {
-        _selectedAppointmentDate = picked;
-        _loadAppointmentsForSelectedDate();
-      });
+  // Add a method to cache appointments for the visible month
+  final Map<DateTime, List<Appointment>> _monthAppointments = {};
+
+  Future<void> _cacheAppointmentsForMonth(DateTime month) async {
+    try {
+      setState(() => _isLoadingAppointments = true);
+      
+      // Get the first and last day of the month
+      final firstDay = DateTime(month.year, month.month, 1);
+      final lastDay = DateTime(month.year, month.month + 1, 0);
+
+      // Clear existing cache for this month
+      _monthAppointments.removeWhere((key, value) =>
+        key.year == month.year && key.month == month.month
+      );
+
+      // Fetch appointments for the whole month
+      final appointments = await ApiService.getAppointmentsForRange(firstDay, lastDay);
+      
+      // Filter and group appointments by date
+      for (var appointment in appointments) {
+        final date = DateTime(
+          appointment.date.year,
+          appointment.date.month,
+          appointment.date.day,
+        );
+        
+        if (!_monthAppointments.containsKey(date)) {
+          _monthAppointments[date] = [];
+        }
+        _monthAppointments[date]!.add(appointment);
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLoadingAppointments = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error caching appointments: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingAppointments = false;
+        });
+      }
     }
+  }
+
+  Future<void> _initializeCache() async {
+    await _cacheAppointmentsForMonth(_focusedDay);
   }
 
   @override
@@ -176,12 +242,6 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         ),
         backgroundColor: Colors.teal[700],
         actions: [
-          if (_tabController.index == 1)
-            IconButton(
-              onPressed: () => _pickDateForAppointments(context),
-              icon: const Icon(Icons.calendar_today, color: Colors.white),
-              tooltip: 'Select Date for Appointments',
-            ),
           IconButton(
             onPressed: _refreshCurrentTabData,
             icon: const Icon(Icons.refresh, color: Colors.white),
@@ -268,7 +328,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
 
   Widget _buildLiveQueueTableHeader() {
     final headers = [
-      'No.', 'Name', 'Arrival', 'Gender', 'Age', 'Purpose/Notes', 'Status & Actions'
+      'No.', 'Name (ID)', 'Arrival', 'Gender', 'Age', 'Purpose/Notes', 'Status & Actions'
     ];
     return Container(
       color: Colors.blue[700],
@@ -276,7 +336,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       child: Row(
         children: headers.map((text) {
           int flex = 1;
-          if (text == 'Name' || text == 'Purpose/Notes') flex = 2;
+          if (text == 'Name (ID)' || text == 'Purpose/Notes') flex = 2;
           if (text == 'Status & Actions') flex = 2;
           return Expanded(
             flex: flex,
@@ -297,7 +357,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
 
     final dataCells = [
       item.queueNumber.toString(),
-      item.patientName,
+      '${item.patientName} (${Patient.formatId(item.patientId ?? "000000")})',
       arrivalDisplayTime,
       item.gender ?? 'N/A',
       item.age?.toString() ?? 'N/A',
@@ -381,47 +441,139 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   }
 
   Widget _buildScheduledAppointmentsTab() {
-    return FutureBuilder<List<Appointment>>(
-      future: _appointmentsFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || _isLoadingAppointments) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading appointments: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildEmptyListMessage('appointments for ${DateFormat.yMMMMd().format(_selectedAppointmentDate)}');
-        }
-        final appointments = snapshot.data!;
-        appointments.sort((a, b) {
-          final aTime = a.time.hour * 60 + a.time.minute;
-          final bTime = b.time.hour * 60 + b.time.minute;
-          return aTime.compareTo(bTime);
-        });
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Text("Appointments for: ${DateFormat.yMMMMd().format(_selectedAppointmentDate)}", 
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal[700])),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Card(
+              elevation: 4.0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
               ),
-              _buildAppointmentTableHeader(),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: appointments.length,
-                  itemBuilder: (context, index) {
-                    return _buildAppointmentTableRow(appointments[index]);
-                  },
-                ),
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: _buildInlineCalendar(),
               ),
-            ],
+            ),
           ),
-        );
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 3,
+            child: _buildAppointmentsListForSelectedDate(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineCalendar() {
+    return TableCalendar(
+      firstDay: DateTime.utc(2010, 10, 16),
+      lastDay: DateTime.utc(2030, 3, 14),
+      focusedDay: _focusedDay,
+      selectedDayPredicate: (day) => isSameDay(_selectedAppointmentDate, day),
+      calendarFormat: CalendarFormat.month,
+      headerStyle: const HeaderStyle(
+        formatButtonVisible: false,
+        titleCentered: true,
+      ),
+      eventLoader: (day) {
+        final date = DateTime(day.year, day.month, day.day);
+        return _monthAppointments[date] ?? [];
       },
+      calendarStyle: CalendarStyle(
+        selectedDecoration: BoxDecoration(
+          color: Colors.teal[700],
+          shape: BoxShape.circle,
+        ),
+        todayDecoration: BoxDecoration(
+          color: Colors.teal.withAlpha(100),
+          shape: BoxShape.circle,
+        ),
+        markerDecoration: BoxDecoration(
+          color: Colors.red[600],
+          shape: BoxShape.circle,
+        ),
+        markersMaxCount: 1,
+      ),
+      onDaySelected: (selectedDay, focusedDay) {
+        if (!isSameDay(_selectedAppointmentDate, selectedDay)) {
+          setState(() {
+            _selectedAppointmentDate = selectedDay;
+            _focusedDay = focusedDay;
+            _loadAppointmentsForSelectedDate();
+          });
+        }
+      },
+      onPageChanged: (focusedDay) {
+        setState(() {
+          _focusedDay = focusedDay;
+        });
+        _cacheAppointmentsForMonth(focusedDay).then((_) {
+          if (mounted) setState(() {});
+        });
+      },
+    );
+  }
+
+  Widget _buildAppointmentsListForSelectedDate() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Text(
+            "Appointments for: ${DateFormat.yMMMMd().format(_selectedAppointmentDate)}",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.teal[700],
+            ),
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<_AppointmentDisplayItem>>(
+            future: _appointmentItemsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting ||
+                  _isLoadingAppointments) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                    child: Text('Error loading appointments: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return _buildEmptyListMessage(
+                    'appointments for ${DateFormat.yMMMMd().format(_selectedAppointmentDate)}');
+              }
+              final appointments = snapshot.data!;
+              appointments.sort((a, b) {
+                final aTime = a.appointment.time.hour * 60 + a.appointment.time.minute;
+                final bTime = b.appointment.time.hour * 60 + b.appointment.time.minute;
+                return aTime.compareTo(bTime);
+              });
+
+              return Column(
+                children: [
+                  _buildAppointmentTableHeader(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: appointments.length,
+                      itemBuilder: (context, index) {
+                        return _buildAppointmentTableRow(appointments[index]);
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -463,8 +615,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   Widget _buildAppointmentTableHeader() { 
     final headers = [
       'Time',
-      'Patient ID',
-      'Doctor ID',
+      'Patient Name',
+      'Doctor Name',
       'Type',
       'Status & Actions'
     ];
@@ -474,7 +626,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       child: Row(
         children: headers.map((text) {
           return Expanded(
-              flex: (text == 'Patient ID' || text == 'Doctor ID' || text == 'Status & Actions')
+              flex: (text == 'Patient Name' || text == 'Doctor Name' || text == 'Status & Actions')
                   ? 2
                   : (text == 'Type' ? 3 : 1),
               child: TableCellWidget(
@@ -490,38 +642,42 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     );
   }
 
-  Widget _buildAppointmentTableRow(Appointment appointment) { 
+  Widget _buildAppointmentTableRow(_AppointmentDisplayItem displayItem) {
+    final appointment = displayItem.appointment;
+    final patientName = displayItem.patientName;
+    final doctorName = displayItem.doctorName;
+
     final timeDisplay = appointment.time.format(context);
     final dataCells = [
       timeDisplay,
-      appointment.patientId,
-      appointment.doctorId,
+      '$patientName (${Patient.formatId(appointment.patientId)})',
+      '$doctorName (${User.formatId(appointment.doctorId)})',
       appointment.consultationType,
     ];
     Color rowColor = Colors.white;
     Color textColor = Colors.black87;
     switch (appointment.status.toLowerCase()) {
-        case 'scheduled':
-        case 'confirmed':
-            rowColor = Colors.blue[50]!;
-            textColor = Colors.blue[800]!;
-            break;
-        case 'in consultation':
-            rowColor = Colors.orange[50]!;
-            textColor = Colors.orange[800]!;
-            break;
-        case 'completed':
-        case 'served':
-            rowColor = Colors.green[50]!;
-            textColor = Colors.green[800]!;
-            break;
-        case 'cancelled':
-            rowColor = Colors.red[50]!;
-            textColor = Colors.red[800]!;
-            break;
-        default:
-            rowColor = Colors.grey[100]!;
-            textColor = Colors.grey[700]!;
+      case 'scheduled':
+      case 'confirmed':
+        rowColor = Colors.blue[50]!;
+        textColor = Colors.blue[800]!;
+        break;
+      case 'in consultation':
+        rowColor = Colors.orange[50]!;
+        textColor = Colors.orange[800]!;
+        break;
+      case 'completed':
+      case 'served':
+        rowColor = Colors.green[50]!;
+        textColor = Colors.green[800]!;
+        break;
+      case 'cancelled':
+        rowColor = Colors.red[50]!;
+        textColor = Colors.red[800]!;
+        break;
+      default:
+        rowColor = Colors.grey[100]!;
+        textColor = Colors.grey[700]!;
     }
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2),
@@ -536,7 +692,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           ...dataCells.asMap().entries.map((entry) {
             int idx = entry.key;
             String text = entry.value.toString();
-            int flex = (idx == 1 || idx == 2) ? 2 : (idx == 3 ? 3 : 1); 
+            int flex = (idx == 1 || idx == 2) ? 2 : (idx == 3 ? 3 : 1);
             return Expanded(
                 flex: flex,
                 child: TableCellWidget(
@@ -545,15 +701,16 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
                 ));
           }),
           Expanded(
-            flex: 2, 
-            child: TableCellWidget(child: _buildAppointmentStatusActionsWidget(appointment)),
+            flex: 2,
+            child: TableCellWidget(
+                child: _buildAppointmentStatusActionsWidget(appointment)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAppointmentStatusActionsWidget(Appointment appointment) { 
+  Widget _buildAppointmentStatusActionsWidget(Appointment appointment) {
     if (appointment.status.toLowerCase() == 'cancelled') {
       return _buildStatusChip('Cancelled', Colors.red.shade100, Colors.red.shade700);
     }
@@ -649,6 +806,22 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   }
 
   TextStyle cellStyle = const TextStyle(fontSize: 14, color: Colors.black87); 
+
+  Future<List<_AppointmentDisplayItem>> _prepareAppointmentDisplayItems(
+      DateTime date) async {
+    final appointments = await ApiService.getAppointments(date);
+    final List<_AppointmentDisplayItem> displayItems = [];
+    for (var appt in appointments) {
+      final patient = await ApiService.getPatientById(appt.patientId);
+      final doctor = await ApiService.getUserById(appt.doctorId);
+      displayItems.add(_AppointmentDisplayItem(
+        appointment: appt,
+        patientName: patient.fullName,
+        doctorName: doctor?.fullName ?? 'Unknown Doctor',
+      ));
+    }
+    return displayItems;
+  }
 }
 
 class TableCellWidget extends StatelessWidget {

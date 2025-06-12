@@ -87,15 +87,22 @@ class DashboardCalendarSection extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Appointments for ${DateFormat.yMMMd().format(calendarSelectedDate)}",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal[700]),
+              Expanded(
+                child: Text(
+                  "Appointments for ${DateFormat.yMMMd().format(calendarSelectedDate)}",
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[700]),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
                 "${dailyAppointmentsForDisplay.length} scheduled",
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                style:
+                    TextStyle(fontSize: 14, color: Colors.grey[700]),
               ),
             ],
           ),
