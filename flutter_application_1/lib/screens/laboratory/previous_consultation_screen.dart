@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-
-void main() {
-  runApp(const MaterialApp(
-    home: PreviousConsultationScreen(),
-  ));
-}
+import '../../services/api_service.dart';
+import '../../models/appointment.dart';
+import '../../models/patient.dart';
+import 'package:intl/intl.dart';
 
 class PreviousConsultationScreen extends StatefulWidget {
   const PreviousConsultationScreen({super.key});
@@ -20,53 +18,81 @@ class PreviousConsultationScreenState
   List<Map<String, dynamic>> _consultations = [];
   bool _isLoading = false;
   String? _errorMessage;
+  Patient? _foundPatient;
 
   void _fetchConsultationRecords(String patientId) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _consultations = [];
+      _foundPatient = null;
     });
 
-    // Simulate API delay
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      // First, verify patient exists
+      final patient = await ApiService.getPatientById(patientId);
+      _foundPatient = patient;
+      
+      // Get patient's appointments 
+      final appointments = await ApiService.getPatientAppointments(patientId);
+      
+      // Filter completed appointments and get additional data
+      final completedAppointments = appointments
+          .where((appt) => appt.status == 'Completed' || appt.status == 'Served')
+          .toList();
+      
+      // Sort by date (most recent first)
+      completedAppointments.sort((a, b) => b.date.compareTo(a.date));
+      
+      // Get all users to map doctor IDs to names
+      final allUsers = await ApiService.getUsers();
+      final doctors = {for (var user in allUsers.where((u) => u.role == 'doctor')) user.id: user};
+      
+      // Transform appointments into consultation records
+      final consultationRecords = <Map<String, dynamic>>[];
+      
+      for (final appointment in completedAppointments) {
+        final doctor = doctors[appointment.doctorId];
+        final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
+        
+        // Create consultation record
+        consultationRecords.add({
+          'id': appointment.id,
+          'date': DateFormat('yyyy-MM-dd').format(appointment.date),
+          'doctor': doctorName,
+          'details': appointment.consultationType,
+          'symptoms': appointment.consultationType,
+          'prescription': appointment.notes ?? 'No prescription noted',
+          'followUp': _getFollowUpText(appointment),
+          'status': appointment.status,
+          'services': appointment.selectedServices.map((s) => s['name'] ?? 'Unknown Service').join(', '),
+          'totalPrice': appointment.totalPrice,
+        });
+      }
 
-    final mockData = [
-      {
-        'date': '2024-03-15',
-        'doctor': 'Dr. Sarah Johnson',
-        'details': 'General Checkup',
-        'symptoms': 'Routine health assessment',
-        'prescription': 'Vitamin D supplements',
-        'followUp': '3 months',
-        'status': 'Completed'
-      },
-      {
-        'date': '2024-02-20',
-        'doctor': 'Dr. Michael Chen',
-        'details': 'Flu Symptoms',
-        'symptoms': 'Fever, cough, fatigue',
-        'prescription': 'Antiviral medication',
-        'followUp': '1 week',
-        'status': 'Completed'
-      },
-      {
-        'date': '2024-01-10',
-        'doctor': 'Dr. Emily Brown',
-        'details': 'Follow-up Visit',
-        'symptoms': 'Post-treatment evaluation',
-        'prescription': 'Continue current medication',
-        'followUp': 'As needed',
-        'status': 'Completed'
-      },
-    ];
-
-    if (!mounted) return;
-    setState(() {
-      _consultations = mockData;
-      _isLoading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _consultations = consultationRecords;
+        _isLoading = false;
+      });
+      
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _isLoading = false;
+        _consultations = [];
+        _foundPatient = null;
+      });
+    }
   }
 
+  String _getFollowUpText(Appointment appointment) {
+    if (appointment.notes != null && appointment.notes!.isNotEmpty) {
+      return 'See notes';
+    }
+    return 'As needed';
+  }
   void _showConsultationDetails(BuildContext context, Map<String, dynamic> consultation) {
     showDialog(
       context: context,
@@ -91,11 +117,15 @@ class PreviousConsultationScreenState
             children: [
               _buildDetailRow('Date', consultation['date']),
               _buildDetailRow('Doctor', consultation['doctor']),
-              _buildDetailRow('Symptoms', consultation['symptoms']),
+              _buildDetailRow('Type', consultation['details']),
+              if (consultation['services'] != null && consultation['services'].isNotEmpty)
+                _buildDetailRow('Services', consultation['services']),
               _buildDetailRow('Prescription', consultation['prescription']),
               _buildDetailRow('Follow-up', consultation['followUp']),
               _buildDetailRow('Status', consultation['status']),
-          ],
+              if (consultation['totalPrice'] != null)
+                _buildDetailRow('Total Cost', 'PHP ${consultation['totalPrice'].toStringAsFixed(2)}'),
+            ],
           ),
         ),
         actions: [
@@ -298,22 +328,73 @@ class PreviousConsultationScreenState
                                     style: TextStyle(color: Colors.grey[600])),
                               ],
                             ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(24),
-                            itemCount: _consultations.length,
-                            itemBuilder: (context, index) {
-                              final consultation = _consultations[index];
-                              return ConsultationCard(
-                                date: consultation['date']!,
-                                doctor: consultation['doctor']!,
-                                details: consultation['details']!,
-                                status: consultation['status']!,
-                                onTap: () =>
-                                    _showConsultationDetails(context, consultation),
-                              );
-                            },
-              ),
+                          )                        : Column(
+                            children: [
+                              if (_foundPatient != null)
+                                Container(
+                                  margin: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.teal[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.teal[200]!),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person, color: Colors.teal[700], size: 24),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _foundPatient!.fullName,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.teal[800],
+                                              ),
+                                            ),
+                                            Text(
+                                              'Patient ID: ${_foundPatient!.id}',
+                                              style: TextStyle(
+                                                color: Colors.teal[600],
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_consultations.length} record(s) found',
+                                        style: TextStyle(
+                                          color: Colors.teal[600],
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(24),
+                                  itemCount: _consultations.length,
+                                  itemBuilder: (context, index) {
+                                    final consultation = _consultations[index];
+                                    return ConsultationCard(
+                                      date: consultation['date']!,
+                                      doctor: consultation['doctor']!,
+                                      details: consultation['details']!,
+                                      status: consultation['status']!,
+                                      onTap: () =>
+                                          _showConsultationDetails(context, consultation),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
             ),
           ],
       ),

@@ -132,9 +132,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   Future<void> _loadDoctors() async {
     try {
       final doctors = await UserService.getDoctors();
-      setState(() {
-        _doctors = doctors;
-      });
+      if (mounted) {
+        setState(() {
+          _doctors = doctors;
+        });
+      }
     } catch (e) {
       // Handle error
       debugPrint('Error loading doctors: $e');
@@ -164,26 +166,34 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   Future<void> _searchPatients(String query) async {
     if (query.isEmpty) {
-      setState(() {
-        _searchResults = null;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = null;
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final results = await PatientService.searchPatients(query);
-      setState(() {
-        _searchResults = results;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       // Handle error
       debugPrint('Error searching patients: $e');
     }
@@ -524,9 +534,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
               backgroundColor: Colors.red),
         );
       } finally {
-        setState(() {
-          _isAddingToQueue = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isAddingToQueue = false;
+          });
+        }
       }
     }
   }

@@ -1,8 +1,63 @@
 // Metrics section widget for dashboard
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
+import '../../services/queue_service.dart';
 
-class DashboardMetricsSection extends StatelessWidget {
+class DashboardMetricsSection extends StatefulWidget {
   const DashboardMetricsSection({super.key});
+
+  @override
+  State<DashboardMetricsSection> createState() => _DashboardMetricsSectionState();
+}
+
+class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
+  int _totalAppointmentsToday = 0;
+  int _currentQueueNumber = 0;
+  int _availableDoctors = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMetrics();
+  }
+  Future<void> _loadMetrics() async {
+    try {
+      // Get today's date
+      final today = DateTime.now();
+
+      // Load appointments for today
+      final todayAppointments = await ApiService.getAppointments(today);
+      
+      // Load current queue and count active patients
+      final queueService = QueueService();
+      final activeQueueItems = await queueService.getActiveQueueItems(
+        statuses: ['waiting', 'in_consultation']
+      );
+      
+      // Load all users and count doctors
+      final allUsers = await ApiService.getUsers();
+      final doctors = allUsers.where((user) => user.role == 'doctor').toList();
+
+      if (mounted) {
+        setState(() {
+          _totalAppointmentsToday = todayAppointments.length;
+          _currentQueueNumber = activeQueueItems.length;
+          _availableDoctors = doctors.length;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _totalAppointmentsToday = 0;
+          _currentQueueNumber = 0;
+          _availableDoctors = 0;
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,11 +67,32 @@ class DashboardMetricsSection extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: _buildMetricCard('Appointments', '105', Icons.calendar_today, Colors.blue)),
+          Expanded(
+            child: _buildMetricCard(
+              'Appointments',
+              _isLoading ? '...' : _totalAppointmentsToday.toString(),
+              Icons.calendar_today,
+              Colors.blue,
+            ),
+          ),
           const SizedBox(width: 16),
-          Expanded(child: _buildMetricCard('Urgent Resolve', '40', Icons.warning_amber_rounded, Colors.red)),
+          Expanded(
+            child: _buildMetricCard(
+              'Current Queue',
+              _isLoading ? '...' : _currentQueueNumber.toString(),
+              Icons.queue,
+              Colors.orange,
+            ),
+          ),
           const SizedBox(width: 16),
-          Expanded(child: _buildMetricCard('Available Doctors', '37', Icons.person_search, Colors.green)),
+          Expanded(
+            child: _buildMetricCard(
+              'Available Doctors',
+              _isLoading ? '...' : _availableDoctors.toString(),
+              Icons.person_search,
+              Colors.green,
+            ),
+          ),
         ],
       ),
     );

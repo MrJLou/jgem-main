@@ -20,7 +20,7 @@ class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
   static final QueueService _queueService = QueueService();
   static String? _currentUserRole;
-  static const String baseUrl = 'http://your-api-base-url'; // Replace with your actual API base URL
+  static const String baseUrl = 'http://localhost:3000'; // Updated to a valid local API base URL
 
   // Authentication Methods
   static Future<Map<String, dynamic>> login(
@@ -122,6 +122,14 @@ class ApiService {
       return await _dbHelper.getAppointmentsByDate(date);
     } catch (e) {
       throw Exception('Failed to load appointments: $e');
+    }
+  }
+
+  static Future<List<Appointment>> getPatientAppointments(String patientId) async {
+    try {
+      return await _dbHelper.getPatientAppointments(patientId);
+    } catch (e) {
+      throw Exception('Failed to load patient appointments: $e');
     }
   }
 

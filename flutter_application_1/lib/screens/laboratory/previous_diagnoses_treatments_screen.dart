@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
+import '../../models/patient.dart';
+import 'package:intl/intl.dart';
 
 class PreviousDiagnosesTreatmentsScreen extends StatefulWidget {
   const PreviousDiagnosesTreatmentsScreen({super.key});
@@ -14,53 +17,128 @@ class PreviousDiagnosesTreatmentsScreenState
   List<Map<String, dynamic>> _records = [];
   bool _isLoading = false;
   String? _errorMessage;
+  Patient? _foundPatient;
 
   void _fetchRecords(String patientId) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _records = [];
+      _foundPatient = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      // First, verify patient exists
+      final patient = await ApiService.getPatientById(patientId);
+      _foundPatient = patient;
+      
+      // Get patient's medical records
+      final medicalRecords = await ApiService.getPatientMedicalRecords(patientId);
+      
+      // Filter records that have diagnosis and/or treatment
+      final diagnosisRecords = medicalRecords
+          .where((record) => 
+              (record.diagnosis != null && record.diagnosis!.isNotEmpty) ||
+              (record.treatment != null && record.treatment!.isNotEmpty))
+          .toList();
+      
+      // Sort by date (most recent first)
+      diagnosisRecords.sort((a, b) => b.recordDate.compareTo(a.recordDate));
+      
+      // Get all users to map doctor IDs to names
+      final allUsers = await ApiService.getUsers();
+      final doctors = {for (var user in allUsers.where((u) => u.role == 'doctor')) user.id: user};
+      
+      // Transform medical records into diagnosis/treatment records
+      final transformedRecords = <Map<String, dynamic>>[];
+      
+      for (final record in diagnosisRecords) {
+        final doctor = doctors[record.doctorId];
+        final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
+        
+        // Determine severity based on record type and diagnosis
+        String severity = 'Mild';
+        if (record.diagnosis != null) {
+          final diagnosisLower = record.diagnosis!.toLowerCase();
+          if (diagnosisLower.contains('severe') || diagnosisLower.contains('critical') || 
+              diagnosisLower.contains('emergency') || diagnosisLower.contains('acute')) {
+            severity = 'Severe';
+          } else if (diagnosisLower.contains('moderate') || diagnosisLower.contains('chronic')) {
+            severity = 'Moderate';
+          }
+        }
+        
+        // Determine status
+        String status = 'Ongoing';
+        if (record.notes != null) {
+          final notesLower = record.notes!.toLowerCase();
+          if (notesLower.contains('resolved') || notesLower.contains('completed') ||
+              notesLower.contains('healed') || notesLower.contains('cured')) {
+            status = 'Resolved';
+          } else if (notesLower.contains('improving') || notesLower.contains('better')) {
+            status = 'Improving';
+          }
+        }
+        
+        transformedRecords.add({
+          'id': record.id,
+          'date': DateFormat('yyyy-MM-dd').format(record.recordDate),
+          'doctor': doctorName,
+          'diagnosis': record.diagnosis ?? 'No diagnosis recorded',
+          'severity': severity,
+          'treatment': record.treatment ?? 'No treatment recorded',
+          'duration': _calculateTreatmentDuration(record.recordDate),
+          'followUp': _getFollowUpFromNotes(record.notes),
+          'status': status,
+          'recordType': record.recordType,
+          'prescription': record.prescription ?? 'No prescription',
+          'notes': record.notes ?? 'No additional notes',
+        });
+      }
 
-    final mockData = [
-      {
-        'date': '2024-03-15',
-        'doctor': 'Dr. Sarah Johnson',
-        'diagnosis': 'Hypertension',
-        'severity': 'Moderate',
-        'treatment': 'Prescribed ACE inhibitors and lifestyle modifications',
-        'duration': '3 months',
-        'followUp': 'Monthly checkups',
-        'status': 'Ongoing'
-      },
-      {
-        'date': '2024-02-20',
-        'doctor': 'Dr. Michael Chen',
-        'diagnosis': 'Type 2 Diabetes',
-        'severity': 'Mild',
-        'treatment': 'Metformin and dietary changes',
-        'duration': '6 months',
-        'followUp': 'Every 2 weeks',
-        'status': 'Ongoing'
-      },
-      {
-        'date': '2024-01-10',
-        'doctor': 'Dr. Emily Brown',
-        'diagnosis': 'Acute Bronchitis',
-        'severity': 'Moderate',
-        'treatment': 'Antibiotics and rest',
-        'duration': '2 weeks',
-        'followUp': 'Completed',
-        'status': 'Resolved'
-      },
-    ];
+      if (!mounted) return;
+      setState(() {
+        _records = transformedRecords;
+        _isLoading = false;
+      });
+      
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _isLoading = false;
+        _records = [];
+        _foundPatient = null;
+      });
+    }
+  }
 
-    if (!mounted) return;
-    setState(() {
-      _records = mockData;
-      _isLoading = false;
-    });
+  String _calculateTreatmentDuration(DateTime recordDate) {
+    final now = DateTime.now();
+    final difference = now.difference(recordDate);
+    
+    if (difference.inDays < 7) {
+      return '${difference.inDays} day(s)';
+    } else if (difference.inDays < 30) {
+      return '${(difference.inDays / 7).round()} week(s)';
+    } else if (difference.inDays < 365) {
+      return '${(difference.inDays / 30).round()} month(s)';
+    } else {
+      return '${(difference.inDays / 365).round()} year(s)';
+    }
+  }
+
+  String _getFollowUpFromNotes(String? notes) {
+    if (notes == null || notes.isEmpty) return 'As needed';
+    
+    final notesLower = notes.toLowerCase();
+    if (notesLower.contains('weekly')) return 'Weekly';
+    if (notesLower.contains('monthly')) return 'Monthly';
+    if (notesLower.contains('daily')) return 'Daily';
+    if (notesLower.contains('follow') && notesLower.contains('up')) return 'Follow-up required';
+    if (notesLower.contains('completed') || notesLower.contains('resolved')) return 'Completed';
+    
+    return 'As needed';
   }
 
   void _showRecordDetails(BuildContext context, Map<String, dynamic> record) {
@@ -283,8 +361,7 @@ class PreviousDiagnosesTreatmentsScreenState
                                 style: TextStyle(color: Colors.red[300])),
                           ],
                         ),
-                      )
-                    : _records.isEmpty
+                      )                    : _records.isEmpty
                         ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -297,21 +374,73 @@ class PreviousDiagnosesTreatmentsScreenState
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(24),
-                            itemCount: _records.length,
-                            itemBuilder: (context, index) {
-                              final record = _records[index];
-                              return DiagnosisTreatmentCard(
-                                date: record['date']!,
-                                doctor: record['doctor']!,
-                                diagnosis: record['diagnosis']!,
-                                treatment: record['treatment']!,
-                                severity: record['severity']!,
-                                status: record['status']!,
-                                onTap: () => _showRecordDetails(context, record),
-                              );
-                            },
+                        : Column(
+                            children: [
+                              if (_foundPatient != null)
+                                Container(
+                                  margin: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.teal[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.teal[200]!),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person, color: Colors.teal[700], size: 24),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _foundPatient!.fullName,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.teal[800],
+                                              ),
+                                            ),
+                                            Text(
+                                              'Patient ID: ${_foundPatient!.id}',
+                                              style: TextStyle(
+                                                color: Colors.teal[600],
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_records.length} record(s) found',
+                                        style: TextStyle(
+                                          color: Colors.teal[600],
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(24),
+                                  itemCount: _records.length,
+                                  itemBuilder: (context, index) {
+                                    final record = _records[index];
+                                    return DiagnosisTreatmentCard(
+                                      date: record['date']!,
+                                      doctor: record['doctor']!,
+                                      diagnosis: record['diagnosis']!,
+                                      treatment: record['treatment']!,
+                                      severity: record['severity']!,
+                                      status: record['status']!,
+                                      onTap: () => _showRecordDetails(context, record),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
           ),
         ],

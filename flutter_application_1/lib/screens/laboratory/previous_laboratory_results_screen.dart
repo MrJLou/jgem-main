@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
+import '../../models/patient.dart';
+import 'package:intl/intl.dart';
 
 class PreviousLaboratoryResultsScreen extends StatefulWidget {
   const PreviousLaboratoryResultsScreen({super.key});
@@ -14,66 +17,141 @@ class PreviousLaboratoryResultsScreenState
   List<Map<String, dynamic>> _results = [];
   bool _isLoading = false;
   String? _errorMessage;
+  Patient? _foundPatient;
 
   void _fetchResults(String patientId) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _results = [];
+      _foundPatient = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      // First, verify patient exists
+      final patient = await ApiService.getPatientById(patientId);
+      _foundPatient = patient;
+      
+      // Get patient's medical records
+      final medicalRecords = await ApiService.getPatientMedicalRecords(patientId);
+      
+      // Filter records that have lab results
+      final labRecords = medicalRecords
+          .where((record) => 
+              record.labResults != null && record.labResults!.isNotEmpty)
+          .toList();
+      
+      // Sort by date (most recent first)
+      labRecords.sort((a, b) => b.recordDate.compareTo(a.recordDate));
+      
+      // Get all users to map doctor IDs to names
+      final allUsers = await ApiService.getUsers();
+      final doctors = {for (var user in allUsers.where((u) => u.role == 'doctor')) user.id: user};
+      
+      // Transform medical records into lab result records
+      final transformedResults = <Map<String, dynamic>>[];
+      
+      for (final record in labRecords) {
+        final doctor = doctors[record.doctorId];
+        final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
+        
+        // Parse lab results - try to handle JSON or simple text
+        Map<String, String> parsedResults = {};
+        try {
+          // Try to parse as key-value pairs from text
+          final labText = record.labResults!;
+          final lines = labText.split('\n');
+          for (final line in lines) {
+            if (line.contains(':')) {
+              final parts = line.split(':');
+              if (parts.length >= 2) {
+                parsedResults[parts[0].trim()] = parts.sublist(1).join(':').trim();
+              }
+            }
+          }
+          
+          // If no key-value pairs found, create a general result
+          if (parsedResults.isEmpty) {
+            parsedResults['Result'] = labText;
+          }
+        } catch (e) {
+          parsedResults['Result'] = record.labResults!;
+        }
+        
+        // Determine test category based on record type or lab results content
+        String category = _determineTestCategory(record.recordType, record.labResults!);
+        
+        // Determine status based on results or notes
+        String status = _determineResultStatus(record.labResults!, record.notes);
+        
+        transformedResults.add({
+          'id': record.id,
+          'date': DateFormat('yyyy-MM-dd').format(record.recordDate),
+          'test': record.recordType.isNotEmpty ? record.recordType : 'Laboratory Test',
+          'doctor': doctorName,
+          'result': parsedResults,
+          'status': status,
+          'notes': record.notes ?? 'No additional notes',
+          'category': category,
+          'diagnosis': record.diagnosis ?? '',
+        });
+      }
 
-    final mockData = [
-      {
-        'date': '2024-03-15',
-        'test': 'Complete Blood Count (CBC)',
-        'doctor': 'Dr. Sarah Johnson',
-        'result': {
-          'WBC': '7.5 x10^9/L',
-          'RBC': '4.8 x10^12/L',
-          'Hemoglobin': '14.2 g/dL',
-          'Platelets': '250 x10^9/L'
-        },
-        'status': 'Normal',
-        'notes': 'All values within normal range',
-        'category': 'Hematology'
-      },
-      {
-        'date': '2024-02-20',
-        'test': 'Lipid Panel',
-        'doctor': 'Dr. Michael Chen',
-        'result': {
-          'Total Cholesterol': '190 mg/dL',
-          'HDL': '45 mg/dL',
-          'LDL': '120 mg/dL',
-          'Triglycerides': '150 mg/dL'
-        },
-        'status': 'Borderline',
-        'notes': 'LDL slightly elevated, recommend dietary changes',
-        'category': 'Chemistry'
-      },
-      {
-        'date': '2024-01-10',
-        'test': 'Urinalysis',
-        'doctor': 'Dr. Emily Brown',
-        'result': {
-          'Color': 'Yellow',
-          'Clarity': 'Clear',
-          'pH': '6.0',
-          'Protein': 'Negative',
-          'Glucose': 'Negative'
-        },
-        'status': 'Normal',
-        'notes': 'No abnormalities detected',
-        'category': 'Urinalysis'
-      },
-    ];
+      if (!mounted) return;
+      setState(() {
+        _results = transformedResults;
+        _isLoading = false;
+      });
+      
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _isLoading = false;
+        _results = [];
+        _foundPatient = null;
+      });
+    }
+  }
 
-    if (!mounted) return;
-    setState(() {
-      _results = mockData;
-      _isLoading = false;
-    });
+  String _determineTestCategory(String recordType, String labResults) {
+    final combined = '$recordType $labResults'.toLowerCase();
+    
+    if (combined.contains('blood') || combined.contains('cbc') || combined.contains('hemoglobin') ||
+        combined.contains('wbc') || combined.contains('rbc') || combined.contains('platelet')) {
+      return 'Hematology';
+    } else if (combined.contains('glucose') || combined.contains('cholesterol') || 
+               combined.contains('lipid') || combined.contains('chemistry') ||
+               combined.contains('liver') || combined.contains('kidney')) {
+      return 'Chemistry';
+    } else if (combined.contains('urine') || combined.contains('urinalysis')) {
+      return 'Urinalysis';
+    } else if (combined.contains('culture') || combined.contains('bacteria') ||
+               combined.contains('sensitivity') || combined.contains('microbiology')) {
+      return 'Microbiology';
+    } else if (combined.contains('x-ray') || combined.contains('imaging') ||
+               combined.contains('radiology') || combined.contains('scan')) {
+      return 'Radiology';
+    } else {
+      return 'General';
+    }
+  }
+
+  String _determineResultStatus(String labResults, String? notes) {
+    final combined = '$labResults ${notes ?? ''}'.toLowerCase();
+    
+    if (combined.contains('normal') || combined.contains('negative') ||
+        combined.contains('within range') || combined.contains('clear')) {
+      return 'Normal';
+    } else if (combined.contains('abnormal') || combined.contains('positive') ||
+               combined.contains('elevated') || combined.contains('high') ||
+               combined.contains('low') || combined.contains('critical')) {
+      return 'Abnormal';
+    } else if (combined.contains('borderline') || combined.contains('slightly')) {
+      return 'Borderline';
+    } else {
+      return 'Pending Review';
+    }
   }
 
   void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
@@ -343,8 +421,7 @@ class PreviousLaboratoryResultsScreenState
                                 style: TextStyle(color: Colors.red[300])),
                           ],
                         ),
-                      )
-                    : _results.isEmpty
+                      )                    : _results.isEmpty
                         ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -357,20 +434,72 @@ class PreviousLaboratoryResultsScreenState
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(24),
-                            itemCount: _results.length,
-                            itemBuilder: (context, index) {
-                              final result = _results[index];
-                              return LabResultCard(
-                                date: result['date']!,
-                                test: result['test']!,
-                                doctor: result['doctor']!,
-                                status: result['status']!,
-                                category: result['category']!,
-                                onTap: () => _showResultDetails(context, result),
-                              );
-                            },
+                        : Column(
+                            children: [
+                              if (_foundPatient != null)
+                                Container(
+                                  margin: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.teal[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.teal[200]!),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person, color: Colors.teal[700], size: 24),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _foundPatient!.fullName,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.teal[800],
+                                              ),
+                                            ),
+                                            Text(
+                                              'Patient ID: ${_foundPatient!.id}',
+                                              style: TextStyle(
+                                                color: Colors.teal[600],
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_results.length} result(s) found',
+                                        style: TextStyle(
+                                          color: Colors.teal[600],
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: ListView.builder(
+                                  padding: const EdgeInsets.all(24),
+                                  itemCount: _results.length,
+                                  itemBuilder: (context, index) {
+                                    final result = _results[index];
+                                    return LabResultCard(
+                                      date: result['date']!,
+                                      test: result['test']!,
+                                      doctor: result['doctor']!,
+                                      status: result['status']!,
+                                      category: result['category']!,
+                                      onTap: () => _showResultDetails(context, result),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
           ),
         ],
