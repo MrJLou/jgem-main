@@ -15,20 +15,14 @@ class PatientService {
     }
     return 'Unknown Patient';
   }
-
   static Future<List<Patient>> searchPatients(String query) async {
     try {
-      final response = await ApiService.get('/patients/search?query=$query');
-      if (response != null && response['data'] != null) {
-        return (response['data'] as List)
-            .map((json) => Patient.fromJson(json))
-            .toList();
-      }
+      return await ApiService.searchPatients(query);
     } catch (e) {
       if (kDebugMode) {
         print('Error searching patients: $e');
       }
+      return [];
     }
-    return [];
   }
 } 

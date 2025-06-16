@@ -80,8 +80,7 @@ class PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       icon: Icons.person_add,
                       title: 'Add to Queue',
                       subtitle: 'Add new patients to today\'s queue',
-                      color: Colors.teal[700]!,
-                      onTap: () => Navigator.push(
+                      color: Colors.teal[700]!,                      onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
@@ -89,6 +88,8 @@ class PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                         ),
                       ).then((_) {
                         if (!mounted) return;
+                        // Refresh B-Tree if it exists
+                        ViewQueueScreen.refreshBTreeIfExists();
                         setState(() {});
                       }),
                     ),

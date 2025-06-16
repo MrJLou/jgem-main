@@ -71,13 +71,12 @@ class PatientDatabaseService {
     final db = await _dbHelper.database;
     return await db.query(DatabaseHelper.tablePatients);
   }
-
   Future<List<Map<String, dynamic>>> searchPatients(String query) async {
     final db = await _dbHelper.database;
     return await db.query(
       DatabaseHelper.tablePatients,
-      where: 'fullName LIKE ?',
-      whereArgs: ['%$query%'],
+      where: 'fullName LIKE ? OR id LIKE ?',
+      whereArgs: ['%$query%', '%$query%'],
     );
   }
 

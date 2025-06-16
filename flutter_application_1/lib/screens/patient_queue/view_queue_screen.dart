@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/queue_service.dart';
+import '../../services/btree_queue_manager.dart';
 import '../../models/active_patient_queue_item.dart';
 import '../../models/appointment.dart';
 import '../../services/api_service.dart';
@@ -7,6 +8,7 @@ import '../../models/user.dart';
 import '../../models/patient.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'add_to_queue_screen.dart';
 
 class _AppointmentDisplayItem {
   final Appointment appointment;
@@ -27,10 +29,22 @@ class ViewQueueScreen extends StatefulWidget {
 
   @override
   ViewQueueScreenState createState() => ViewQueueScreenState();
+
+  // Static method to refresh B-Tree from external screens
+  static void refreshBTreeIfExists() {
+    // This can be called from other screens when new patients are added
+    final BTreeQueueManager queueManager = BTreeQueueManager();
+    if (queueManager.isInitialized) {
+      queueManager.refresh().catchError((e) {
+        debugPrint('Error refreshing B-Tree from external call: $e');
+      });
+    }
+  }
 }
 
 class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late BTreeQueueManager _queueManager;
 
   // State for Scheduled Appointments Tab
   late Future<List<_AppointmentDisplayItem>> _appointmentItemsFuture;
@@ -39,25 +53,39 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   bool _isLoadingAppointments = false;
 
   // State for Live Queue Tab
-  late Future<List<ActivePatientQueueItem>> _liveQueueFuture;
   bool _isLoadingLiveQueue = false;
+  late Future<List<ActivePatientQueueItem>> _liveQueueFuture;
+
+  // Search and filter state
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _selectedStatusFilter = 'all';
+
+  // Debug state for performance monitoring
+  bool _showPerformanceMetrics = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabSelection);
+    _queueManager = BTreeQueueManager();
+    _initializeQueueManager();
     _appointmentItemsFuture =
         _prepareAppointmentDisplayItems(_selectedAppointmentDate);
     _loadLiveQueue();
     // Initialize the cache for the current month
     _initializeCache();
+    
+    // Setup search listener
+    _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
     _tabController.removeListener(_handleTabSelection);
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -92,15 +120,43 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   void _loadLiveQueue() {
     setState(() {
       _isLoadingLiveQueue = true;
+    });
+    
+    if (_queueManager.isInitialized) {
+      // Use B-Tree for faster loading if initialized
+      _liveQueueFuture = Future.value(_queueManager.getFilteredItems(
+        statuses: ['waiting', 'in_consultation', 'served', 'removed'],
+        todayOnly: true,
+        prioritySort: true,
+      ));
+    } else {
+      // Fallback to database query
       _liveQueueFuture = widget.queueService.getActiveQueueItems(
           statuses: ['waiting', 'in_consultation', 'served', 'removed']);
-      _isLoadingLiveQueue = false;
+    }
+    
+    _liveQueueFuture.whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _isLoadingLiveQueue = false;
+        });
+      }
     });
   }
 
   void _refreshCurrentTabData() {
     if (_tabController.index == 0) {
-      _loadLiveQueue();
+      // Refresh B-Tree data if initialized
+      if (_queueManager.isInitialized) {
+        _queueManager.refresh().then((_) {
+          _loadLiveQueue();
+        }).catchError((e) {
+          debugPrint('Error refreshing B-Tree: $e');
+          _loadLiveQueue(); // Fallback to normal loading
+        });
+      } else {
+        _loadLiveQueue();
+      }
     } else {
       _loadAppointmentsForSelectedDate();
     }
@@ -142,7 +198,15 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     if (!mounted) return;
     setState(() => _isLoadingLiveQueue = true);
     try {
-      bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);
+      bool success;
+      
+      // Use B-Tree queue manager if initialized, otherwise fallback to direct service
+      if (_queueManager.isInitialized) {
+        success = await _queueManager.updatePatientStatus(item.queueEntryId, newStatus);
+      } else {
+        success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);
+      }
+      
       if (success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -231,6 +295,77 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     await _cacheAppointmentsForMonth(_focusedDay);
   }
 
+  // Initialize the B-Tree queue manager
+  Future<void> _initializeQueueManager() async {
+    try {
+      await _queueManager.initialize(widget.queueService);
+      debugPrint('B-Tree Queue Manager initialized successfully');
+    } catch (e) {
+      debugPrint('Error initializing B-Tree Queue Manager: $e');
+    }
+  }
+
+  // Handle search input changes
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text;
+    });
+  }
+
+  // Get filtered and searched queue items using B-Tree
+  List<ActivePatientQueueItem> _getFilteredQueueItems(List<ActivePatientQueueItem> items) {
+    if (!_queueManager.isInitialized) {
+      return items;
+    }
+
+    // Start with filtered items from B-Tree
+    List<ActivePatientQueueItem> filteredItems = _queueManager.getFilteredItems(
+      statuses: _selectedStatusFilter == 'all' ? null : [_selectedStatusFilter],
+      todayOnly: true,
+      prioritySort: true,
+    );
+
+    // Apply search if query is not empty
+    if (_searchQuery.isNotEmpty) {
+      // Try different search methods
+      List<ActivePatientQueueItem> searchResults = [];
+      
+      // Search by name
+      searchResults.addAll(_queueManager.searchByName(_searchQuery));
+      
+      // Search by patient ID
+      searchResults.addAll(_queueManager.searchByPatientId(_searchQuery));
+      
+      // Search by queue number if query is numeric
+      if (int.tryParse(_searchQuery) != null) {
+        int queueNumber = int.parse(_searchQuery);
+        ActivePatientQueueItem? item = _queueManager.searchByQueueNumber(queueNumber);
+        if (item != null) {
+          searchResults.add(item);
+        }
+      }
+      
+      // Remove duplicates and filter by status if needed
+      Set<String> seen = {};
+      filteredItems = searchResults.where((item) {
+        if (seen.contains(item.queueEntryId)) return false;
+        seen.add(item.queueEntryId);
+         // Apply status filter if not 'all'
+        if (_selectedStatusFilter != 'all' && item.status != _selectedStatusFilter) {
+          return false;
+        }
+        
+        // Always filter for today only in Live Queue
+        DateTime today = DateTime.now();
+        return item.arrivalTime.year == today.year &&
+               item.arrivalTime.month == today.month &&
+               item.arrivalTime.day == today.day;
+      }).toList();
+    }
+
+    return filteredItems;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -242,6 +377,58 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         ),
         backgroundColor: Colors.teal[700],
         actions: [
+          // Debug menu for B-Tree performance
+          if (_queueManager.isInitialized)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (value) {
+                switch (value) {
+                  case 'performance':
+                    setState(() {
+                      _showPerformanceMetrics = !_showPerformanceMetrics;
+                    });
+                    break;
+                  case 'validate':
+                    _validateBTreeConsistency();
+                    break;
+                  case 'export':
+                    _exportBTreeStructure();
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'performance',
+                  child: Row(
+                    children: [
+                      Icon(Icons.analytics, color: Colors.grey[700]),
+                      const SizedBox(width: 8),
+                      Text(_showPerformanceMetrics ? 'Hide Metrics' : 'Show Metrics'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'validate',
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Validate B-Tree'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'export',
+                  child: Row(
+                    children: [
+                      Icon(Icons.download, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Export Structure'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           IconButton(
             onPressed: _refreshCurrentTabData,
             icon: const Icon(Icons.refresh, color: Colors.white),
@@ -266,64 +453,387 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           _buildScheduledAppointmentsTab(),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddToQueueScreen(queueService: widget.queueService),
+            ),
+          ).then((_) {
+            // Refresh data when returning from add screen
+            _refreshCurrentTabData();
+          });
+        },
+        backgroundColor: Colors.teal[700],
+        child: const Icon(Icons.add, color: Colors.white),
+        tooltip: 'Add Patient to Queue',
+      ),
     );
   }
 
   Widget _buildLiveQueueTab() {
-    return FutureBuilder<List<ActivePatientQueueItem>>(
-      future: _liveQueueFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || _isLoadingLiveQueue) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading live queue: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return _buildEmptyListMessage('live queue items');
-        }
-        final queue = snapshot.data!;
+    return Column(
+      children: [
+        // Search and Filter UI
+        _buildSearchAndFilterBar(),
+        // Performance Metrics (if enabled)
+        _buildPerformanceMetrics(),
+        // Queue Content
+        Expanded(
+          child: FutureBuilder<List<ActivePatientQueueItem>>(
+            future: _liveQueueFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting || _isLoadingLiveQueue) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error loading live queue: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return _buildEmptyListMessage('live queue items');
+              }
+              
+              final queue = snapshot.data!;
+              
+              // Use B-Tree filtering if available, otherwise use traditional filtering
+              List<ActivePatientQueueItem> filteredQueue;
+              if (_queueManager.isInitialized && (_searchQuery.isNotEmpty || _selectedStatusFilter != 'all')) {
+                filteredQueue = _getFilteredQueueItems(queue);
+              } else {
+                // Traditional filtering for backward compatibility
+                filteredQueue = queue.where((item) {
+                  bool isActive = item.status == 'waiting' || item.status == 'in_consultation';
+                  bool isFinalizedWalkIn = (item.status == 'served' || item.status == 'removed') &&
+                                           (item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty);
+                  bool statusMatch = _selectedStatusFilter == 'all' || item.status == _selectedStatusFilter;
+                  bool todayMatch = _isToday(item.arrivalTime);
+                  
+                  return (isActive || isFinalizedWalkIn) && statusMatch && todayMatch;
+                }).toList();
+                
+                // Sort traditionally if B-Tree is not used for filtering
+                filteredQueue.sort((a, b) {
+                  if (a.status == 'in_consultation' && b.status != 'in_consultation') return -1;
+                  if (a.status != 'in_consultation' && b.status == 'in_consultation') return 1;
+                  if (a.queueNumber != 0 && b.queueNumber != 0) {
+                    return a.queueNumber.compareTo(b.queueNumber);
+                  }
+                  return a.arrivalTime.compareTo(b.arrivalTime);
+                });
+              }
 
-        // Filter the queue before displaying
-        final filteredQueue = queue.where((item) {
-          bool isActive = item.status == 'waiting' || item.status == 'in_consultation';
-          bool isFinalizedWalkIn = (item.status == 'served' || item.status == 'removed') &&
-                                   (item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty);
-          return isActive || isFinalizedWalkIn;
-        }).toList();
+              if (filteredQueue.isEmpty) {
+                return _buildEmptyListMessage('matching queue items');
+              }
 
-        if (filteredQueue.isEmpty) {
-          return _buildEmptyListMessage('active live queue items for today');
-        }
+              return Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    _buildLiveQueueTableHeader(),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: filteredQueue.length,
+                        itemBuilder: (context, index) {
+                          return _buildLiveQueueTableRow(filteredQueue[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        // Performance metrics widget (debug mode)
+        _buildPerformanceMetrics(),
+      ],
+    );
+  }
 
-        // Sort the filteredQueue
-        filteredQueue.sort((a, b) {
-          if (a.status == 'in_consultation' && b.status != 'in_consultation') return -1;
-          if (a.status != 'in_consultation' && b.status == 'in_consultation') return 1;
-          if (a.queueNumber != 0 && b.queueNumber != 0) {
-            return a.queueNumber.compareTo(b.queueNumber);
-          }
-          return a.arrivalTime.compareTo(b.arrivalTime);
-        });
-
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
+  // Build search and filter bar for live queue
+  Widget _buildSearchAndFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      color: Colors.grey[100],
+      child: Column(
+        children: [
+          // Search bar
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search by name, patient ID, or queue number...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _searchQuery = '';
+                        });
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Filter row
+          Row(
             children: [
-              _buildLiveQueueTableHeader(),
+              // Status filter
               Expanded(
-                child: ListView.builder(
-                  itemCount: filteredQueue.length,
-                  itemBuilder: (context, index) {
-                    return _buildLiveQueueTableRow(filteredQueue[index]);
+                child: DropdownButtonFormField<String>(
+                  value: _selectedStatusFilter,
+                  decoration: InputDecoration(
+                    labelText: 'Status Filter',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All Statuses')),
+                    DropdownMenuItem(value: 'waiting', child: Text('Waiting')),
+                    DropdownMenuItem(value: 'in_consultation', child: Text('In Consultation')),
+                    DropdownMenuItem(value: 'served', child: Text('Served')),
+                    DropdownMenuItem(value: 'removed', child: Text('Removed')),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedStatusFilter = value ?? 'all';
+                    });
                   },
                 ),
               ),
+
             ],
           ),
-        );
-      },
+          // Queue statistics (if B-Tree is initialized)
+          if (_queueManager.isInitialized) _buildQueueStatistics(),
+        ],
+      ),
     );
+  }
+
+  // Build queue statistics widget
+  Widget _buildQueueStatistics() {
+    Map<String, int> stats = _queueManager.getStatistics();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.teal[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.teal[200]!),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatChip('Waiting', stats['waiting'] ?? 0, Colors.orange),
+          _buildStatChip('In Consultation', stats['in_consultation'] ?? 0, Colors.blue),
+          _buildStatChip('Served', stats['served'] ?? 0, Colors.green),
+          _buildStatChip('Total', stats['total'] ?? 0, Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  // Build individual stat chip
+  Widget _buildStatChip(String label, int count, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Text(
+            count.toString(),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Debug build performance metrics widget
+  Widget _buildPerformanceMetrics() {
+    if (!_queueManager.isInitialized || !_showPerformanceMetrics) {
+      return const SizedBox.shrink();
+    }
+
+    Map<String, dynamic> metrics = _queueManager.getPerformanceMetrics();
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics, color: Colors.blue[700], size: 16),
+              const SizedBox(width: 8),
+              Text(
+                'B-Tree Performance Metrics',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () {
+                  setState(() {
+                    _showPerformanceMetrics = false;
+                  });
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildMetricItem('Queue Size', metrics['totalPatients']?.toString() ?? '0'),
+              _buildMetricItem('Waiting', metrics['waitingPatients']?.toString() ?? '0'),
+              _buildMetricItem('In Consultation', metrics['inConsultation']?.toString() ?? '0'),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              _buildMetricItem('Avg Wait (min)', metrics['averageWaitTimeMinutes']?.toStringAsFixed(1) ?? '0.0'),
+              _buildMetricItem('Served Today', metrics['servedPatients']?.toString() ?? '0'),
+              _buildMetricItem('Active Consultations', metrics['activeConsultations']?.toString() ?? '0'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricItem(String label, String value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Debug method to validate B-Tree consistency
+  void _validateBTreeConsistency() async {
+    if (!_queueManager.isInitialized) return;
+    
+    try {
+      bool isConsistent = await _queueManager.validateConsistency();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isConsistent 
+                ? 'B-Tree is consistent with database' 
+                : 'B-Tree inconsistency detected!',
+            ),
+            backgroundColor: isConsistent ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error validating B-Tree: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Debug method to export B-Tree structure
+  void _exportBTreeStructure() {
+    if (!_queueManager.isInitialized) return;
+    
+    try {
+      Map<String, dynamic> structure = _queueManager.exportTreeStructure();
+      debugPrint('B-Tree Structure: ${structure.toString()}');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('B-Tree structure exported to debug console'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting B-Tree structure: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ...existing code...
+
+  // Helper method to check if a date is today
+  bool _isToday(DateTime date) {
+    DateTime today = DateTime.now();
+    return date.year == today.year &&
+           date.month == today.month &&
+           date.day == today.day;
   }
 
   Widget _buildLiveQueueTableHeader() {
@@ -760,7 +1270,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     );
   }
   
-  static String _getDisplayStatus(String status) { 
+  String _getDisplayStatus(String status) { 
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
       case 'in_consultation': return 'In Consult';
@@ -770,7 +1280,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     }
   }
 
-  static String _getDisplayAppointmentStatus(String status) { 
+  String _getDisplayAppointmentStatus(String status) { 
     switch (status.toLowerCase()) {
       case 'scheduled': return 'Scheduled';
       case 'confirmed': return 'Confirmed';
@@ -821,6 +1331,25 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       ));
     }
     return displayItems;
+  }
+
+  // Method to add patient through B-Tree manager
+  Future<bool> addPatientThroughBTree(ActivePatientQueueItem patient) async {
+    try {
+      if (_queueManager.isInitialized) {
+        await _queueManager.addPatient(patient);
+        _loadLiveQueue(); // Refresh the UI
+        return true;
+      } else {
+        // Fallback to regular queue service
+        bool success = await widget.queueService.addPatientToQueue(patient);
+        _loadLiveQueue(); // Refresh the UI
+        return success;
+      }
+    } catch (e) {
+      debugPrint('Error adding patient through B-Tree: $e');
+      return false;
+    }
   }
 }
 

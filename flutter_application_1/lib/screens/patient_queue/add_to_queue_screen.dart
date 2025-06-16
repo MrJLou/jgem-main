@@ -181,7 +181,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     }
 
     try {
+      debugPrint('Searching for patients with query: "$query"');
       final results = await PatientService.searchPatients(query);
+      debugPrint('Found ${results.length} patients');
       if (mounted) {
         setState(() {
           _searchResults = results;
@@ -189,13 +191,22 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         });
       }
     } catch (e) {
+      debugPrint('Error searching patients: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _searchResults = [];
         });
       }
-      // Handle error
-      debugPrint('Error searching patients: $e');
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error searching patients: $e'),
+            backgroundColor: Colors.red[600],
+          ),
+        );
+      }
     }
   }
 
@@ -747,11 +758,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     color: Colors.teal[700])),
                             const SizedBox(height: 16),
                             Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 TextFormField(
                                   controller: _searchController,
                                   decoration: InputDecoration(
                                     labelText: 'Search Patient by Name or ID',
+                                    hintText: 'Type patient name or ID to search...',
                                     prefixIcon: _isLoading
                                         ? Transform.scale(
                                             scale: 0.5,
@@ -762,12 +775,40 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
+                                    suffixIcon: _searchController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: const Icon(Icons.clear),
+                                            onPressed: () {
+                                              setState(() {
+                                                _searchController.clear();
+                                                _searchResults = null;
+                                              });
+                                            },
+                                          )
+                                        : null,
                                   ),
                                   onChanged: _onPatientSearchChanged,
                                 ),
-                                if (_searchResults != null &&
-                                    _searchResults!.isNotEmpty)
+                                if (_searchResults != null && _searchResults!.isNotEmpty)
                                   _buildSearchResultsList(),
+                                if (_searchResults != null && _searchResults!.isEmpty && _searchController.text.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[50],
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.grey[300]!),
+                                    ),
+                                    child: Text(
+                                      'No patients found matching "${_searchController.text}"',
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
                               ],
                             ),
                             const SizedBox(height: 16),
@@ -1012,42 +1053,102 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.teal[200]!, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withAlpha(20),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: Colors.grey.withAlpha(40),
+            spreadRadius: 2,
+            blurRadius: 6,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      constraints: const BoxConstraints(maxHeight: 200),
-      child: ListView.builder(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: _searchResults!.length,
-        itemBuilder: (context, index) {
-          final patient = _searchResults![index];
-          return ListTile(
-            title: Text(patient.fullName),
-            subtitle: Text('ID: ${patient.id}'),
-            onTap: () {
-              setState(() {
-                _searchController.text = patient.fullName;
-                _patientIdController.text = patient.id;
+      constraints: const BoxConstraints(maxHeight: 250),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.teal[50],
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.people, color: Colors.teal[700], size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Found ${_searchResults!.length} patient(s)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.teal[700],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _searchResults!.length,
+              itemBuilder: (context, index) {
+                final patient = _searchResults![index];
                 final age = _calculateAge(patient.birthDate.toIso8601String());
-                _ageController.text = age?.toString() ?? '';
-                _genderController.text = patient.gender;
-                _searchResults = null;
-              });
-            },
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            dense: true,
-            tileColor: Colors.white,
-            hoverColor: Colors.teal.withAlpha(20),
-          );
-        },
+                
+                return ListTile(
+                  leading: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.teal[100],
+                    child: Icon(
+                      Icons.person,
+                      color: Colors.teal[700],
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(
+                    patient.fullName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ID: ${patient.id}'),
+                      if (age != null)
+                        Text('Age: $age • Gender: ${patient.gender}'),
+                    ],
+                  ),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Colors.teal[600],
+                  ),
+                  onTap: () {
+                    setState(() {
+                      _searchController.text = patient.fullName;
+                      _patientIdController.text = patient.id;
+                      _ageController.text = age?.toString() ?? '';
+                      _genderController.text = patient.gender;
+                      _searchResults = null;
+                    });
+                  },
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                  dense: false,
+                  tileColor: Colors.white,
+                  hoverColor: Colors.teal.withAlpha(20),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
