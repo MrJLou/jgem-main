@@ -5,7 +5,6 @@ import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import '../models/appointment.dart';
 import '../services/api_service.dart';
-import '../services/queue_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
 import '../widgets/appointments/appointment_form.dart';
@@ -33,7 +32,6 @@ class DashboardScreenState extends State<DashboardScreen> {
   bool _isAddingAppointment = false;
   bool _isLoading = false;
   final _appointmentFormKey = GlobalKey<FormState>();
-  late QueueService _queueService;
 
   final TextEditingController _patientNameController = TextEditingController();
   final TextEditingController _patientIdController = TextEditingController();
@@ -51,7 +49,6 @@ class DashboardScreenState extends State<DashboardScreen> {
       print('DEBUG: DashboardScreen initState START');
     }
     super.initState();
-    _queueService = QueueService();
     _configureMenuForRole();
     _loadInitialData();
     if (kDebugMode) {

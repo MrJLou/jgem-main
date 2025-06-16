@@ -48,7 +48,29 @@ class ActivePatientQueueItem {
     this.originalAppointmentId, // ADDED
     this.doctorId, // ADDED
     this.doctorName, // ADDED
-  });
+  });  // Empty constructor for B-Tree initialization
+  ActivePatientQueueItem.empty()
+    : queueEntryId = '',
+      patientId = null,
+      patientName = '',
+      arrivalTime = DateTime.fromMillisecondsSinceEpoch(0),
+      queueNumber = 0,
+      gender = null,
+      age = null,
+      conditionOrPurpose = null,
+      selectedServices = null,
+      totalPrice = null,
+      status = '',
+      paymentStatus = 'Pending',
+      createdAt = DateTime.fromMillisecondsSinceEpoch(0),
+      addedByUserId = null,
+      servedAt = null,
+      removedAt = null,
+      consultationStartedAt = null,
+      originalAppointmentId = null,
+      doctorId = null,
+      doctorName = null;
+
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? services;
     if (json['selectedServices'] != null) {

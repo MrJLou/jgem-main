@@ -12,7 +12,6 @@ import '../services/auth_service.dart';
 import '../services/lan_sync_service.dart';
 import '../models/clinic_service.dart';
 import './queue_service.dart';
-import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 

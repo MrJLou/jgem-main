@@ -1,23 +1,12 @@
 import 'package:flutter/material.dart';
 import 'invoice_screen.dart'; // Import the InvoiceScreen
-// Import specific screens if they exist, e.g.:
-// import 'create_invoice_screen.dart';
-// import 'billing_history_screen.dart';
-// import 'pending_bills_screen.dart';
-// import 'billing_settings_screen.dart';
+import 'transaction_history_screen.dart'; // Import TransactionHistoryScreen
+import 'pending_bills_screen.dart'; // Import PendingBillsScreen
 
 class BillingHubScreen extends StatelessWidget {
   const BillingHubScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
-    // Placeholder onTap actions - replace with actual navigation
-    placeholderOnTap() {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Navigation to be implemented.')),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Billing Hub', // Changed Title
@@ -89,16 +78,20 @@ class BillingHubScreen extends StatelessWidget {
                         );
                       },
                     ),
-                    const SizedBox(height: 20),
-                    _buildFeatureCard(
+                    const SizedBox(height: 20),                    _buildFeatureCard(
                       // Changed to _buildFeatureCard
                       context,
-                      icon: Icons
-                          .history_toggle_off_outlined, // More specific icon
-                      title: 'Billing History',
-                      subtitle: 'View past billing records',
+                      icon:
+                          Icons.history_toggle_off_outlined, // More specific icon
+                      title: 'Transaction History',
+                      subtitle: 'View payment records and transaction history',
                       color: Colors.teal[600]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TransactionHistoryScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -107,20 +100,14 @@ class BillingHubScreen extends StatelessWidget {
                       icon:
                           Icons.pending_actions_outlined, // More specific icon
                       title: 'Pending Bills',
-                      subtitle: 'View unpaid invoices',
+                      subtitle: 'View unpaid invoices and pending payments',
                       color: Colors.teal[500]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFeatureCard(
-                      // Changed to _buildFeatureCard
-                      context,
-                      icon:
-                          Icons.settings_suggest_outlined, // More specific icon
-                      title: 'Billing Settings',
-                      subtitle: 'Configure billing preferences',
-                      color: Colors.teal[400]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PendingBillsScreen()),
+                        );
+                      },
                     ),
                   ],
                 ),

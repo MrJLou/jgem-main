@@ -2140,4 +2140,107 @@ To view live changes in DB Browser:
       _instanceDatabase = null;
     }
   }
+
+  // Method to get unpaid bills with patient details
+  Future<List<Map<String, dynamic>>> getUnpaidBills({
+    String? patientId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+
+    String query = '''
+      SELECT pb.*, 
+             pt.fullName as patient_name,
+             pt.contactNumber as patient_contact,
+             u.fullName as created_by_user_name
+      FROM $tablePatientBills pb
+      LEFT JOIN $tablePatients pt ON pb.patientId = pt.id
+      LEFT JOIN $tableUsers u ON pb.createdByUserId = u.id
+      WHERE pb.status = 'Unpaid'
+    ''';
+
+    List<dynamic> arguments = [];
+
+    if (patientId != null && patientId.isNotEmpty) {
+      query += ' AND pb.patientId = ?';
+      arguments.add(patientId);
+    }
+
+    if (startDate != null) {
+      query += ' AND DATE(pb.billDate) >= DATE(?)';
+      arguments.add(DateFormat('yyyy-MM-dd').format(startDate));
+    }
+
+    if (endDate != null) {
+      query += ' AND DATE(pb.billDate) <= DATE(?)';
+      arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
+    }
+
+    query += ' ORDER BY pb.billDate DESC';
+
+    debugPrint('DATABASE_HELPER: Executing getUnpaidBills query: $query with args: $arguments');
+    final List<Map<String, dynamic>> results = await db.rawQuery(query, arguments);
+    debugPrint('DATABASE_HELPER: Found ${results.length} unpaid bills');
+    return results;
+  }
+
+  // Method to get payment transactions with patient details
+  Future<List<Map<String, dynamic>>> getPaymentTransactions({
+    String? patientId,
+    String? invoiceNumber,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? paymentMethod,
+  }) async {
+    final db = await database;
+
+    String query = '''
+      SELECT p.*, 
+             pt.fullName as patient_name,
+             pt.contactNumber as patient_contact,
+             u.fullName as received_by_user_name,
+             pb.invoiceNumber as bill_invoice_number,
+             pb.totalAmount as bill_total_amount
+      FROM $tablePayments p
+      LEFT JOIN $tablePatients pt ON p.patientId = pt.id
+      LEFT JOIN $tableUsers u ON p.receivedByUserId = u.id
+      LEFT JOIN $tablePatientBills pb ON p.billId = pb.id
+      WHERE 1=1
+    ''';
+
+    List<dynamic> arguments = [];
+
+    if (patientId != null && patientId.isNotEmpty) {
+      query += ' AND p.patientId = ?';
+      arguments.add(patientId);
+    }
+
+    if (invoiceNumber != null && invoiceNumber.isNotEmpty) {
+      query += ' AND p.invoiceNumber LIKE ?';
+      arguments.add('%$invoiceNumber%');
+    }
+
+    if (startDate != null) {
+      query += ' AND DATE(p.paymentDate) >= DATE(?)';
+      arguments.add(DateFormat('yyyy-MM-dd').format(startDate));
+    }
+
+    if (endDate != null) {
+      query += ' AND DATE(p.paymentDate) <= DATE(?)';
+      arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
+    }
+
+    if (paymentMethod != null && paymentMethod != 'all' && paymentMethod.isNotEmpty) {
+      query += ' AND p.paymentMethod = ?';
+      arguments.add(paymentMethod);
+    }
+
+    query += ' ORDER BY p.paymentDate DESC';
+
+    debugPrint('DATABASE_HELPER: Executing getPaymentTransactions query: $query with args: $arguments');
+    final List<Map<String, dynamic>> results = await db.rawQuery(query, arguments);
+    debugPrint('DATABASE_HELPER: Found ${results.length} payment transactions');
+    return results;
+  }
 }

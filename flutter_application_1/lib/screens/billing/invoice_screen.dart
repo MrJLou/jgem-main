@@ -240,7 +240,8 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       }
     }
 
-    final invoiceIdSuffix = _uuid.v4().substring(0, 6).toUpperCase();
+    final uuidString = _uuid.v4().replaceAll('-', '');
+    final invoiceIdSuffix = uuidString.length >= 6 ? uuidString.substring(0, 6).toUpperCase() : uuidString.toUpperCase();
     final fullInvoiceDbId = "BILL-${_uuid.v4()}";
     final now = DateTime.now();
     
@@ -1398,7 +1399,8 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       }
     }
 
-    final invoiceIdSuffix = _uuid.v4().substring(0, 6).toUpperCase();
+    final uuidString = _uuid.v4().replaceAll('-', '');
+    final invoiceIdSuffix = uuidString.length >= 6 ? uuidString.substring(0, 6).toUpperCase() : uuidString.toUpperCase();
     final displayInvoiceNumber = "INV-$invoiceIdSuffix";
     final dbBillId = "BILL-${_uuid.v4()}"; // This ID is generated internally by recordUnpaidInvoice, no need to pass
     final now = DateTime.now();
