@@ -1872,7 +1872,8 @@ To view live changes in DB Browser:
   }) async {
     final db = await database;
     final String billDbId = 'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
-    final String paymentReferenceNumber = 'PAY-${const Uuid().v4().substring(0, 8).toUpperCase()}';
+    final String uuidString = const Uuid().v4().replaceAll('-', '');
+    final String paymentReferenceNumber = 'PAY-${uuidString.length >= 8 ? uuidString.substring(0, 8).toUpperCase() : uuidString.toUpperCase()}';
 
     await db.transaction((txn) async {
       // 1. Insert into tablePatientBills
@@ -2143,7 +2144,7 @@ To view live changes in DB Browser:
 
   // Method to get unpaid bills with patient details
   Future<List<Map<String, dynamic>>> getUnpaidBills({
-    String? patientId,
+    String? patientIdOrName,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -2162,9 +2163,10 @@ To view live changes in DB Browser:
 
     List<dynamic> arguments = [];
 
-    if (patientId != null && patientId.isNotEmpty) {
-      query += ' AND pb.patientId = ?';
-      arguments.add(patientId);
+    if (patientIdOrName != null && patientIdOrName.isNotEmpty) {
+      query += ' AND (pt.id = ? OR pt.fullName LIKE ?)';
+      arguments.add(patientIdOrName);
+      arguments.add('%$patientIdOrName%');
     }
 
     if (startDate != null) {
@@ -2187,7 +2189,7 @@ To view live changes in DB Browser:
 
   // Method to get payment transactions with patient details
   Future<List<Map<String, dynamic>>> getPaymentTransactions({
-    String? patientId,
+    String? patientIdOrName,
     String? invoiceNumber,
     DateTime? startDate,
     DateTime? endDate,
@@ -2211,9 +2213,10 @@ To view live changes in DB Browser:
 
     List<dynamic> arguments = [];
 
-    if (patientId != null && patientId.isNotEmpty) {
-      query += ' AND p.patientId = ?';
-      arguments.add(patientId);
+    if (patientIdOrName != null && patientIdOrName.isNotEmpty) {
+      query += ' AND (p.patientId = ? OR pt.fullName LIKE ?)';
+      arguments.add(patientIdOrName);
+      arguments.add('%$patientIdOrName%');
     }
 
     if (invoiceNumber != null && invoiceNumber.isNotEmpty) {
@@ -2242,5 +2245,87 @@ To view live changes in DB Browser:
     final List<Map<String, dynamic>> results = await db.rawQuery(query, arguments);
     debugPrint('DATABASE_HELPER: Found ${results.length} payment transactions');
     return results;
+  }
+
+  // Method to get all details for a specific receipt
+  Future<Map<String, dynamic>?> getReceiptDetails(String paymentReferenceNumber) async {
+    final db = await database;
+
+    // First, get the payment details
+    final List<Map<String, dynamic>> payments = await db.query(
+      tablePayments,
+      where: 'referenceNumber = ?',
+      whereArgs: [paymentReferenceNumber],
+      limit: 1,
+    );
+
+    if (payments.isEmpty) {
+      return null;
+    }
+
+    final payment = payments.first;
+    final billId = payment['billId'] as String?;
+
+    if (billId == null) {
+      // If there's no billId, we can't fetch items, but we can still return payment info
+      return {
+        'payment': payment,
+        'items': [], // No items to show
+      };
+    }
+
+    // Now, get the associated bill items
+    final List<Map<String, dynamic>> items = await db.query(
+      tableBillItems,
+      where: 'billId = ?',
+      whereArgs: [billId],
+    );
+
+    return {
+      'payment': payment,
+      'items': items,
+    };
+  }
+
+  // Fetches patient bills, optionally filtered by status
+  Future<List<Map<String, dynamic>>> getPatientBills(
+      {List<String>? statuses}) async {
+    final db = await database;
+    try {
+      if (statuses != null && statuses.isNotEmpty) {
+        // Creates a list of '?' placeholders for the IN clause
+        final placeholders = List.filled(statuses.length, '?').join(',');
+        return await db.query(
+          tablePatientBills,
+          where: 'status IN ($placeholders)',
+          whereArgs: statuses,
+          orderBy: 'invoiceDate DESC',
+        );
+      } else {
+        // Fetch all bills if no status filter is provided
+        return await db.query(
+          tablePatientBills,
+          orderBy: 'invoiceDate DESC',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error fetching patient bills from DB: $e');
+      return []; // Return empty list on error
+    }
+  }
+
+  // Method to get a specific service by its ID
+  Future<Map<String, dynamic>?> getServiceById(String serviceId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> results = await db.query(
+      DatabaseHelper.tableClinicServices,
+      where: 'id = ?',
+      whereArgs: [serviceId],
+      limit: 1,
+    );
+    if (results.isNotEmpty) {
+      return results.first;
+    }
+    return null;
   }
 }

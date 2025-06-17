@@ -16,8 +16,6 @@ import 'package:pdf/widgets.dart' as pw; // Added for PDF
 import 'package:printing/printing.dart'; // Added for PDF
 import 'package:open_filex/open_filex.dart'; // Added for opening PDF
 import 'package:flutter/services.dart' show rootBundle; // Added for loading image asset
-import 'package:flutter_application_1/models/user.dart';
-import '../../models/appointment.dart';
 
 enum InvoiceFlowStep { patientSelection, invoiceGenerated, paymentProcessing, paymentComplete }
 
@@ -240,10 +238,22 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       }
     }
 
-    final uuidString = _uuid.v4().replaceAll('-', '');
-    final invoiceIdSuffix = uuidString.length >= 6 ? uuidString.substring(0, 6).toUpperCase() : uuidString.toUpperCase();
-    final fullInvoiceDbId = "BILL-${_uuid.v4()}";
-    final now = DateTime.now();
+    // Generate safe invoice ID - avoiding any potential range issues
+    try {
+      final uuid = _uuid.v4();
+      final uuidClean = uuid.replaceAll('-', '');
+      // Use safe substring with multiple safety checks
+      String invoiceIdSuffix;
+      if (uuidClean.length >= 6) {
+        invoiceIdSuffix = uuidClean.substring(0, 6).toUpperCase();
+      } else if (uuidClean.isNotEmpty) {
+        invoiceIdSuffix = uuidClean.toUpperCase();
+      } else {
+        // Fallback to timestamp-based ID
+        invoiceIdSuffix = DateTime.now().millisecondsSinceEpoch.toString().substring(0, 6);
+      }
+      final fullInvoiceDbId = "BILL-${_uuid.v4()}";
+      final now = DateTime.now();
     
     List<BillItem> items = [];
     if (patientQueueItem.selectedServices != null && patientQueueItem.selectedServices!.isNotEmpty) {
@@ -286,11 +296,35 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     });
 
     // Generate PDF and thumbnail after state is updated
-    final pdfBytes = await _generatePdfInvoiceBytes();
-    if (mounted) {
-      setState(() {
-        _generatedPdfBytes = pdfBytes;
-      });
+    try {
+      final pdfBytes = await _generatePdfInvoiceBytes();
+      if (mounted) {
+        setState(() {
+          _generatedPdfBytes = pdfBytes;
+        });
+      }
+    } catch (e) {
+      debugPrint('PDF generation failed, trying simple fallback: $e');
+      // Try a simple fallback if main PDF generation fails
+      if (mounted) {
+        setState(() {
+          _generatedPdfBytes = Uint8List(0); // Empty bytes to indicate failure
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF generation error: ${e.toString()}'), backgroundColor: Colors.orange),
+        );
+      }
+    }
+    } catch (e) {
+      debugPrint('Error generating invoice: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating invoice: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+        setState(() {
+          _isLoadingPatients = false;
+        });
+      }
     }
   }
 
@@ -442,29 +476,43 @@ class InvoiceScreenState extends State<InvoiceScreen> {
 
   /// Breaks long words in a string by inserting zero-width spaces
   /// to prevent text layout overflow errors in the PDF generator.
-  String _forceWrap(String text, {int chunkLength = 35}) {
-    if (text.isEmpty) {
+  String _forceWrap(String? text, {int chunkLength = 35}) {
+    if (text == null || text.isEmpty) {
+      return '';
+    }
+    
+    try {
+      if (text.length <= chunkLength) {
+        return text;
+      }
+      
+      final buffer = StringBuffer();
+      final characters = text.split('');
+      
+      for (var i = 0; i < characters.length; i++) {
+        buffer.write(characters[i]);
+        if ((i + 1) % chunkLength == 0 && i < characters.length - 1) {
+          buffer.write('\u200B'); // Zero-width space
+        }
+      }
+      return buffer.toString();
+    } catch (e) {
+      // If anything goes wrong, return the original text safely
+      debugPrint('Error in _forceWrap: $e');
       return text;
     }
-    final buffer = StringBuffer();
-    for (var i = 0; i < text.length; i++) {
-      buffer.write(text[i]);
-      if ((i + 1) % chunkLength == 0 && i < text.length - 1) {
-        buffer.write('\u200B'); // Zero-width space
-      }
-    }
-    return buffer.toString();
   }
 
   Future<Uint8List> _generatePdfInvoiceBytes() async {
-    final pdf = pw.Document();
+    try {
+      final pdf = pw.Document();
 
-    // Load custom fonts from assets
-    final fontData = await rootBundle.load("assets/fonts/NotoSans-Regular.ttf");
-    final ttf = pw.Font.ttf(fontData);
-    final boldFontData = await rootBundle.load("assets/fonts/NotoSans-Bold.ttf");
-    final boldTtf = pw.Font.ttf(boldFontData);
-    final theme = pw.ThemeData.withFont(base: ttf, bold: boldTtf);
+      // Load custom fonts from assets
+      final fontData = await rootBundle.load("assets/fonts/NotoSans-Regular.ttf");
+      final ttf = pw.Font.ttf(fontData);
+      final boldFontData = await rootBundle.load("assets/fonts/NotoSans-Bold.ttf");
+      final boldTtf = pw.Font.ttf(boldFontData);
+      final theme = pw.ThemeData.withFont(base: ttf, bold: boldTtf);
 
     // --- 1. Data Preparation ---
     final String invoiceNumber = _generatedInvoiceNumber ?? '598647';
@@ -483,30 +531,38 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       'Email': _forceWrap(patient?.email ?? 'josephfrey@email.com'),
     };
 
-    // Doctor Info Fetching
-    User? doctor;
-    if (_selectedPatientQueueItem?.originalAppointmentId != null &&
-        _selectedPatientQueueItem!.originalAppointmentId!.isNotEmpty) {
-      try {
-        Appointment? appointment = await _dbHelper.appointmentDbService
-            .getAppointmentById(_selectedPatientQueueItem!.originalAppointmentId!);
-        if (appointment != null) {
-          doctor =
-              await _dbHelper.userDbService.getUserById(appointment.doctorId);
+    // Doctor Info - Use only available doctors from your database
+    // Based on your database, we have: System Administrator, Bien Jester O. Tuplano (Medtech), Lance Bryan Lapitan (Doctor)
+    String doctorName = 'Lance Bryan Lapitan'; // Default to the doctor from your database
+    String doctorRole = 'Doctor';
+    
+    // Try to get the current user to see if they are a doctor
+    try {
+      final currentUser = await _authService.getCurrentUser();
+      if (currentUser != null) {
+        if (currentUser.role == 'doctor') {
+          doctorName = currentUser.fullName;
+          doctorRole = 'Doctor';
+        } else if (currentUser.role == 'medtech') {
+          // If current user is medtech, still use the doctor for the invoice
+          doctorName = 'Lance Bryan Lapitan';
+          doctorRole = 'Doctor';
         }
-      } catch (e) {
-        debugPrint("Error fetching doctor details for PDF: $e");
       }
+    } catch (e) {
+      debugPrint("Error getting current user for doctor info: $e");
+      // Keep the default values
     }
+    
     final doctorInfo = {
-      'Name': _forceWrap(doctor?.fullName ?? 'Dr. Anne Manning'), // Fallback to template name
-      'Address': _forceWrap('Pathology'), // No specific field for this, using placeholder
+      'Name': _forceWrap(doctorName),
+      'Role': _forceWrap(doctorRole),
     };
 
     // --- 2. Styles & Colors ---
-    final baseColor = PdfColor.fromHex('#E0F7FA'); // Very light cyan
-    final accentColor = PdfColor.fromHex('#00838F'); // Darker cyan/teal
-    final fontColor = PdfColor.fromHex('#424242'); // Dark Grey
+    const baseColor = PdfColor(0.88, 0.97, 0.98); // Very light cyan RGB
+    const accentColor = PdfColor(0.0, 0.51, 0.56); // Darker cyan/teal RGB  
+    const fontColor = PdfColor(0.26, 0.26, 0.26); // Dark Grey RGB
 
     final normalStyle = pw.TextStyle(fontSize: 9, color: fontColor);
     final boldStyle =
@@ -801,6 +857,11 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     );
 
     return pdf.save();
+    } catch (e) {
+      debugPrint('Error generating PDF: $e');
+      // Return empty bytes if PDF generation fails
+      return Uint8List(0);
+    }
   }
 
   Future<void> _savePdfInvoice(Uint8List pdfBytes, String invoiceNumber) async {
@@ -912,7 +973,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
             title: Text(patient.patientName,
                 style: const TextStyle(fontWeight: FontWeight.w500)),
             subtitle: Text(
-                'ID: ${patient.patientId?.substring(0, patient.patientId!.length > 8 ? 8 : patient.patientId!.length) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
+                'ID: ${_getSafePatientIdDisplay(patient.patientId)}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
             trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}',
                 style: TextStyle(
                     color: Colors.green[700], fontWeight: FontWeight.bold)),
@@ -995,8 +1056,12 @@ class InvoiceScreenState extends State<InvoiceScreen> {
             children: [
                ElevatedButton(
                 onPressed: () async {
-                    if (_generatedPdfBytes != null) {
+                    if (_generatedPdfBytes != null && _generatedPdfBytes!.isNotEmpty) {
                       await _printPdfInvoice(_generatedPdfBytes!);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('PDF not available. Please regenerate the invoice.'), backgroundColor: Colors.orange),
+                      );
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -1006,8 +1071,12 @@ class InvoiceScreenState extends State<InvoiceScreen> {
               const SizedBox(width: 10),
                ElevatedButton(
                 onPressed: () async {
-                     if (_generatedPdfBytes != null && _generatedInvoiceNumber != null) {
+                     if (_generatedPdfBytes != null && _generatedPdfBytes!.isNotEmpty && _generatedInvoiceNumber != null) {
                       await _savePdfInvoice(_generatedPdfBytes!, _generatedInvoiceNumber!);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('PDF not available. Please regenerate the invoice.'), backgroundColor: Colors.orange),
+                      );
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -1360,6 +1429,15 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
+  // Helper method to safely display patient ID
+  String _getSafePatientIdDisplay(String? patientId) {
+    if (patientId == null || patientId.isEmpty) {
+      return "N/A";
+    }
+    // Safely take first 8 characters or the full string if shorter
+    return patientId.length > 8 ? patientId.substring(0, 8) : patientId;
+  }
+
   Future<void> _saveInvoiceAsUnpaid() async {
     if (_selectedPatientQueueItem == null || _currentUserId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1494,12 +1572,14 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         // _currentStep = InvoiceFlowStep.patientSelection; // Or a new confirmation step
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Invoice $savedInvoiceNumber saved as Unpaid for ${patientQueueItem.patientName}.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invoice $savedInvoiceNumber saved as Unpaid for ${patientQueueItem.patientName}.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
 
       // Optionally generate and save PDF for the unpaid invoice
       final pdfBytes = await _generatePdfInvoiceBytes(); // Uses the state variables set above

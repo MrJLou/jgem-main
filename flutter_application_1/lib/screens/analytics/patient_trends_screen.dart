@@ -431,10 +431,10 @@ class PatientTrendsScreenState extends State<PatientTrendsScreen> {
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (double value, TitleMeta meta) {
-                final index = value.toInt();
-                if (index >= 0 && index < monthlyData.keys.length) {
-                  final month =
-                      monthlyData.keys.elementAt(index).split(' ')[0];
+                final index = value.toInt();                if (index >= 0 && index < monthlyData.keys.length) {
+                  final monthKey = monthlyData.keys.elementAt(index);
+                  final monthParts = monthKey.split(' ');
+                  final month = monthParts.isNotEmpty ? monthParts[0] : monthKey;
                   return Padding(
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Text(month, style: const TextStyle(fontSize: 10)),

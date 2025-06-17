@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/database_helper.dart';
-import '../../services/api_service.dart';
-import '../../models/patient.dart';
+import '../payment/payment_screen.dart';
 
 class PendingBillsScreen extends StatefulWidget {
   const PendingBillsScreen({super.key});
@@ -48,7 +47,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   }
 
   Future<void> _searchPendingBills() async {
-    final patientId = _patientIdController.text.trim();
+    final patientIdOrName = _patientIdController.text.trim();
     
     setState(() {
       _isLoading = true;
@@ -58,7 +57,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
 
     try {
       final bills = await _dbHelper.getUnpaidBills(
-        patientId: patientId.isNotEmpty ? patientId : null,
+        patientIdOrName: patientIdOrName.isNotEmpty ? patientIdOrName : null,
         startDate: _selectedDateRange?.start,
         endDate: _selectedDateRange?.end,
       );
@@ -213,7 +212,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                           child: TextField(
                             controller: _patientIdController,
                             decoration: const InputDecoration(
-                              labelText: 'Patient ID (optional)',
+                              labelText: 'Patient ID or Name (optional)',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),
@@ -560,11 +559,16 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   }
 
   void _processPayment(Map<String, dynamic> bill) {
-    // Navigate to payment screen or show payment dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Payment processing for ${bill['invoiceNumber']} - Feature coming soon!'),
-        backgroundColor: Colors.blue[600],
+    final invoiceNumber = bill['invoiceNumber'] as String?;
+    if (invoiceNumber == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Invoice number is missing.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaymentScreen(invoiceNumber: invoiceNumber),
       ),
     );
   }

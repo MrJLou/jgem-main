@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 // import 'receipts_screen.dart';
 // import 'payment_settings_screen.dart';
 import 'payment_screen.dart'; // Added import for PaymentScreen
+import 'package:flutter_application_1/screens/billing/transaction_history_screen.dart';
+import 'package:flutter_application_1/screens/receipts/receipts_screen.dart';
 
 class PaymentHubScreen extends StatelessWidget {
   // final String accessLevel; // Removed accessLevel
@@ -100,7 +102,13 @@ class PaymentHubScreen extends StatelessWidget {
                       title: 'Payment History',
                       subtitle: 'View past payment records',
                       color: Colors.teal[600]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const TransactionHistoryScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -110,7 +118,12 @@ class PaymentHubScreen extends StatelessWidget {
                       title: 'Receipts',
                       subtitle: 'View and print payment receipts',
                       color: Colors.teal[500]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ReceiptsScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(

@@ -375,9 +375,9 @@ class ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
 }
 
 // Helper extension for String capitalization
-extension StringExtension on String {
-  String capitalizeFirst() {
+extension StringExtension on String {  String capitalizeFirst() {
     if (isEmpty) return "";
+    if (length < 2) return toUpperCase();
     return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

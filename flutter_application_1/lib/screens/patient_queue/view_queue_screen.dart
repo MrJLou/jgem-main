@@ -466,13 +466,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           });
         },
         backgroundColor: Colors.teal[700],
-<<<<<<< HEAD
         tooltip: 'Add Patient to Queue',
         child: const Icon(Icons.add, color: Colors.white),
-=======
-        child: const Icon(Icons.add, color: Colors.white),
-        tooltip: 'Add Patient to Queue',
->>>>>>> 7d3b16915c2382fbbfab3568fd6cc76fb7fda31a
       ),
     );
   }
@@ -659,15 +654,9 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-<<<<<<< HEAD
             color: color.withAlpha(20),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: color.withAlpha(30)),
-=======
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.3)),
->>>>>>> 7d3b16915c2382fbbfab3568fd6cc76fb7fda31a
           ),
           child: Text(
             count.toString(),

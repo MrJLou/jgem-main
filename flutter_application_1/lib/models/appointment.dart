@@ -132,8 +132,12 @@ class Appointment {
       doctorId: map['doctorId'],
       date: DateTime.parse(map['date']),
       time: TimeOfDay(
-        hour: int.parse(map['time'].split(':')[0]),
-        minute: int.parse(map['time'].split(':')[1]),
+        hour: map['time'] != null && map['time'].contains(':') && map['time'].split(':').length >= 2
+            ? int.parse(map['time'].split(':')[0])
+            : 0,
+        minute: map['time'] != null && map['time'].contains(':') && map['time'].split(':').length >= 2
+            ? int.parse(map['time'].split(':')[1])
+            : 0,
       ),
       status: map['status'],
       consultationType: map['consultationType'],

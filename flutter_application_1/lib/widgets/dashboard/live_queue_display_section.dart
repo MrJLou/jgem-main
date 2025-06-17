@@ -172,9 +172,10 @@ class LiveQueueDisplaySection extends StatelessWidget {
     const cellStyle = TextStyle(fontSize: 14, color: Colors.black87);
     final arrivalDisplayTime =
         '${item.arrivalTime.hour.toString().padLeft(2, '0')}:${item.arrivalTime.minute.toString().padLeft(2, '0')}';
-    
-    bool isRepresentingScheduledAppointment = item.queueEntryId.startsWith('appt_');
-    String originalAppointmentId = isRepresentingScheduledAppointment ? item.queueEntryId.substring(5) : '';
+      bool isRepresentingScheduledAppointment = item.queueEntryId.startsWith('appt_');
+    String originalAppointmentId = isRepresentingScheduledAppointment && item.queueEntryId.length > 5 
+        ? item.queueEntryId.substring(5) 
+        : '';
 
     final dataCells = [
       isRepresentingScheduledAppointment && item.status == 'Scheduled'

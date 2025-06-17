@@ -73,9 +73,9 @@ class DashboardScreenState extends State<DashboardScreen> {
       }
     });
   }
-
   String _generatePatientId() {
-    return 'PT-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    return 'PT-${timestamp.length >= 6 ? timestamp.substring(timestamp.length - 6) : timestamp}';
   }
 
   Future<void> _loadAppointments() async {

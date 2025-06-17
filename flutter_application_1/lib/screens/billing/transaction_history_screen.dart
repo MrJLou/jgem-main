@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/database_helper.dart';
-import '../../services/api_service.dart';
-import '../../models/patient.dart';
 
 class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
@@ -49,10 +47,10 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   Future<void> _searchTransactions() async {
-    final patientId = _patientIdController.text.trim();
+    final patientIdOrName = _patientIdController.text.trim();
     final invoiceNumber = _invoiceController.text.trim();
     
-    if (patientId.isEmpty && invoiceNumber.isEmpty) {
+    if (patientIdOrName.isEmpty && invoiceNumber.isEmpty) {
       _loadRecentTransactions();
       return;
     }
@@ -65,7 +63,7 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
     try {
       final transactions = await _dbHelper.getPaymentTransactions(
-        patientId: patientId.isNotEmpty ? patientId : null,
+        patientIdOrName: patientIdOrName.isNotEmpty ? patientIdOrName : null,
         invoiceNumber: invoiceNumber.isNotEmpty ? invoiceNumber : null,
       );
       
@@ -141,7 +139,7 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           child: TextField(
                             controller: _patientIdController,
                             decoration: const InputDecoration(
-                              labelText: 'Patient ID (optional)',
+                              labelText: 'Patient ID or Name (optional)',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),

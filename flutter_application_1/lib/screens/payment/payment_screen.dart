@@ -1,16 +1,26 @@
 import 'dart:convert'; // Added for jsonEncode
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 // import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // No longer directly selected
 import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
+import '../../services/receipt_service.dart';
 // import 'package:shared_preferences/shared_preferences.dart'; // No longer using shared_prefs for last payment summary
+import '../billing/transaction_history_screen.dart';
 
 // Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
 // import 'transaction_history_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
-  const PaymentScreen({super.key});
+  final String? invoiceNumber;
+  const PaymentScreen({super.key, this.invoiceNumber});
 
   @override
   PaymentScreenState createState() => PaymentScreenState();
@@ -24,6 +34,10 @@ class PaymentScreenState extends State<PaymentScreen> {
   String? _generatedReferenceNumber;
   String? _currentUserId;
   
+  // PDF / Receipt state
+  Uint8List? _generatedReceiptBytes;
+  Map<String, dynamic>? _lastPaymentDetailsForReceipt;
+
   // New state variables for invoice search workflow
   final TextEditingController _invoiceNumberController = TextEditingController();
   Map<String, dynamic>? _searchedInvoiceDetails; // To hold bill, items, and patient data
@@ -36,6 +50,12 @@ class PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     _loadCurrentUserId();
+    if (widget.invoiceNumber != null) {
+      _invoiceNumberController.text = widget.invoiceNumber!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _searchInvoice();
+      });
+    }
     // _fetchInConsultationPatients(); // Removed old patient fetching
     // _loadLastProcessedPaymentSummary(); // Removed old summary loading
   }
@@ -71,6 +91,8 @@ class PaymentScreenState extends State<PaymentScreen> {
       _change = 0.0;
       _generatedReferenceNumber = null;
       _isLoadingInvoice = false;
+      _generatedReceiptBytes = null;
+      _lastPaymentDetailsForReceipt = null;
     });
       }
 
@@ -120,7 +142,8 @@ class PaymentScreenState extends State<PaymentScreen> {
     }
 
     try {
-      final referenceNumber = 'PAY-${_uuid.v4().substring(0, 8).toUpperCase()}';
+      final uuidString = _uuid.v4().replaceAll('-', '');
+      final referenceNumber = 'PAY-${uuidString.length >= 8 ? uuidString.substring(0, 8).toUpperCase() : uuidString.toUpperCase()}';
       final paymentDateTime = DateTime.now();
 
       final paymentData = {
@@ -149,12 +172,41 @@ class PaymentScreenState extends State<PaymentScreen> {
         }),
       );
 
+      final receiptDetails = {
+        'patientName': patientName,
+        'invoiceNumber': billData['invoiceNumber'],
+        'referenceNumber': referenceNumber,
+        'paymentDate': paymentDateTime,
+        'totalAmount': totalBillAmount,
+        'amountPaid': amountPaid,
+        'change': amountPaid - totalBillAmount,
+        'receivedByUserId': _currentUserId!,
+        'billItems': _searchedInvoiceDetails!['items'],
+      };
+
+      try {
+        final pdfBytes = await ReceiptService.generateReceiptPdfBytes(receiptDetails);
+        if (mounted) {
+          setState(() {
+            _generatedReceiptBytes = pdfBytes;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error generating receipt PDF: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Payment successful, but receipt generation failed: ${e.toString()}'), backgroundColor: Colors.orange),
+          );
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _isPaymentProcessed = true;
         _change = amountPaid - totalBillAmount;
         _generatedReferenceNumber = referenceNumber;
         _amountPaidController.clear();
+        _lastPaymentDetailsForReceipt = receiptDetails;
         // No longer clearing _selectedPatientQueueItem as it's not used in the same way
         // Consider resetting _searchedInvoiceDetails or parts of it to prevent re-payment without new search
         _searchedInvoiceDetails = null; // Reset after payment to force new search
@@ -216,6 +268,8 @@ class PaymentScreenState extends State<PaymentScreen> {
       _amountPaidController.clear();
       _generatedReferenceNumber = null;
       _change = 0.0;
+      _generatedReceiptBytes = null;
+      _lastPaymentDetailsForReceipt = null;
     });
 
     try {
@@ -446,12 +500,24 @@ class PaymentScreenState extends State<PaymentScreen> {
                 SelectableText('Payment Reference: $_generatedReferenceNumber', style: const TextStyle(fontSize: 16)),
                 Text('Change Due: ₱${_change.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 10),
-                 ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh_outlined), 
-                  label: const Text("New Payment"), 
-                  onPressed: _resetPaymentScreen,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent)
-                )
+                 Row(
+                   children: [
+                     ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh_outlined), 
+                      label: const Text("New Payment"), 
+                      onPressed: _resetPaymentScreen,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent)
+                                 ),
+                      const SizedBox(width: 10),
+                      if (_generatedReceiptBytes != null)
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.receipt_long),
+                          label: const Text("View Receipt"),
+                          onPressed: () => _showReceiptPreviewDialog(_generatedReceiptBytes!),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                        ),
+                   ],
+                 )
               ],
             ],
           ),
@@ -532,5 +598,46 @@ class PaymentScreenState extends State<PaymentScreen> {
         ),
       ),
     );
+  }
+
+  void _showReceiptPreviewDialog(Uint8List pdfBytes) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 50, vertical: 30),
+          child: Column(
+            children: [
+              AppBar(
+                title: Text('Receipt Preview - $_generatedReferenceNumber'),
+                backgroundColor: Colors.teal[700],
+                automaticallyImplyLeading: false,
+                actions: [
+                  IconButton(
+                    tooltip: 'Close Preview',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                ],
+              ),
+              Expanded(
+                child: PdfPreview(
+                  build: (format) => pdfBytes,
+                  allowPrinting: true,
+                  allowSharing: true,
+                  canChangePageFormat: false,
+                  canChangeOrientation: false,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _printPdf(Uint8List pdfBytes) async {
+    if (pdfBytes.isEmpty) return;
+    await Printing.layoutPdf(onLayout: (format) => pdfBytes);
   }
 }
