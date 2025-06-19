@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -52,7 +51,7 @@ class ReceiptService {
                       pw.Text('₱${itemTotal.toStringAsFixed(2)}'),
                     ]
                   );
-                }).toList(),
+                }),
               pw.Divider(),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,

@@ -25,7 +25,7 @@ class TreatmentAnalysisScreenState extends State<TreatmentAnalysisScreen> {
   Future<List<ClinicService>> _fetchServiceData() async {
     try {
       // Fetch all services and sort them by selectionCount in descending order
-      final services = await ApiService.getAllClinicServices();
+      final services = await ApiService.getClinicServices();
       services.sort((a, b) => b.selectionCount.compareTo(a.selectionCount));
       return services;
     } catch (e) {

@@ -13,8 +13,6 @@ import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
 import '../../services/receipt_service.dart';
 // import 'package:shared_preferences/shared_preferences.dart'; // No longer using shared_prefs for last payment summary
-import '../billing/transaction_history_screen.dart';
-
 // Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
 // import 'transaction_history_screen.dart';
 

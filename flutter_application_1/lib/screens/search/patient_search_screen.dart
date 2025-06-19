@@ -17,6 +17,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
   bool _hasSearched = false;
   bool _isLoading = false;
   Patient? _foundPatient;
+  List<Patient> _allPatients = []; // To store the complete list of patients
   List<Patient> _searchResults = [];
   String? _errorMessage;
   Map<String, dynamic>? _patientData;
@@ -40,6 +41,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
   @override
   void initState() {
     super.initState();
+    _loadInitialPatients();
     _searchController.addListener(() {
       _onSearchChanged(_searchController.text);
     });
@@ -58,15 +60,51 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
     super.dispose();
   }
 
+  Future<void> _loadInitialPatients() async {
+    setState(() {
+      _isLoading = true;
+      _hasSearched = false;
+      _errorMessage = null;
+      _foundPatient = null;
+      _patientData = null;
+    });
+
+    try {
+      final results = await ApiService.getPatients();
+      if (mounted) {
+        setState(() {
+          _allPatients = results;
+          _searchResults = results;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _searchResults = [];
+          _allPatients = [];
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   void _onSearchChanged(String query) {
     if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
       if (query.length >= 2) {
         _performSearch(query);
+      } else if (query.isEmpty) {
+        _resetSearch();
       } else {
         setState(() {
           _searchResults = [];
-          _hasSearched = false;
+          _hasSearched = true;
         });
       }
     });
@@ -80,7 +118,13 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
     });
 
     try {
-      final results = await ApiService.searchPatients(query);
+      // Search from the already loaded list of all patients for responsiveness
+      final lowerCaseQuery = query.toLowerCase();
+      final results = _allPatients.where((patient) {
+        return patient.fullName.toLowerCase().contains(lowerCaseQuery) ||
+            patient.id.toLowerCase().contains(lowerCaseQuery);
+      }).toList();
+
       if (mounted) {
         setState(() {
           _searchResults = results;
@@ -215,10 +259,9 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
                 controller: _searchController,
                 label: 'Search by Patient ID or Name',
                 icon: Icons.search,
-                hintText: 'Start typing to search...',
+                hintText: 'Start typing to filter...',
               ),
               const SizedBox(height: 20),
-              _buildLiveSearchResults(),
             ],
           ),
         ),
@@ -279,15 +322,14 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
 
   Widget _buildResultsContent() {
     if (_isLoading && _foundPatient == null) {
-      // Show loading indicator only when fetching details for the first time
-      // The search loading is in the left pane.
+      return const Center(child: CircularProgressIndicator());
     }
 
-    if (_errorMessage != null && _foundPatient == null) {
+    if (_errorMessage != null) {
       return _buildErrorState();
     }
 
-    if (_foundPatient != null && _patientData != null) {
+    if (_foundPatient != null) {
       return _buildPatientDetails();
     }
 
@@ -295,11 +337,13 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
       return _buildPatientSelectionList();
     }
 
-    if (!_hasSearched) {
-      return _buildEmptyState();
+    // This state is reached if there are no results from a search, or initially if db is empty
+    if (_hasSearched || _allPatients.isEmpty) {
+      return _buildNoResultsState();
     }
 
-    return _buildNoResultsState();
+    // Default case, should ideally not be reached if logic is sound
+    return _buildEmptyState();
   }
 
   Widget _buildInputField({
@@ -414,26 +458,44 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
                       ),
                     ],
                   ),
-                  IconButton(
-                    icon: Icon(Icons.edit, color: Colors.teal[700]),
-                    onPressed: () {
-                      if (_foundPatient != null) {
-                        setState(() {
-                          _isEditing = true;
-                          final patient = _foundPatient!;
-                          final nameParts = patient.fullName.split(' ');
-                          _firstNameController.text = nameParts.isNotEmpty ? nameParts.first : '';
-                          _lastNameController.text = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
-                          _dobController.text = DateFormat('yyyy-MM-dd').format(patient.birthDate);
-                          _contactController.text = patient.contactNumber ?? '';
-                          _addressController.text = patient.address ?? '';
-                          _allergiesController.text = patient.allergies ?? '';
-                          _editGender = patient.gender == 'Other' ? 'Male' : patient.gender;
-                          _editBloodType = patient.bloodType; // Can be null, handled by DropdownButtonFormField
-                        });
-                      }
-                    },
-                    tooltip: 'Edit Patient',
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.edit, color: Colors.teal[700]),
+                        onPressed: () {
+                          if (_foundPatient != null) {
+                            setState(() {
+                              _isEditing = true;
+                              final patient = _foundPatient!;
+                              final nameParts = patient.fullName.split(' ');
+                              _firstNameController.text =
+                                  nameParts.isNotEmpty ? nameParts.first : '';
+                              _lastNameController.text = nameParts.length > 1
+                                  ? nameParts.sublist(1).join(' ')
+                                  : '';
+                              _dobController.text = DateFormat('yyyy-MM-dd')
+                                  .format(patient.birthDate);
+                              _contactController.text =
+                                  patient.contactNumber ?? '';
+                              _addressController.text = patient.address ?? '';
+                              _allergiesController.text =
+                                  patient.allergies ?? '';
+                              _editGender = patient.gender == 'Other'
+                                  ? 'Male'
+                                  : patient.gender;
+                              _editBloodType = patient
+                                  .bloodType; // Can be null, handled by DropdownButtonFormField
+                            });
+                          }
+                        },
+                        tooltip: 'Edit Patient',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.arrow_back, color: Colors.teal[700]),
+                        onPressed: _clearSelectedPatient,
+                        tooltip: 'Back to List',
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -893,11 +955,9 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      // Set _foundPatient immediately so UI can potentially react, but clear _patientData
       _foundPatient = patient;
       _patientData = null;
-      _searchResults =
-          []; // Clear search results as we are focusing on one patient
+      // Do not clear search results or search state here
     });
 
     try {
@@ -933,6 +993,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
               .toList(),
         };
         _isLoading = false;
+        _isEditing = false;
       });
     } catch (e) {
       setState(() {
@@ -953,6 +1014,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         ),
       );
     }
+    _loadInitialPatients();
   }
 
   Widget _buildInfoSection(String title, IconData icon, List<Widget> children) {
@@ -1145,7 +1207,9 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0, top: 8.0),
           child: Text(
-            '${_searchResults.length} Patient(s) Found. Select one to view details:',
+            _hasSearched
+                ? '${_searchResults.length} Patient(s) Found. Select one to view details:'
+                : 'All Patients (${_searchResults.length}). Select one to view details:',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -1203,14 +1267,14 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.search,
+              Icons.people_outline,
               size: 50,
               color: Colors.teal[300],
             ),
           ),
           const SizedBox(height: 20),
           Text(
-            'Search for a Patient',
+            'No Patients Found',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -1219,7 +1283,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Enter a Patient ID or surname to begin your search',
+            'There are no patients in the system yet.',
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[500],
@@ -1334,78 +1398,27 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
     );
   }
 
-  Widget _buildLiveSearchResults() {
-    if (_isLoading) {
-      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
-    }
-
-    if (_searchController.text.length < 2) {
-      return const SizedBox.shrink();
-    }
-
-    if (_searchResults.isNotEmpty) {
-      return Container(
-        height: 400,
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8.0),
-        ),
-        child: SingleChildScrollView(
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Patient ID', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('DoB', style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-            rows: _searchResults.map((patient) {
-              return DataRow(
-                cells: [
-                  DataCell(Text(patient.fullName)),
-                  DataCell(Text(patient.id)),
-                  DataCell(Text(DateFormat.yMd().format(patient.birthDate))),
-                ],
-                onSelectChanged: (isSelected) {
-                  if (isSelected ?? false) {
-                    _fetchPatientDetailsAndSetState(patient);
-                    setState(() {
-                      _searchResults = [];
-                      _searchController.clear();
-                      _hasSearched = false;
-                    });
-                  }
-                },
-              );
-            }).toList(),
-            dataRowMinHeight: 40,
-            dataRowMaxHeight: 48,
-            headingRowHeight: 48,
-            columnSpacing: 16,
-            horizontalMargin: 12,
-          ),
-        ),
-      );
-    }
-    
-    if (_hasSearched && _searchResults.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text("No patients found for your query."),
-      );
-    }
-
-    return const SizedBox.shrink();
-  }
-
   void _resetSearch() {
     setState(() {
       _searchController.clear();
       _hasSearched = false;
       _foundPatient = null;
       _patientData = null;
-      _searchResults = [];
+      _searchResults = _allPatients;
       _errorMessage = null;
       _isLoading = false;
       _isEditing = false;
+    });
+  }
+
+  void _clearSelectedPatient() {
+    setState(() {
+      _foundPatient = null;
+      _patientData = null;
+      _isEditing = false;
+      _searchController.clear(); // Also clear search text for a full reset
+      _searchResults = _allPatients;
+      _hasSearched = false;
     });
   }
 }

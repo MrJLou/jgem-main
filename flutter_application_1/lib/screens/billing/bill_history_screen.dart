@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
-
 import '../../models/patient.dart';
 import '../../models/patient_bill.dart';
 import '../../services/database_helper.dart';

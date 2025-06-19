@@ -186,7 +186,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
   Future<void> _fetchAvailableServices() async {
     try {
-      final services = await ApiService.getAllClinicServices();
+      final services = await ApiService.getClinicServices();
       if (!mounted) return;
       setState(() {
         _availableServices = services;

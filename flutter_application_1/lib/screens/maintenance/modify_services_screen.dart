@@ -145,8 +145,12 @@ class ModifyServicesScreenState extends State<ModifyServicesScreen> {
       String originalName =
           _selectedServiceForEditing?.serviceName ?? clinicService.serviceName;
 
-      ClinicService savedService =
-          await ApiService.saveClinicService(clinicService);
+      if (isUpdating) {
+        await ApiService.updateClinicService(clinicService);
+      } else {
+        await ApiService.createClinicService(clinicService);
+      }
+      
       if (!mounted) return;
 
       // Log the update
@@ -158,7 +162,7 @@ class ModifyServicesScreenState extends State<ModifyServicesScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                'Service "${savedService.serviceName}" ${isUpdating ? 'updated' : 'added'} successfully!'),
+                'Service "${clinicService.serviceName}" ${isUpdating ? 'updated' : 'added'} successfully!'),
             backgroundColor: Colors.green),
       );
 

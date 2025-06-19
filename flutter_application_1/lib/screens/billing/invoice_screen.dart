@@ -564,7 +564,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     const accentColor = PdfColor(0.0, 0.51, 0.56); // Darker cyan/teal RGB  
     const fontColor = PdfColor(0.26, 0.26, 0.26); // Dark Grey RGB
 
-    final normalStyle = pw.TextStyle(fontSize: 9, color: fontColor);
+    const normalStyle = pw.TextStyle(fontSize: 9, color: fontColor);
     final boldStyle =
         pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: fontColor);
     final accentBoldStyle = boldStyle.copyWith(color: accentColor);
@@ -579,7 +579,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         },
         children: [
           pw.TableRow(
-            decoration: pw.BoxDecoration(color: baseColor),
+            decoration: const pw.BoxDecoration(color: baseColor),
             children: [
               pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -748,7 +748,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
                 children: [
                   // Header Row
                   pw.TableRow(
-                    decoration: pw.BoxDecoration(color: baseColor),
+                    decoration: const pw.BoxDecoration(color: baseColor),
                     children: [
                       // Manually align headers
                       pw.Container(alignment: pw.Alignment.centerLeft, padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4), child: pw.Text('DATE', style: accentBoldStyle)),

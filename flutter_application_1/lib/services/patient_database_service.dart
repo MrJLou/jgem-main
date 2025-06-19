@@ -69,7 +69,11 @@ class PatientDatabaseService {
 
   Future<List<Map<String, dynamic>>> getPatients() async {
     final db = await _dbHelper.database;
-    return await db.query(DatabaseHelper.tablePatients);
+    final List<Map<String, dynamic>> maps = await db.query(
+      DatabaseHelper.tablePatients,
+      orderBy: 'createdAt DESC',
+    );
+    return maps;
   }
   Future<List<Map<String, dynamic>>> searchPatients(String query) async {
     final db = await _dbHelper.database;

@@ -377,101 +377,56 @@ class ApiService {
     }
   }
 
-  // Clinic Service Methods - New Section
-  static Future<List<ClinicService>> searchServicesByCategory(
-      String category) async {
+  // Clinic Service Methods
+  static Future<List<ClinicService>> getClinicServices() async {
     try {
-      final servicesData = await _dbHelper.searchServicesByCategory(category);
-      return servicesData.map((data) => ClinicService.fromJson(data)).toList();
+      return await _dbHelper.getClinicServices();
     } catch (e) {
-      debugPrint('ApiService: Failed to search services by category: $e');
-      throw Exception('Failed to search services by category: $e');
+      debugPrint('ApiService: Failed to get all clinic services: $e');
+      throw Exception('Failed to load all clinic services: $e');
     }
   }
 
-  static Future<List<ClinicService>> searchServicesByName(
-      String serviceName) async {
+  static Future<String> createClinicService(ClinicService service) async {
     try {
-      final servicesData = await _dbHelper.searchServicesByName(serviceName);
-      return servicesData.map((data) => ClinicService.fromJson(data)).toList();
+      return await _dbHelper.insertClinicService(service.toJson());
     } catch (e) {
-      debugPrint('ApiService: Failed to search services by name: $e');
-      throw Exception('Failed to search services by name: $e');
+      debugPrint('ApiService: Failed to create clinic service: $e');
+      throw Exception('Failed to create clinic service: $e');
     }
   }
 
-  static Future<ClinicService?> getClinicServiceById(String id) async {
+  static Future<int> updateClinicService(ClinicService service) async {
     try {
-      final serviceData = await _dbHelper.getClinicServiceById(id);
-      if (serviceData != null) {
-        return ClinicService.fromJson(serviceData);
-      }
-      return null;
+      return await _dbHelper.updateClinicService(service.toJson());
     } catch (e) {
-      debugPrint('ApiService: Failed to get service by ID: $e');
-      throw Exception('Failed to get service by ID: $e');
+      throw Exception('Failed to update clinic service: $e');
     }
   }
-
-  static Future<ClinicService?> getClinicServiceByName(String name) async {
-    try {
-      final serviceData = await _dbHelper.getClinicServiceByName(name);
-      if (serviceData != null) {
-        return ClinicService.fromJson(serviceData);
-      }
-      return null;
-    } catch (e) {
-      debugPrint('ApiService: Failed to get service by name: $e');
-      throw Exception('Failed to get service by name: $e');
-    }
-  }
-
-  static Future<ClinicService> saveClinicService(ClinicService service) async {
-    try {
-      // Check if the service already exists by ID (for updates)
-      // A more robust way for new services might be to not assign an ID client-side initially,
-      // or use a temporary ID format that the backend/DB replaces.
-      // For now, if ID looks like a placeholder, we might assume it's new.
-      // Or, try to fetch by ID. If it exists, update. Else, insert.
-
-      final existingServiceById =
-          await _dbHelper.getClinicServiceById(service.id);
-
-      if (existingServiceById != null) {
-        // Update existing service
-        await _dbHelper.updateClinicService(service.toJson());
-        return service; // Return the updated service
-      } else {
-        // Insert new service
-        // If service.id was a placeholder, _dbHelper.insertClinicService will generate one if not provided in toJson()
-        // Or, ensure service.id is a new unique ID before this point.
-        // The current _dbHelper.insertClinicService creates an ID if not present.
-        String newId = await _dbHelper.insertClinicService(service.toJson());
-        return service.copyWith(
-            id: newId); // Return service with the new ID from DB
-      }
-    } catch (e) {
-      debugPrint('ApiService: Failed to save clinic service: $e');
-      throw Exception('Failed to save clinic service: $e');
-    }
-  }
-
+  
   static Future<int> deleteClinicService(String id) async {
     try {
       return await _dbHelper.deleteClinicService(id);
     } catch (e) {
-      debugPrint('ApiService: Failed to delete clinic service: $e');
       throw Exception('Failed to delete clinic service: $e');
     }
   }
-
-  static Future<List<ClinicService>> getAllClinicServices() async {
+  
+  static Future<List<ClinicService>> searchServicesByCategory(String category) async {
     try {
-      final servicesData = await _dbHelper.getAllClinicServices();
+      final servicesData = await _dbHelper.searchServicesByCategory(category);
       return servicesData.map((data) => ClinicService.fromJson(data)).toList();
     } catch (e) {
-      debugPrint('ApiService: Failed to get all clinic services: $e');
-      throw Exception('Failed to load all clinic services: $e');
+      throw Exception('Failed to search services by category: $e');
+    }
+  }
+
+  static Future<void> incrementServiceUsage(List<String> serviceIds) async {
+    if (serviceIds.isEmpty) return;
+    try {
+      await _dbHelper.incrementServiceSelectionCounts(serviceIds);
+    } catch (e) {
+      debugPrint('ApiService: Failed to increment service usage counts: $e');
     }
   }
 
@@ -739,23 +694,12 @@ class ApiService {
     }
   }
 
-  static Future<void> incrementServiceUsage(List<String> serviceIds) async {
-    if (serviceIds.isEmpty) return;
+  static Future<Map<String, int>> getDashboardStatistics() async {
     try {
-      await _dbHelper.incrementServiceSelectionCounts(serviceIds);
+      return await _dbHelper.getDashboardStatistics();
     } catch (e) {
-      debugPrint('ApiService: Failed to increment service usage counts: $e');
-      // Depending on requirements, you might want to throw this exception
-      // or handle it silently if it's not critical for the user flow.
-      // For now, just printing.
-    }
-  }
-
-  static Future<int> updateClinicService(ClinicService service) async {
-    try {
-      return await _dbHelper.updateClinicService(service.toJson());
-    } catch (e) {
-      throw Exception('Failed to update clinic service: $e');
+      debugPrint('ApiService: Failed to get dashboard statistics: $e');
+      throw Exception('Failed to get dashboard statistics: $e');
     }
   }
 
@@ -765,15 +709,6 @@ class ApiService {
       await _dbHelper.resetDatabase();
     } catch (e) {
       throw Exception('Failed to reset database: $e');
-    }
-  }
-
-  static Future<Map<String, int>> getDashboardStatistics() async {
-    try {
-      return await _dbHelper.getDashboardStatistics();
-    } catch (e) {
-      debugPrint('ApiService: Failed to get dashboard statistics: $e');
-      throw Exception('Failed to get dashboard statistics: $e');
     }
   }
 
@@ -812,6 +747,44 @@ class ApiService {
         print('API Error: $e');
       }
       return null;
+    }
+  }
+
+  // Service Metrics
+  static Future<int> getServiceTimesAvailed(String serviceId) async {
+    try {
+      return await _dbHelper.getServiceSelectionCount(serviceId);
+    } catch (e) {
+      debugPrint('ApiService: Failed to get service times availed: $e');
+      return 0;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getServiceUsageTrend(String serviceId) async {
+    try {
+      return await _dbHelper.getServiceUsageTrend(serviceId);
+    } catch (e) {
+      debugPrint('ApiService: Failed to get service usage trend: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Patient>> getRecentPatientsForService(String serviceId, {int limit = 5}) async {
+    try {
+      return await _dbHelper.getRecentPatientsForService(serviceId, limit: limit);
+    } catch (e) {
+      debugPrint('ApiService: Failed to get recent patients for service: $e');
+      return [];
+    }
+  }
+
+  // Medical Record Methods
+  static Future<List<MedicalRecord>> getMedicalRecords(String patientId) async {
+    try {
+      final recordsData = await _dbHelper.getPatientMedicalRecords(patientId);
+      return recordsData.map((data) => MedicalRecord.fromJson(data)).toList();
+    } catch (e) {
+      throw Exception('Failed to load medical records: $e');
     }
   }
 }

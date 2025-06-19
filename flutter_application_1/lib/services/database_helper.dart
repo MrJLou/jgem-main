@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/user_database_service.dart';
 import 'package:flutter_application_1/services/patient_database_service.dart';
-import 'package:flutter_application_1/services/appointment_database_service.dart'; // Added import
+import 'package:flutter_application_1/services/appointment_database_service.dart';
+import 'package:flutter_application_1/services/clinic_service_database_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -13,8 +14,9 @@ import '../models/user.dart';
 import '../models/appointment.dart';
 import '../models/active_patient_queue_item.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart'; // Added for UUID generation
-import '../models/clinic_service.dart'; // Added for ClinicService model
+import 'package:uuid/uuid.dart';
+import '../models/clinic_service.dart';
+import '../models/patient.dart';
 
 class DatabaseHelper {
   // Singleton pattern
@@ -23,8 +25,8 @@ class DatabaseHelper {
   DatabaseHelper._internal() {
     userDbService = UserDatabaseService(this);
     patientDbService = PatientDatabaseService(this);
-    appointmentDbService = AppointmentDatabaseService(
-        this); // Initialize AppointmentDatabaseService
+    appointmentDbService = AppointmentDatabaseService(this);
+    clinicServiceDbService = ClinicServiceDatabaseService(this);
   }
 
   // Instance variables for the database and its path
@@ -32,7 +34,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 27; // Incremented version from 26 to 27
+  static const int _databaseVersion = 27;
 
   // Tables
   static const String tableUsers = 'users';
@@ -53,43 +55,57 @@ class DatabaseHelper {
 
   late final UserDatabaseService userDbService;
   late final PatientDatabaseService patientDbService;
-  late final AppointmentDatabaseService
-      appointmentDbService; // Declare AppointmentDatabaseService instance
+  late final AppointmentDatabaseService appointmentDbService;
+  late final ClinicServiceDatabaseService clinicServiceDbService;
 
   // Getter for database instance
   Future<Database> get database async {
-    // 1. If already initialized and open, return immediately.
     if (_instanceDatabase != null && _instanceDatabase!.isOpen) {
       return _instanceDatabase!;
     }
 
-    // 2. If initialization is currently in progress, return its future.
     if (_dbOpenCompleter != null) {
       return _dbOpenCompleter!.future;
     }
 
-    // 3. Start new initialization.
     _dbOpenCompleter = Completer<Database>();
     try {
       final db = await _initDatabase();
-      _instanceDatabase = db; // Store the successfully opened database.
+      _instanceDatabase = db;
       _dbOpenCompleter!.complete(db);
     } catch (e) {
       debugPrint('DATABASE_HELPER: Database initialization failed: $e');
       _dbOpenCompleter!.completeError(e);
-      // Reset completer AND instanceDatabase on failure to allow a subsequent attempt to re-initialize.
       _dbOpenCompleter = null;
       _instanceDatabase = null;
-      rethrow; // Propagate the error.
+      rethrow;
     }
-    // Return the future from the completer.
     return _dbOpenCompleter!.future;
+  }
+
+  Future<List<ClinicService>> getClinicServices() {
+    return clinicServiceDbService.getClinicServices();
+  }
+
+  Future<String> insertClinicService(Map<String, dynamic> service) {
+    return clinicServiceDbService.insertClinicService(service);
+  }
+
+  Future<int> getServiceSelectionCount(String serviceId) {
+    return clinicServiceDbService.getServiceSelectionCount(serviceId);
+  }
+
+  Future<List<Map<String, dynamic>>> getServiceUsageTrend(String serviceId) {
+    return clinicServiceDbService.getServiceUsageTrend(serviceId);
+  }
+
+  Future<List<Patient>> getRecentPatientsForService(String serviceId, {int limit = 5}) {
+    return clinicServiceDbService.getRecentPatientsForService(serviceId, limit: limit);
   }
 
   // Public getter for the current database path
   Future<String?> get currentDatabasePath async {
     if (_instanceDbPath == null) {
-      // If path is not set, ensure database is initialized by calling the database getter
       await database;
     }
     return _instanceDbPath;
@@ -1642,22 +1658,6 @@ To view live changes in DB Browser:
     return null;
   }
 
-  Future<String> insertClinicService(Map<String, dynamic> service) async {
-    final db = await database;
-    // Ensure ID is present or generate one if not
-    String id =
-        service['id'] ?? 'service-${DateTime.now().millisecondsSinceEpoch}';
-    Map<String, dynamic> serviceToInsert = {...service, 'id': id};
-
-    await db.insert(
-      DatabaseHelper.tableClinicServices,
-      serviceToInsert,
-      conflictAlgorithm:
-          ConflictAlgorithm.replace, // Or .fail if ID must be unique on insert
-    );
-    return id; // Return the ID of the inserted service
-  }
-
   Future<int> updateClinicService(Map<String, dynamic> service) async {
     final db = await database;
     return await db.update(
@@ -1754,12 +1754,6 @@ To view live changes in DB Browser:
   }
 
   // Clinic Service Methods (Added/Updated)
-  Future<List<Map<String, dynamic>>> getAllClinicServices() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(DatabaseHelper.tableClinicServices);
-    return maps;
-  }
-
   Future<void> incrementServiceSelectionCounts(List<String> serviceIds) async {
     if (serviceIds.isEmpty) {
       return;

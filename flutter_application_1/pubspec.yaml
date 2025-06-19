@@ -60,6 +60,7 @@ dependencies:
   fl_chart: ^1.0.0
   uuid: ^4.5.1
   pdf_render: ^1.4.12
+  collection: ^1.19.1
   
 dev_dependencies:
   flutter_test:

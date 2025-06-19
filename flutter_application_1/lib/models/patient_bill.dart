@@ -1,5 +1,3 @@
-import 'package:flutter_application_1/screens/billing/bill_history_screen.dart';
-
 import '../../models/patient.dart';
 
 class PatientBill {

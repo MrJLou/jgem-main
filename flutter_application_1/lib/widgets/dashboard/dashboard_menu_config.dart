@@ -24,7 +24,8 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => LiveQueueDashboardView(
           queueService: QueueService(), appointments: const []),
       'icon': Icons.dashboard_outlined
-    },    'Registration': {
+    },
+    'Registration': {
       'screen': (String accessLevel) {
         if (kDebugMode) {
           print('DEBUG: Registration screen factory called with accessLevel: "$accessLevel"');

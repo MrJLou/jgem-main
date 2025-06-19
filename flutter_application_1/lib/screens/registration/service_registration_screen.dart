@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/clinic_service.dart';
+import 'package:flutter_application_1/services/api_service.dart';
+import 'package:uuid/uuid.dart';
 
 class ServiceRegistrationScreen extends StatefulWidget {
   const ServiceRegistrationScreen({super.key});
@@ -7,37 +10,84 @@ class ServiceRegistrationScreen extends StatefulWidget {
   ServiceRegistrationScreenState createState() => ServiceRegistrationScreenState();
 }
 
-class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> with SingleTickerProviderStateMixin {
+class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _durationController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _priceController = TextEditingController();
   String _serviceType = 'Consultation';
   
-  TabController? _tabController;
+  late Future<List<ClinicService>> _servicesFuture;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _loadServices();
+  }
+
+  void _loadServices() {
+    setState(() {
+      _servicesFuture = ApiService.getClinicServices();
+    });
   }
 
   @override
   void dispose() {
-    _tabController?.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
     _priceController.dispose();
-    _durationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitForm() async {
+    if (_formKey.currentState!.validate()) {
+      final newService = ClinicService(
+        id: const Uuid().v4(),
+        serviceName: _nameController.text,
+        description: _descriptionController.text,
+        category: _serviceType,
+        defaultPrice: double.tryParse(_priceController.text),
+        selectionCount: 0,
+      );
+
+      try {
+        await ApiService.createClinicService(newService);
+        Navigator.of(context).pop(); // Close dialog on success
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Service Added Successfully')),
+        );
+        _formKey.currentState?.reset();
+        _nameController.clear();
+        _descriptionController.clear();
+        _priceController.clear();
+        _loadServices(); // Refresh data table
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add service: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAddServiceDialog() {
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Register a New Service'),
+          content: SizedBox(width: 500, child: _buildNewServiceForm()),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      floatingActionButton: null,
       appBar: AppBar(
         title: const Text(
           'Service Registration',
@@ -47,219 +97,133 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> wi
           ),
         ),
         backgroundColor: Colors.teal[700],
-        elevation: 4,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white.withAlpha(179),
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          indicatorPadding: const EdgeInsets.symmetric(horizontal: 20),
-          tabs: const [
-            Tab(icon: Icon(Icons.list_alt), text: 'Existing Services'),
-            Tab(icon: Icon(Icons.add_circle_outline), text: 'New Service'),
-          ],
-        ),
+        elevation: 0,
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildExistingServicesView(),
-          _buildNewServiceForm(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExistingServicesView() {
-    final List<Map<String, dynamic>> existingServices = [
-      {
-        'name': 'General Consultation',
-        'type': 'Consultation',
-        'price': '\$50',
-        'duration': '30 min',
-        'color': Colors.blue[100],
-        'icon': Icons.medical_services,
-      },
-      {
-        'name': 'Blood Test',
-        'type': 'Laboratory',
-        'price': '\$30',
-        'duration': '15 min',
-        'color': Colors.red[100],
-        'icon': Icons.science,
-      },
-      {
-        'name': 'Physical Therapy',
-        'type': 'Therapy',
-        'price': '\$75',
-        'duration': '60 min',
-        'color': Colors.green[100],
-        'icon': Icons.accessibility_new,
-      },
-      {
-        'name': 'Dental Cleaning',
-        'type': 'Dental',
-        'price': '\$100',
-        'duration': '45 min',
-        'color': Colors.orange[100],
-        'icon': Icons.cleaning_services,
-      },
-      {
-        'name': 'X-Ray',
-        'type': 'Radiology',
-        'price': '\$120',
-        'duration': '20 min',
-        'color': Colors.purple[100],
-        'icon': Icons.radio,
-      },
-    ];
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: existingServices.length,
-      itemBuilder: (context, index) {
-        final service = existingServices[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          elevation: 3,
-          child: ExpansionTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: service['color'],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(service['icon'], color: Colors.teal[800]),
-            ),
-            title: Text(
-              service['name']!,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(service['type']!),
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildServiceDetail(
-                          Icons.attach_money,
-                          'Price',
-                          service['price']!,
-                        ),
-                        _buildServiceDetail(
-                          Icons.timer,
-                          'Duration',
-                          service['duration']!,
-                        ),
-                      ],
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Clinic Services',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Colors.teal[800],
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _showAddServiceDialog,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text('Add Service', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal[700],
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton.icon(
-                          icon: Icon(Icons.edit, color: Colors.teal[700]),
-                          label: Text('Edit', style: TextStyle(color: Colors.teal[700])),
-                          onPressed: () {
-                            // Handle edit
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add to Patient'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal[700],
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('${service['name']} added to patient'),
-                                backgroundColor: Colors.teal,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withAlpha(10),
+                      spreadRadius: 1,
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+                child: FutureBuilder<List<ClinicService>>(
+                  future: _servicesFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Error loading services: ${snapshot.error}',
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      );
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Center(child: Text('No services found in the database.'));
+                    }
 
-  Widget _buildServiceDetail(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.teal[600]),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
+                    final services = snapshot.data!;
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.vertical,
+                      child: DataTable(
+                        headingRowHeight: 48,
+                        dataRowMinHeight: 40,
+                        dataRowMaxHeight: 40,
+                        headingTextStyle: Theme.of(context)
+                            .textTheme
+                            .bodyLarge
+                            ?.copyWith(fontWeight: FontWeight.bold, color: Colors.grey[700]),
+                        dataTextStyle: Theme.of(context).textTheme.bodyMedium,
+                        columns: const [
+                          DataColumn(label: Text('ID')),
+                          DataColumn(label: Text('SERVICE NAME')),
+                          DataColumn(label: Text('DESCRIPTION')),
+                          DataColumn(label: Text('CATEGORY')),
+                          DataColumn(label: Text('PRICE')),
+                        ],
+                        rows: services.map((service) {
+                          return DataRow(cells: [
+                            DataCell(Text(service.id.length > 8 ? service.id.substring(0, 8) : service.id)),
+                            DataCell(Text(service.serviceName)),
+                            DataCell(Text(service.description ?? 'N/A')),
+                            DataCell(Text(service.category ?? 'N/A')),
+                            DataCell(Text(service.defaultPrice?.toStringAsFixed(2) ?? '0.00')),
+                          ]);
+                        }).toList(),
+                        columnSpacing: 40,
+                        horizontalMargin: 24,
+                        showCheckboxColumn: false,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.teal[800],
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildNewServiceForm() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Register a New Service',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Fill in the details below to register a new service.',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 20),
             _buildInputField(
               controller: _nameController,
               label: 'Service Name',
-              icon: Icons.medical_services,
+              prefixIcon: const Icon(Icons.medical_services),
             ),
             const SizedBox(height: 20),
             _buildDropdownField(
               value: _serviceType,
-              items: ['Consultation', 'Laboratory', 'Therapy', 'Dental', 'Radiology'],
+              items: ['Consultation', 'Laboratory'],
               label: 'Service Type',
-              icon: Icons.category,
+              prefixIcon: const Icon(Icons.category),
               onChanged: (value) {
                 setState(() {
                   _serviceType = value!;
@@ -267,32 +231,20 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> wi
               },
             ),
             const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInputField(
-                    controller: _priceController,
-                    label: 'Price (\$)',
-                    icon: Icons.attach_money,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: _buildInputField(
-                    controller: _durationController,
-                    label: 'Duration (min)',
-                    icon: Icons.timer,
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
+            _buildInputField(
+              controller: _priceController,
+              label: 'Price (PHP)',
+              prefixIcon: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 15.0),
+                child: Text('₱', style: TextStyle(fontSize: 18)),
+              ),
+              keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 20),
             _buildInputField(
               controller: _descriptionController,
               label: 'Description',
-              icon: Icons.description,
+              prefixIcon: const Icon(Icons.description),
               maxLines: 3,
             ),
             const SizedBox(height: 30),
@@ -326,37 +278,25 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> wi
   Widget _buildInputField({
     required TextEditingController controller,
     required String label,
-    required IconData icon,
-    int maxLines = 1,
-    TextInputType keyboardType = TextInputType.text,
+    Widget? prefixIcon,
+    TextInputType? keyboardType,
+    int? maxLines,
   }) {
     return TextFormField(
       controller: controller,
-      style: TextStyle(color: Colors.teal[800]),
-      maxLines: maxLines,
-      keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.teal[600]),
-        prefixIcon: Icon(icon, color: Colors.teal[600]),
-        filled: true,
-        fillColor: Colors.teal[50],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[200]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.teal, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        border: const OutlineInputBorder(),
+        prefixIcon: prefixIcon,
       ),
+      keyboardType: keyboardType,
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter $label';
+          return 'Please enter a $label';
         }
         return null;
       },
+      maxLines: maxLines,
     );
   }
 
@@ -364,52 +304,21 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> wi
     required String value,
     required List<String> items,
     required String label,
-    required IconData icon,
-    required ValueChanged<String?> onChanged,
+    Widget? prefixIcon,
+    required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
       value: value,
-      dropdownColor: Colors.teal[50],
-      style: TextStyle(color: Colors.teal[800]),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.teal[600]),
-        prefixIcon: Icon(icon, color: Colors.teal[600]),
-        filled: true,
-        fillColor: Colors.teal[50],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[200]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.teal, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        border: const OutlineInputBorder(),
+        prefixIcon: prefixIcon,
       ),
-      items: items.map((item) {
-        return DropdownMenuItem(
-          value: item,
-          child: Text(item, style: TextStyle(color: Colors.teal[800])),
-        );
-      }).toList(),
+      items: items.map((label) => DropdownMenuItem(
+        value: label,
+        child: Text(label),
+      )).toList(),
       onChanged: onChanged,
     );
-  }
-
-  void _submitForm() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('New service registered successfully!'),
-          backgroundColor: Colors.teal,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-      _tabController?.animateTo(0); // Switch back to existing services tab
-    }
   }
 }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../../models/clinic_service.dart';
+import '../../models/patient.dart';
 import '../../services/api_service.dart';
 
 class ServiceSearchScreen extends StatefulWidget {
@@ -10,26 +13,89 @@ class ServiceSearchScreen extends StatefulWidget {
 
 class ServiceSearchScreenState extends State<ServiceSearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  bool _hasSearched = false;
-  bool _isLoading = false;
+  bool _isLoading = true;
   List<Map<String, dynamic>> _searchResults = [];
+  Map<String, dynamic>? _selectedService;
   String _selectedCategory = 'All Categories';
   final List<String> _categories = [
     'All Categories',
-    'General Medicine',
+    'Consultation',
     'Laboratory',
-    'Radiology',
-    'Surgery',
-    'Dental',
-    'Physical Therapy'
   ];
+
+  // State for analytics
+  int? _timesAvailed;
+  List<Map<String, dynamic>> _usageTrend = [];
+  List<Patient> _recentPatients = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    setState(() {
+      _isLoading = true;
+      _searchResults = [];
+      _selectedService = null;
+    });
+
+    try {
+      final services = await ApiService.getClinicServices();
+      if (!mounted) return;
+      setState(() {
+        _searchResults = services.map((s) => s.toJson()).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading services: $e')),
+      );
+    }
+  }
+
+  Future<void> _fetchServiceDetails(String serviceId) async {
+    setState(() {
+      // Reset analytics data and show loading state if needed
+      _timesAvailed = null;
+      _usageTrend = [];
+      _recentPatients = [];
+    });
+
+    try {
+      // Fetch all details in parallel
+      final results = await Future.wait([
+        ApiService.getServiceTimesAvailed(serviceId),
+        ApiService.getServiceUsageTrend(serviceId),
+        ApiService.getRecentPatientsForService(serviceId),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _timesAvailed = results[0] as int;
+        _usageTrend = results[1] as List<Map<String, dynamic>>;
+        _recentPatients = results[2] as List<Patient>;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching service details: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Service Search',
+        title: const Text('Service Dashboard',
             style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -38,213 +104,101 @@ class ServiceSearchScreenState extends State<ServiceSearchScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 24),
-            _buildSearchCard(),
-            if (_hasSearched) ...[
-              const SizedBox(height: 24),
-              if (_searchResults.isNotEmpty)
-                _buildSearchResults()
-              else
-                _buildNoResultsCard(),
-            ],
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Navigate to add service screen
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Service'),
-        backgroundColor: Colors.teal[700],
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left Pane: Search & Results
+          Expanded(
+            flex: 2,
+            child: _buildSearchPane(),
+          ),
+          const VerticalDivider(width: 1),
+          // Right Pane: Analytics
+          Expanded(
+            flex: 4,
+            child: _buildAnalyticsPane(),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-      decoration: BoxDecoration(
-        color: Colors.teal[700],
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.teal.withAlpha(51),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+  Widget _buildSearchPane() {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          _buildSearchCard(),
+          const SizedBox(height: 20),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildSearchResultsList(),
           ),
         ],
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.teal[700]!,
-            Colors.teal[800]!,
-          ],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Medical Services',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              constraints: const BoxConstraints(
-                maxWidth: 400,
-              ),
-              child: Text(
-                'Search and manage clinic services and procedures',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withAlpha(230),
-                  fontSize: 16,
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
   Widget _buildSearchCard() {
     return Card(
-      elevation: 4,
-      shadowColor: Colors.teal.withAlpha(51),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
-      ),
+      elevation: 2,
+      shadowColor: Colors.black.withAlpha(10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Search Services',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.teal[800],
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Service Name or ID',
-                hintText: 'Enter service name or ID',
-                prefixIcon: Icon(Icons.search, color: Colors.teal[700]),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey[400]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey[400]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.teal[700]!, width: 2),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
-                labelStyle: TextStyle(color: Colors.grey[600]),
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[400]!),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedCategory,
-                        isExpanded: true,
-                        items: _categories.map((category) => DropdownMenuItem(
-                          value: category,
-                          child: Text(category),
-                        )).toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _selectedCategory = value;
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // Show advanced filters
-                    },
-                    icon: const Icon(Icons.tune),
-                    label: const Text('More'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[200],
-                      foregroundColor: Colors.grey[800],
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _selectedCategory,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              items: _categories
+                  .map((category) => DropdownMenuItem(
+                        value: category,
+                        child: Text(category),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedCategory = value);
+                }
+              },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              height: 50,
               child: ElevatedButton.icon(
                 onPressed: _isLoading ? null : _searchServices,
-                icon: _isLoading 
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(
-                  _isLoading ? 'SEARCHING...' : 'SEARCH SERVICES',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+                icon: const Icon(Icons.search),
+                label: const Text('Search'),
                 style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: Colors.teal[700],
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  elevation: 2,
                 ),
               ),
             ),
@@ -254,186 +208,202 @@ class ServiceSearchScreenState extends State<ServiceSearchScreen> {
     );
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResultsList() {
+    if (_searchResults.isEmpty) {
+      return const Card(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('No services found.'),
+          ),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Search Results (${_searchResults.length})',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () {
-                // Export results functionality
-              },
-              icon: Icon(Icons.download_outlined, color: Colors.teal[700]),
-              label: Text(
-                'Export',
-                style: TextStyle(color: Colors.teal[700]),
-              ),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+          child: Text(
+            'Results (${_searchResults.length})',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
-        const SizedBox(height: 12),
-        ..._searchResults.map((service) => _buildServiceCard(service)),
+        Expanded(
+          child: Card(
+            child: ListView.separated(
+              itemCount: _searchResults.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final service = _searchResults[index];
+                final isSelected = _selectedService != null &&
+                    _selectedService!['id'] == service['id'];
+                return ListTile(
+                  title: Text(service['serviceName'] ?? ''),
+                  tileColor: isSelected ? Colors.teal.withAlpha(10) : null,
+                  onTap: () {
+                    setState(() {
+                      _selectedService = service;
+                    });
+                    _fetchServiceDetails(service['id']);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildServiceCard(Map<String, dynamic> service) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: ExpansionTile(
-        title: Text(
-          service['name'],
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('ID: ${service['id']} | ${service['category']}'),
-            Text('Duration: ${service['duration']} | Price: £${service['price']}'),
-          ],
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: service['availability'] == 'Available'
-                ? Colors.green.withAlpha(26)
-                : Colors.orange.withAlpha(26),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            service['availability'],
-            style: TextStyle(
-              color: service['availability'] == 'Available'
-                  ? Colors.green.withAlpha(128)
-                  : Colors.orange.withAlpha(128),
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ),
+  Widget _buildAnalyticsPane() {
+    if (_selectedService == null) {
+      return const Center(
+        child: Text('Select a service to view details'),
+      );
+    }
+
+    final service = ClinicService.fromJson(_selectedService!);
+    final price = service.defaultPrice?.toStringAsFixed(2) ?? 'N/A';
+    final selectionCount = _timesAvailed?.toString() ?? '...';
+    
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Description',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  service['description'],
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () {
-                        // Edit service functionality
-                      },
-                      icon: Icon(Icons.edit_outlined, color: Colors.teal[700]),
-                      label: Text(
-                        'Edit',
-                        style: TextStyle(color: Colors.teal[700]),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    TextButton.icon(
-                      onPressed: () {
-                        // Delete service functionality
-                      },
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      label: const Text(
-                        'Delete',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          // Header
+          Text(
+            service.serviceName,
+            style: Theme.of(context)
+                .textTheme
+                .headlineMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
+          const SizedBox(height: 8),
+          Text(
+            service.description ?? 'No description available.',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 24),
+
+          // Metrics
+          Row(
+            children: [
+              _buildMetricCard('Price', '₱$price', Icons.attach_money, Colors.green),
+              const SizedBox(width: 16),
+              _buildMetricCard('Times Availed', selectionCount, Icons.person, Colors.blue),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Graph
+          _buildUsageGraphCard(),
+          const SizedBox(height: 24),
+
+          // Patient List
+          _buildPatientListCard(),
         ],
       ),
     );
   }
 
-  Widget _buildNoResultsCard() {
+  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: color.withAlpha(10),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(height: 12),
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(value, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUsageGraphCard() {
+    final List<BarChartGroupData> barGroups = [];
+    if (_usageTrend.isNotEmpty) {
+      for (var i = 0; i < _usageTrend.length; i++) {
+        final trendItem = _usageTrend[i];
+        final count = (trendItem['count'] as int?)?.toDouble() ?? 0.0;
+        barGroups.add(_makeGroupData(i, count));
+      }
+    }
+
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.search_off_outlined,
-              size: 48,
-              color: Colors.orange[300],
+            Text('Usage Trend (Last 6 Months)', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 150,
+              child: _usageTrend.isEmpty
+                  ? const Center(child: Text("No usage data available."))
+                  : BarChart(
+                      BarChartData(
+                        alignment: BarChartAlignment.spaceAround,
+                        barGroups: barGroups,
+                        titlesData: const FlTitlesData(
+                          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        borderData: FlBorderData(show: false),
+                        gridData: const FlGridData(show: false),
+                      ),
+                    ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No Services Found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  BarChartGroupData _makeGroupData(int x, double y) {
+    return BarChartGroupData(
+      x: x,
+      barRods: [BarChartRodData(toY: y, color: Colors.teal, width: 15)],
+    );
+  }
+
+  Widget _buildPatientListCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Recently Availed By', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            Text(
-              'Try adjusting your search criteria or category',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 20),
-            OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _searchController.clear();
-                  _selectedCategory = 'All Categories';
-                  _hasSearched = false;
-                  _searchResults = [];
-                });
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset Search'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.teal[700],
-                side: BorderSide(color: Colors.teal[700]!),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-            ),
+            if (_recentPatients.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.0),
+                child: Text('No recent patients for this service.'),
+              )
+            else
+              ..._recentPatients.map((patient) => ListTile(
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(patient.fullName),
+                  )),
           ],
         ),
       ),
@@ -441,40 +411,33 @@ class ServiceSearchScreenState extends State<ServiceSearchScreen> {
   }
 
   Future<void> _searchServices() async {
-    if (_searchController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter a search term'),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+    if (_searchController.text.isEmpty && _selectedCategory == 'All Categories') {
+      _loadInitialData();
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _hasSearched = true;
+      _selectedService = null;
+      _timesAvailed = null;
+      _usageTrend = [];
+      _recentPatients = [];
     });
 
     try {
-      final String searchTerm = _searchController.text;
       final results = await ApiService.searchServices(
-          searchTerm: searchTerm, category: _selectedCategory); // Await the Future
+        searchTerm: _searchController.text,
+        category: _selectedCategory,
+      );
       if (!mounted) return;
       setState(() {
         _searchResults = results;
         _isLoading = false;
-        _hasSearched = true;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _hasSearched = true;
         _searchResults = [];
       });
       ScaffoldMessenger.of(context).showSnackBar(

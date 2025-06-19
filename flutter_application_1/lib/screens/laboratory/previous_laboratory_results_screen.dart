@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../../models/patient.dart';
 import 'package:intl/intl.dart';
 
 class PreviousLaboratoryResultsScreen extends StatefulWidget {
@@ -11,107 +10,177 @@ class PreviousLaboratoryResultsScreen extends StatefulWidget {
       PreviousLaboratoryResultsScreenState();
 }
 
-class PreviousLaboratoryResultsScreenState
-    extends State<PreviousLaboratoryResultsScreen> {
-  final TextEditingController _patientIdController = TextEditingController();
-  List<Map<String, dynamic>> _results = [];
-  bool _isLoading = false;
-  String? _errorMessage;
-  Patient? _foundPatient;
+class LabResultDataSource extends DataTableSource {
+  List<Map<String, dynamic>> _results;
+  final BuildContext context;
 
-  void _fetchResults(String patientId) async {
+  LabResultDataSource(this._results, this.context);
+
+  void updateData(List<Map<String, dynamic>> newResults) {
+    _results = newResults;
+    notifyListeners();
+  }
+
+  @override
+  DataRow getRow(int index) {
+    final result = _results[index];
+    return DataRow(
+      cells: [
+        DataCell(Text(result['id']?.toString() ?? 'N/A')),
+        DataCell(Text(result['patientName'] ?? 'N/A')),
+        DataCell(Text(result['date'] ?? 'N/A')),
+        DataCell(Text(result['test'] ?? 'N/A')),
+        DataCell(Text(result['doctor'] ?? 'N/A')),
+        DataCell(Text(result['status'] ?? 'N/A')),
+        DataCell(
+          IconButton(
+            icon: const Icon(Icons.visibility),
+            onPressed: () {
+              _showResultDetails(context, result);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  bool get isRowCountApproximate => false;
+
+  @override
+  int get rowCount => _results.length;
+
+  @override
+  int get selectedRowCount => 0;
+
+  void sort<T>(Comparable<T> Function(Map<String, dynamic> d) getField, bool ascending) {
+    _results.sort((a, b) {
+      final aValue = getField(a);
+      final bValue = getField(b);
+      return ascending ? Comparable.compare(aValue, bValue) : Comparable.compare(bValue, aValue);
+    });
+    notifyListeners();
+  }
+}
+
+class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResultsScreen> {
+  List<Map<String, dynamic>> _allResults = [];
+  List<Map<String, dynamic>> _filteredResults = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  int _sortColumnIndex = 0;
+  bool _sortAscending = true;
+  final TextEditingController _searchController = TextEditingController();
+  late LabResultDataSource _dataSource;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataSource = LabResultDataSource([], context);
+    _fetchAllResults();
+    _searchController.addListener(_filterResults);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterResults);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _fetchAllResults() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _results = [];
-      _foundPatient = null;
     });
 
     try {
-      // First, verify patient exists
-      final patient = await ApiService.getPatientById(patientId);
-      _foundPatient = patient;
-      
-      // Get patient's medical records
-      final medicalRecords = await ApiService.getPatientMedicalRecords(patientId);
-      
-      // Filter records that have lab results
-      final labRecords = medicalRecords
-          .where((record) => 
-              record.labResults != null && record.labResults!.isNotEmpty)
-          .toList();
-      
-      // Sort by date (most recent first)
-      labRecords.sort((a, b) => b.recordDate.compareTo(a.recordDate));
-      
-      // Get all users to map doctor IDs to names
+      final patients = await ApiService.getPatients();
+      final allMedicalRecords = await Future.wait(
+        patients.map((p) => ApiService.getPatientMedicalRecords(p.id))
+      );
       final allUsers = await ApiService.getUsers();
       final doctors = {for (var user in allUsers.where((u) => u.role == 'doctor')) user.id: user};
-      
-      // Transform medical records into lab result records
+
       final transformedResults = <Map<String, dynamic>>[];
-      
-      for (final record in labRecords) {
-        final doctor = doctors[record.doctorId];
-        final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
-        
-        // Parse lab results - try to handle JSON or simple text
-        Map<String, String> parsedResults = {};
-        try {
-          // Try to parse as key-value pairs from text
-          final labText = record.labResults!;
-          final lines = labText.split('\n');
-          for (final line in lines) {
-            if (line.contains(':')) {
-              final parts = line.split(':');
-              if (parts.length >= 2) {
-                parsedResults[parts[0].trim()] = parts.sublist(1).join(':').trim();
+      for (int i = 0; i < patients.length; i++) {
+        final patient = patients[i];
+        final medicalRecords = allMedicalRecords[i];
+
+        final labRecords = medicalRecords
+            .where((record) => record.labResults != null && record.labResults!.isNotEmpty)
+            .toList();
+
+        for (final record in labRecords) {
+          final doctor = doctors[record.doctorId];
+          final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
+
+          Map<String, String> parsedResults = {};
+          try {
+            final labText = record.labResults!;
+            final lines = labText.split('\n');
+            for (final line in lines) {
+              if (line.contains(':')) {
+                final parts = line.split(':');
+                if (parts.length >= 2) {
+                  parsedResults[parts[0].trim()] = parts.sublist(1).join(':').trim();
+                }
               }
             }
+            if (parsedResults.isEmpty) {
+              parsedResults['Result'] = labText;
+            }
+          } catch (e) {
+            parsedResults['Result'] = record.labResults!;
           }
-          
-          // If no key-value pairs found, create a general result
-          if (parsedResults.isEmpty) {
-            parsedResults['Result'] = labText;
-          }
-        } catch (e) {
-          parsedResults['Result'] = record.labResults!;
+
+          String category = _determineTestCategory(record.recordType, record.labResults!);
+          String status = _determineResultStatus(record.labResults!, record.notes);
+
+          transformedResults.add({
+            'id': record.id,
+            'patientName': patient.fullName,
+            'date': DateFormat('yyyy-MM-dd').format(record.recordDate),
+            'test': record.recordType.isNotEmpty ? record.recordType : 'Laboratory Test',
+            'doctor': doctorName,
+            'result': parsedResults,
+            'status': status,
+            'notes': record.notes ?? 'No additional notes',
+            'category': category,
+            'diagnosis': record.diagnosis ?? '',
+          });
         }
-        
-        // Determine test category based on record type or lab results content
-        String category = _determineTestCategory(record.recordType, record.labResults!);
-        
-        // Determine status based on results or notes
-        String status = _determineResultStatus(record.labResults!, record.notes);
-        
-        transformedResults.add({
-          'id': record.id,
-          'date': DateFormat('yyyy-MM-dd').format(record.recordDate),
-          'test': record.recordType.isNotEmpty ? record.recordType : 'Laboratory Test',
-          'doctor': doctorName,
-          'result': parsedResults,
-          'status': status,
-          'notes': record.notes ?? 'No additional notes',
-          'category': category,
-          'diagnosis': record.diagnosis ?? '',
-        });
       }
+
+      transformedResults.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
 
       if (!mounted) return;
       setState(() {
-        _results = transformedResults;
+        _allResults = transformedResults;
+        _filteredResults = transformedResults;
+        _dataSource.updateData(_filteredResults);
         _isLoading = false;
       });
-      
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
         _isLoading = false;
-        _results = [];
-        _foundPatient = null;
       });
     }
+  }
+
+  void _filterResults() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredResults = _allResults.where((result) {
+        final patientName = (result['patientName'] as String?)?.toLowerCase() ?? '';
+        final testName = (result['test'] as String?)?.toLowerCase() ?? '';
+        final doctorName = (result['doctor'] as String?)?.toLowerCase() ?? '';
+        return patientName.contains(query) || testName.contains(query) || doctorName.contains(query);
+      }).toList();
+      _dataSource.updateData(_filteredResults);
+    });
   }
 
   String _determineTestCategory(String recordType, String labResults) {
@@ -154,7 +223,96 @@ class PreviousLaboratoryResultsScreenState
     }
   }
 
-  void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
+  void _onSort(int columnIndex, bool ascending) {
+    setState(() {
+      _sortColumnIndex = columnIndex;
+      _sortAscending = ascending;
+    });
+
+    _dataSource.sort<String>((d) {
+      switch (columnIndex) {
+        case 0:
+          return d['id'].toString();
+        case 1:
+          return d['patientName'] as String;
+        case 2:
+          return d['date'] as String;
+        case 3:
+          return d['test'] as String;
+        case 4:
+          return d['doctor'] as String;
+        case 5:
+          return d['status'] as String;
+        default:
+          return '';
+      }
+    }, ascending);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4F8),
+      appBar: AppBar(
+        title: const Text('All Laboratory Results'),
+        backgroundColor: Colors.teal[700],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage != null
+              ? Center(child: Text('Error: $_errorMessage'))
+              : Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              labelText: 'Search by Patient, Test, or Doctor',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.vertical,
+                            child: PaginatedDataTable(
+                              header: const Text('Laboratory Records'),
+                              rowsPerPage: 10,
+                              columns: [
+                                DataColumn(label: const Text('ID'), onSort: _onSort),
+                                DataColumn(label: const Text('Patient'), onSort: _onSort),
+                                DataColumn(label: const Text('Date'), onSort: _onSort),
+                                DataColumn(label: const Text('Test'), onSort: _onSort),
+                                DataColumn(label: const Text('Requesting Doctor'), onSort: _onSort),
+                                DataColumn(label: const Text('Status'), onSort: _onSort),
+                                const DataColumn(label: Text('Actions')),
+                              ],
+                              source: _dataSource,
+                              sortColumnIndex: _sortColumnIndex,
+                              sortAscending: _sortAscending,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+    );
+  }
+}
+
+void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -192,6 +350,7 @@ class PreviousLaboratoryResultsScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildDetailRow('Patient', result['patientName']),
                 _buildDetailRow('Date', result['date']),
                 _buildDetailRow('Doctor', result['doctor']),
                 _buildDetailRow('Status', result['status']),
@@ -242,438 +401,31 @@ class PreviousLaboratoryResultsScreenState
         ],
       ),
     );
-  }
+}
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
+Widget _buildDetailRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8.0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            '$label:',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[700],
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(color: Colors.grey[800]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        elevation: 0,
-        title: const Text(
-          'Previous Laboratory Results',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.teal[700],
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Help'),
-                  content: const Text('Enter a patient ID to view their laboratory test results. The records will show all previous tests and their outcomes.'),
-                  actions: [
-                    TextButton(
-                      onPressed: Navigator.of(context).pop,
-                      child: const Text('Got it'),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.teal[700],
-            ),
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(26),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _patientIdController,
-                    style: const TextStyle(fontSize: 18),
-                    decoration: InputDecoration(
-                      hintText: 'Enter Patient ID',
-                      hintStyle: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 18,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.person_search,
-                        color: Color(0xFF1ABC9C),
-                        size: 28,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 25,
-                        vertical: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Center(
-                  child: SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.5,
-                    height: 60,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final patientId = _patientIdController.text.trim();
-                        if (patientId.isNotEmpty) {
-                          _fetchResults(patientId);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search,
-                            color: Color(0xFF1ABC9C),
-                            size: 28,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Search Records',
-                            style: TextStyle(
-                              color: Color(0xFF1ABC9C),
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1ABC9C)),
-                        ),
-                        SizedBox(height: 16),
-                        Text('Fetching results...'),
-                      ],
-                    ),
-                  )
-                : _errorMessage != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error_outline,
-                                size: 48, color: Colors.red[300]),
-                            const SizedBox(height: 16),
-                            Text(_errorMessage!,
-                                style: TextStyle(color: Colors.red[300])),
-                          ],
-                        ),
-                      )                    : _results.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.science,
-                                    size: 48, color: Colors.grey[400]),
-                                const SizedBox(height: 16),
-                                Text('Enter a patient ID to view results',
-                                    style: TextStyle(color: Colors.grey[600])),
-                              ],
-                            ),
-                          )
-                        : Column(
-                            children: [
-                              if (_foundPatient != null)
-                                Container(
-                                  margin: const EdgeInsets.all(16),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.teal[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.teal[200]!),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.person, color: Colors.teal[700], size: 24),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _foundPatient!.fullName,
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.teal[800],
-                                              ),
-                                            ),
-                                            Text(
-                                              'Patient ID: ${_foundPatient!.id}',
-                                              style: TextStyle(
-                                                color: Colors.teal[600],
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Text(
-                                        '${_results.length} result(s) found',
-                                        style: TextStyle(
-                                          color: Colors.teal[600],
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              Expanded(
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.all(24),
-                                  itemCount: _results.length,
-                                  itemBuilder: (context, index) {
-                                    final result = _results[index];
-                                    return LabResultCard(
-                                      date: result['date']!,
-                                      test: result['test']!,
-                                      doctor: result['doctor']!,
-                                      status: result['status']!,
-                                      category: result['category']!,
-                                      onTap: () => _showResultDetails(context, result),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class LabResultCard extends StatefulWidget {
-  final String date;
-  final String test;
-  final String doctor;
-  final String status;
-  final String category;
-  final VoidCallback onTap;
-
-  const LabResultCard({
-    super.key,
-    required this.date,
-    required this.test,
-    required this.doctor,
-    required this.status,
-    required this.category,
-    required this.onTap,
-  });
-
-  @override
-  LabResultCardState createState() => LabResultCardState();
-}
-
-class LabResultCardState extends State<LabResultCard> {
-  bool _isHovering = false;
-  bool _isPressed = false;
-
-  Color _getStatusColor() {
-    switch (widget.status.toLowerCase()) {
-      case 'normal':
-        return Colors.green;
-      case 'borderline':
-        return Colors.orange;
-      case 'abnormal':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) => setState(() => _isPressed = false),
-        onTapCancel: () => setState(() => _isPressed = false),
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.all(16),
-          transform: Matrix4.identity()..scale(_isPressed ? 0.98 : 1.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [
-              BoxShadow(
-                color: _isHovering
-                    ? Colors.black.withAlpha(26)
-                    : Colors.black.withAlpha(13),
-                blurRadius: _isHovering ? 10 : 5,
-                offset: Offset(0, _isHovering ? 5 : 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          size: 16, color: Color(0xFF1ABC9C)),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.date,
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1ABC9C).withAlpha(26),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          widget.category,
-                          style: const TextStyle(
-                            color: Color(0xFF1ABC9C),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor().withAlpha(26),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          widget.status,
-                          style: TextStyle(
-                            color: _getStatusColor(),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                widget.test,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1ABC9C),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Ordered by ${widget.doctor}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'View Details',
-                    style: TextStyle(
-                      color: Color(0xFF1ABC9C),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 14,
-                    color: Color(0xFF1ABC9C),
-                  ),
-                ],
-              ),
-            ],
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(color: Colors.grey[800]),
           ),
         ),
-      ),
-    );
-  }
-}
+      ],
+    ),
+  );
+} 

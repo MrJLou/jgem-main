@@ -78,7 +78,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   Future<void> _fetchAvailableServices() async {
     try {
-      final services = await ApiService.getAllClinicServices();
+      final services = await ApiService.getClinicServices();
       if (mounted) {
         setState(() {
           _availableServices = services;
