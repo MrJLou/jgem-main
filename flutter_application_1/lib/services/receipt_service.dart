@@ -48,7 +48,7 @@ class ReceiptService {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text(itemName),
-                      pw.Text('₱${itemTotal.toStringAsFixed(2)}'),
+                      pw.Text('PHP${itemTotal.toStringAsFixed(2)}'),
                     ]
                   );
                 }),
@@ -56,19 +56,19 @@ class ReceiptService {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
-                  pw.Text('Total: ₱${totalAmount.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Total: PHP${totalAmount.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 ]
               ),
                pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
-                  pw.Text('Amount Paid: ₱${amountPaid.toStringAsFixed(2)}'),
+                  pw.Text('Amount Paid: PHP${amountPaid.toStringAsFixed(2)}'),
                 ]
               ),
                pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
-                  pw.Text('Change: ₱${change.toStringAsFixed(2)}'),
+                  pw.Text('Change: PHP${change.toStringAsFixed(2)}'),
                 ]
               ),
               pw.SizedBox(height: 50),

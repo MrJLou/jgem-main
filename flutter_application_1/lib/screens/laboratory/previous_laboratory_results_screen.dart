@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import 'package:flutter_application_1/models/patient.dart';
+import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
 class PreviousLaboratoryResultsScreen extends StatefulWidget {
@@ -72,6 +73,7 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
   bool _sortAscending = true;
   final TextEditingController _searchController = TextEditingController();
   late LabResultDataSource _dataSource;
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
   void initState() {
@@ -95,64 +97,85 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
     });
 
     try {
-      final patients = await ApiService.getPatients();
-      final allMedicalRecords = await Future.wait(
-        patients.map((p) => ApiService.getPatientMedicalRecords(p.id))
-      );
-      final allUsers = await ApiService.getUsers();
-      final doctors = {for (var user in allUsers.where((u) => u.role == 'doctor')) user.id: user};
+      final allMedicalRecords = await _dbHelper.getAllMedicalRecords();
+      final patientsData = await _dbHelper.patientDbService.getPatients();
+      final usersData = await _dbHelper.userDbService.getUsers();
+
+      final patientMap = {
+        for (var p in patientsData)
+          p['id']: Patient.fromJson(p)
+      };
+      final doctorMap = {
+        for (var u in usersData.where((u) => u.role == 'doctor')) u.id: u
+      };
+
+      final labRecords = allMedicalRecords.where((record) {
+        final recordType = (record['recordType'] as String?)?.toLowerCase() ?? '';
+        final labResults =
+            (record['labResults'] as String?)?.toLowerCase() ?? '';
+        final category =
+            _determineTestCategory(recordType, labResults);
+        return category != 'General' ||
+            recordType.contains('lab') ||
+            labResults.contains('pending');
+      }).toList();
 
       final transformedResults = <Map<String, dynamic>>[];
-      for (int i = 0; i < patients.length; i++) {
-        final patient = patients[i];
-        final medicalRecords = allMedicalRecords[i];
+      for (final record in labRecords) {
+        final patient = patientMap[record['patientId']];
+        if (patient == null) continue;
 
-        final labRecords = medicalRecords
-            .where((record) => record.labResults != null && record.labResults!.isNotEmpty)
-            .toList();
+        final doctor = doctorMap[record['doctorId']];
+        final doctorName =
+            doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
 
-        for (final record in labRecords) {
-          final doctor = doctors[record.doctorId];
-          final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
-
-          Map<String, String> parsedResults = {};
-          try {
-            final labText = record.labResults!;
+        Map<String, String> parsedResults = {};
+        try {
+          final labText = record['labResults'] as String? ?? '';
+          if (labText.isNotEmpty) {
             final lines = labText.split('\n');
             for (final line in lines) {
               if (line.contains(':')) {
                 final parts = line.split(':');
                 if (parts.length >= 2) {
-                  parsedResults[parts[0].trim()] = parts.sublist(1).join(':').trim();
+                  parsedResults[parts[0].trim()] =
+                      parts.sublist(1).join(':').trim();
                 }
               }
             }
             if (parsedResults.isEmpty) {
               parsedResults['Result'] = labText;
             }
-          } catch (e) {
-            parsedResults['Result'] = record.labResults!;
+          } else {
+            parsedResults['Result'] = 'No result data';
           }
-
-          String category = _determineTestCategory(record.recordType, record.labResults!);
-          String status = _determineResultStatus(record.labResults!, record.notes);
-
-          transformedResults.add({
-            'id': record.id,
-            'patientName': patient.fullName,
-            'date': DateFormat('yyyy-MM-dd').format(record.recordDate),
-            'test': record.recordType.isNotEmpty ? record.recordType : 'Laboratory Test',
-            'doctor': doctorName,
-            'result': parsedResults,
-            'status': status,
-            'notes': record.notes ?? 'No additional notes',
-            'category': category,
-            'diagnosis': record.diagnosis ?? '',
-          });
+        } catch (e) {
+          parsedResults['Result'] =
+              record['labResults'] as String? ?? 'Error parsing results';
         }
+
+        String status = _determineResultStatus(
+            record['labResults'] as String?, record['notes'] as String?);
+        String category = _determineTestCategory(
+            record['recordType'] as String, record['labResults'] as String);
+
+        transformedResults.add({
+          'id': record['id'],
+          'patientName': patient.fullName,
+          'date': DateFormat('yyyy-MM-dd')
+              .format(DateTime.parse(record['recordDate'] as String)),
+          'test': record['recordType'] as String,
+          'doctor': doctorName,
+          'result': parsedResults,
+          'status': status,
+          'notes': record['notes'] ?? 'No additional notes',
+          'category': category,
+          'diagnosis': record['diagnosis'] ?? '',
+        });
       }
 
-      transformedResults.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
+      transformedResults
+          .sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
 
       if (!mounted) return;
       setState(() {
@@ -206,9 +229,12 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
     }
   }
 
-  String _determineResultStatus(String labResults, String? notes) {
-    final combined = '$labResults ${notes ?? ''}'.toLowerCase();
-    
+  String _determineResultStatus(String? labResults, String? notes) {
+    final combined = '${labResults ?? ''} ${notes ?? ''}'.toLowerCase();
+
+    if (combined.contains('pending')) {
+      return 'Pending';
+    }
     if (combined.contains('normal') || combined.contains('negative') ||
         combined.contains('within range') || combined.contains('clear')) {
       return 'Normal';

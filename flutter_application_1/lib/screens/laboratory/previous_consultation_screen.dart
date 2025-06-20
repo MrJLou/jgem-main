@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import 'package:flutter_application_1/models/patient.dart';
+import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:intl/intl.dart';
 
 class PreviousConsultationScreen extends StatefulWidget {
@@ -72,6 +73,7 @@ class PreviousConsultationScreenState extends State<PreviousConsultationScreen> 
   bool _sortAscending = true;
   final TextEditingController _searchController = TextEditingController();
   late ConsultationDataSource _dataSource;
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
   @override
   void initState() {
@@ -95,16 +97,21 @@ class PreviousConsultationScreenState extends State<PreviousConsultationScreen> 
     });
 
     try {
-      final appointments = await ApiService.getAllAppointments();
-      final patients = await ApiService.getPatients();
-      final users = await ApiService.getUsers();
+      final appointments = await _dbHelper.getAllAppointments();
+      final patients = await _dbHelper.patientDbService.getPatients();
+      final users = await _dbHelper.userDbService.getUsers();
 
-      final patientMap = {for (var p in patients) p.id: p};
-      final doctorMap = {for (var u in users.where((u) => u.role == 'doctor')) u.id: u};
+      final patientMap = {
+        for (var p in patients) p['id']: Patient.fromJson(p)
+      };
+      final doctorMap = {
+        for (var u in users.where((u) => u.role == 'doctor')) u.id: u
+      };
 
-      final consultationRecords = appointments
-          .where((appt) => appt.status == 'Completed' || appt.status == 'Served')
-          .map((appt) {
+      final consultationRecords = appointments.where((appt) {
+        final status = appt.status.toLowerCase();
+        return status == 'completed' || status == 'served';
+      }).map((appt) {
         final patient = patientMap[appt.patientId];
         final doctor = doctorMap[appt.doctorId];
         return {

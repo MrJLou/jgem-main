@@ -1,20 +1,14 @@
 import 'dart:convert'; // Added for jsonEncode
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
-// import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // No longer directly selected
-import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
+import '../../services/database_helper.dart';
 import '../../services/receipt_service.dart';
-// import 'package:shared_preferences/shared_preferences.dart'; // No longer using shared_prefs for last payment summary
-// Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
-// import 'transaction_history_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String? invoiceNumber;
@@ -34,7 +28,6 @@ class PaymentScreenState extends State<PaymentScreen> {
   
   // PDF / Receipt state
   Uint8List? _generatedReceiptBytes;
-  Map<String, dynamic>? _lastPaymentDetailsForReceipt;
 
   // New state variables for invoice search workflow
   final TextEditingController _invoiceNumberController = TextEditingController();
@@ -90,9 +83,89 @@ class PaymentScreenState extends State<PaymentScreen> {
       _generatedReferenceNumber = null;
       _isLoadingInvoice = false;
       _generatedReceiptBytes = null;
-      _lastPaymentDetailsForReceipt = null;
     });
       }
+
+  Future<Map<String, dynamic>?> _prepareReceiptDetails() {
+    if (_searchedInvoiceDetails == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please load an invoice first.'), backgroundColor: Colors.orange),
+      );
+      return Future.value(null);
+    }
+    
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+    final totalBillAmount = (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final amountPaid = double.tryParse(_amountPaidController.text);
+
+    if (amountPaid == null || amountPaid < totalBillAmount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid amount greater than or equal to the total due.'), backgroundColor: Colors.red),
+      );
+      return Future.value(null);
+    }
+    
+    final patientData = _searchedInvoiceDetails!['patient'] as Map<String, dynamic>?;
+    final patientName = patientData?['fullName'] as String? ?? 'N/A';
+    
+    return Future.value({
+      'patientName': patientName,
+      'invoiceNumber': billData['invoiceNumber'],
+      'referenceNumber': 'PREVIEW-DRAFT', // Placeholder for pre-payment receipt
+      'paymentDate': DateTime.now(),
+      'totalAmount': totalBillAmount,
+      'amountPaid': amountPaid,
+      'change': amountPaid - totalBillAmount,
+      'receivedByUserId': _currentUserId ?? 'N/A',
+      'billItems': _searchedInvoiceDetails!['items'],
+    });
+  }
+
+  Future<void> _handlePrintReceipt() async {
+    final details = await _prepareReceiptDetails();
+    if (details == null) return;
+
+    try {
+      final pdfBytes = await ReceiptService.generateReceiptPdfBytes(details);
+      await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating receipt for printing: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _handleSaveReceipt() async {
+    final details = await _prepareReceiptDetails();
+    if (details == null) return;
+    
+    try {
+      final pdfBytes = await ReceiptService.generateReceiptPdfBytes(details);
+      final invoiceNumber = details['invoiceNumber'] as String? ?? 'receipt';
+      
+      // Get the directory and save the file
+      final directory = await getApplicationDocumentsDirectory();
+      final receiptsDir = Directory('${directory.path}/Receipts');
+      if (!await receiptsDir.exists()) {
+        await receiptsDir.create(recursive: true);
+      }
+      final filePath = '${receiptsDir.path}/${invoiceNumber}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Receipt saved to: $filePath'),
+          action: SnackBarAction(label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+        ),
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving receipt: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
 
   // Removed _loadLastProcessedPaymentSummary, _saveLastProcessedPaymentSummary, _clearLastProcessedPaymentSummary
   // Removed _buildInConsultationPatientList, _buildProcessedPaymentSummarySection 
@@ -204,7 +277,6 @@ class PaymentScreenState extends State<PaymentScreen> {
         _change = amountPaid - totalBillAmount;
         _generatedReferenceNumber = referenceNumber;
         _amountPaidController.clear();
-        _lastPaymentDetailsForReceipt = receiptDetails;
         // No longer clearing _selectedPatientQueueItem as it's not used in the same way
         // Consider resetting _searchedInvoiceDetails or parts of it to prevent re-payment without new search
         _searchedInvoiceDetails = null; // Reset after payment to force new search
@@ -267,7 +339,6 @@ class PaymentScreenState extends State<PaymentScreen> {
       _generatedReferenceNumber = null;
       _change = 0.0;
       _generatedReceiptBytes = null;
-      _lastPaymentDetailsForReceipt = null;
     });
 
     try {
@@ -457,6 +528,7 @@ class PaymentScreenState extends State<PaymentScreen> {
               if (billData['status'] != 'Paid') ...[
               TextFormField(
                 controller: _amountPaidController,
+                onChanged: (value) => setState(() {}), // To rebuild and enable/disable buttons
                 style: const TextStyle(fontSize: 15),
                 decoration: InputDecoration(
                   labelText: 'Enter Amount Paid (Cash)',
@@ -475,6 +547,40 @@ class PaymentScreenState extends State<PaymentScreen> {
                 },
               ),
                 const SizedBox(height: 25),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text('Print Receipt'),
+                        onPressed: _amountPaidController.text.isNotEmpty
+                            ? _handlePrintReceipt
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.teal,
+                          side: BorderSide(color: Colors.teal.shade200),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.save_alt_outlined),
+                        label: const Text('Save Receipt'),
+                        onPressed: _amountPaidController.text.isNotEmpty
+                            ? _handleSaveReceipt
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo,
+                          side: BorderSide(color: Colors.indigo.shade200),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -634,8 +740,4 @@ class PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Future<void> _printPdf(Uint8List pdfBytes) async {
-    if (pdfBytes.isEmpty) return;
-    await Printing.layoutPdf(onLayout: (format) => pdfBytes);
-  }
 }

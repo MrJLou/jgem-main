@@ -859,6 +859,15 @@ class DatabaseHelper {
     );
   }
 
+  // Get all medical records
+  Future<List<Map<String, dynamic>>> getAllMedicalRecords() async {
+    final db = await database;
+    return await db.query(
+      DatabaseHelper.tableMedicalRecords,
+      orderBy: 'recordDate DESC',
+    );
+  }
+
   // DATABASE SYNCHRONIZATION METHODS
 
   // Log changes for synchronization
@@ -1719,7 +1728,7 @@ To view live changes in DB Browser:
         if (billId != null && billId.isNotEmpty) {
           final int updateCount = await txn.update(
             DatabaseHelper.tablePatientBills,
-            {'status': 'Paid', 'updatedAt': DateTime.now().toIso8601String()}, // Assuming an updatedAt field
+            {'status': 'Paid'},
             where: 'id = ?',
             whereArgs: [billId],
           );
@@ -1850,7 +1859,7 @@ To view live changes in DB Browser:
 
   // Method to insert invoice, bill items, and payment in a single transaction
   Future<Map<String, String>> recordInvoiceAndPayment({
-    required String displayInvoiceNumber, // e.g., "INV-XYZ123"
+    String? displayInvoiceNumber,
     required ActivePatientQueueItem patient,
     required List<Map<String, dynamic>> billItemsJson, // Using raw Map for items from ActivePatientQueueItem.selectedServices
     required double subtotal,
@@ -1865,83 +1874,113 @@ To view live changes in DB Browser:
     String? paymentNotes,
   }) async {
     final db = await database;
-    final String billDbId = 'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
-    final String uuidString = const Uuid().v4().replaceAll('-', '');
-    final String paymentReferenceNumber = 'PAY-${uuidString.length >= 8 ? uuidString.substring(0, 8).toUpperCase() : uuidString.toUpperCase()}';
+    
+    // Use a transaction to ensure all or nothing
+    return await db.transaction<Map<String, String>>((txn) async {
+      // Check for an existing unpaid bill for this patient that was created recently.
+      // This is a heuristic to find the right bill to associate this payment with.
+      List<Map<String, dynamic>> existingUnpaidBills = await txn.query(
+        tablePatientBills,
+        where: 'patientId = ? AND status = ?',
+        whereArgs: [patient.patientId, 'Unpaid'],
+        orderBy: 'billDate DESC',
+      );
 
-    await db.transaction((txn) async {
-      // 1. Insert into tablePatientBills
-      Map<String, dynamic> billData = {
-        'id': billDbId,
-        'patientId': patient.patientId,
-        'invoiceNumber': displayInvoiceNumber,
-        'billDate': invoiceDate.toIso8601String(),
-        'dueDate': dueDate.toIso8601String(),
-        'subtotal': subtotal,
-        'discountAmount': discountAmount,
-        'taxAmount': taxAmount,
-        'totalAmount': totalAmount,
-        'status': 'Paid', // Assuming payment is made immediately
-        'createdByUserId': currentUserId,
-        'notes': 'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
-      };
-      await txn.insert(tablePatientBills, billData);
+      String billDbId;
+      String invoiceNumber;
 
-      // 2. Insert into tableBillItems
-      // Assuming billItemsJson comes from patient.selectedServices which is List<Map<String, dynamic>>
-      // Each map {'id': serviceId, 'name': description, 'price': unitPrice}
-      for (var itemJson in billItemsJson) {
-        final unitPrice = (itemJson['price'] as num?)?.toDouble() ?? 0.0;
-        final quantity = itemJson['quantity'] as int? ?? 1; // Default to 1 if not specified
-        final itemDescription = itemJson['name'] as String? ?? 'Unknown Service';
-        final serviceId = itemJson['id'] as String?;
+      if (existingUnpaidBills.isNotEmpty) {
+        // Found an unpaid bill, let's use it
+        final existingBill = existingUnpaidBills.first;
+        billDbId = existingBill['id'] as String;
+        invoiceNumber = existingBill['invoiceNumber'] as String;
+        
+        // Update the bill status to 'Paid'
+        await txn.update(
+          tablePatientBills,
+          {'status': 'Paid', 'notes': 'Previously unpaid bill now paid.'},
+          where: 'id = ?',
+          whereArgs: [billDbId],
+        );
+        debugPrint('DATABASE_HELPER: Found existing unpaid bill $invoiceNumber. Updating status to Paid.');
 
-        Map<String, dynamic> billItemData = {
-          'billId': billDbId,
-          'serviceId': serviceId,
-          'description': itemDescription,
-          'quantity': quantity,
-          'unitPrice': unitPrice,
-          'itemTotal': unitPrice * quantity,
+      } else {
+        // No unpaid bill found, create a new one.
+        billDbId = 'BILL-${const Uuid().v4()}';
+        invoiceNumber = displayInvoiceNumber ?? 'INV-${const Uuid().v4().substring(0, 6).toUpperCase()}';
+
+        Map<String, dynamic> billData = {
+          'id': billDbId,
+          'patientId': patient.patientId,
+          'invoiceNumber': invoiceNumber,
+          'billDate': invoiceDate.toIso8601String(),
+          'dueDate': dueDate.toIso8601String(),
+          'subtotal': subtotal,
+          'discountAmount': discountAmount,
+          'taxAmount': taxAmount,
+          'totalAmount': totalAmount,
+          'status': 'Paid',
+          'createdByUserId': currentUserId,
+          'notes': 'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
         };
-        await txn.insert(tableBillItems, billItemData);
-      }
-      
-      // If billItemsJson is empty, but there's a totalPrice (e.g. for walk-ins without itemized services)
-      // Create a general item based on conditionOrPurpose
-      if (billItemsJson.isEmpty && patient.totalPrice != null && patient.totalPrice! > 0) {
-         Map<String, dynamic> generalBillItemData = {
-          'billId': billDbId,
-          'description': patient.conditionOrPurpose ?? 'General Clinic Services',
-          'quantity': 1,
-          'unitPrice': patient.totalPrice,
-          'itemTotal': patient.totalPrice,
-        };
-        await txn.insert(tableBillItems, generalBillItemData);
+        await txn.insert(tablePatientBills, billData);
+
+        // Insert bill items
+        for (var itemJson in billItemsJson) {
+           final unitPrice = (itemJson['price'] as num?)?.toDouble() ?? 0.0;
+           final quantity = itemJson['quantity'] as int? ?? 1;
+           final itemDescription = itemJson['name'] as String? ?? 'Unknown Service';
+           final serviceId = itemJson['id'] as String?;
+
+           Map<String, dynamic> billItemData = {
+            'billId': billDbId,
+            'serviceId': serviceId,
+            'description': itemDescription,
+            'quantity': quantity,
+            'unitPrice': unitPrice,
+            'itemTotal': unitPrice * quantity,
+          };
+           await txn.insert(tableBillItems, billItemData);
+        }
+
+        if (billItemsJson.isEmpty && patient.totalPrice != null && patient.totalPrice! > 0) {
+           Map<String, dynamic> generalBillItemData = {
+            'billId': billDbId,
+            'description': patient.conditionOrPurpose ?? 'General Clinic Services',
+            'quantity': 1,
+            'unitPrice': patient.totalPrice,
+            'itemTotal': patient.totalPrice,
+          };
+           await txn.insert(tableBillItems, generalBillItemData);
+        }
+        debugPrint('DATABASE_HELPER: No existing unpaid bill found. Created new bill $invoiceNumber.');
       }
 
+      // Record the payment associated with the bill (either existing or new)
+      final String uuidString = const Uuid().v4().replaceAll('-', '');
+      final String paymentReferenceNumber = 'PAY-${uuidString.substring(0, 8).toUpperCase()}';
 
-      // 3. Insert into tablePayments
       Map<String, dynamic> paymentData = {
         'billId': billDbId,
         'patientId': patient.patientId!,
-        'invoiceNumber': displayInvoiceNumber, 
+        'invoiceNumber': invoiceNumber, 
         'referenceNumber': paymentReferenceNumber,
         'paymentDate': DateTime.now().toIso8601String(),
         'amountPaid': amountPaidByCustomer,
-        'totalBillAmount': totalAmount, // The total amount of the bill being paid
+        'totalBillAmount': totalAmount,
         'paymentMethod': paymentMethod,
         'receivedByUserId': currentUserId,
-        'notes': paymentNotes ?? 'Payment for Invoice #$displayInvoiceNumber',
+        'notes': paymentNotes ?? 'Payment for Invoice #$invoiceNumber',
       };
       await txn.insert(tablePayments, paymentData);
-    });
 
-    debugPrint('DATABASE_HELPER: Successfully recorded invoice $displayInvoiceNumber and payment $paymentReferenceNumber.');
-    return {
-      'invoiceNumber': displayInvoiceNumber,
-      'paymentReferenceNumber': paymentReferenceNumber,
-    };
+      debugPrint('DATABASE_HELPER: Successfully recorded payment $paymentReferenceNumber for invoice $invoiceNumber.');
+      
+      return {
+        'invoiceNumber': invoiceNumber,
+        'paymentReferenceNumber': paymentReferenceNumber,
+      };
+    });
   }
 
   // Method to record an invoice as unpaid (without payment)
@@ -2015,6 +2054,15 @@ To view live changes in DB Browser:
 
     debugPrint('DATABASE_HELPER: Successfully recorded UNPAID invoice $displayInvoiceNumber.');
     return displayInvoiceNumber; 
+  }
+
+  Future<List<Map<String, dynamic>>> getBillItems(String billId) async {
+    final db = await database;
+    return await db.query(
+      tableBillItems,
+      where: 'billId = ?',
+      whereArgs: [billId],
+    );
   }
 
   // New method to get bill, bill items, and patient details by invoice number

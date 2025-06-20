@@ -84,6 +84,8 @@ class ActivePatientQueueItem {
         } catch (e) {
           if (kDebugMode) {
             print("Error decoding selectedServices from JSON string: $e");
+            print("JSON data: ${json['selectedServices']}");
+            print("Patient: ${json['patientName']}");
           }
           services = null;
         }
@@ -96,6 +98,8 @@ class ActivePatientQueueItem {
         } catch (e) {
           if (kDebugMode) {
             print("Error casting selectedServices from List: $e");
+            print("List data: ${json['selectedServices']}");
+            print("Patient: ${json['patientName']}");
           }
           services = null;
         }

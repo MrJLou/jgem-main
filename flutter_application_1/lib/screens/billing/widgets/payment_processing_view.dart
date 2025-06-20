@@ -12,6 +12,7 @@ class PaymentProcessingView extends StatelessWidget {
   final NumberFormat currencyFormat;
   final VoidCallback onConfirmAndPay;
   final VoidCallback onBackToInvoice;
+  final bool isProcessing;
 
   const PaymentProcessingView({
     super.key,
@@ -22,6 +23,7 @@ class PaymentProcessingView extends StatelessWidget {
     required this.currencyFormat,
     required this.onConfirmAndPay,
     required this.onBackToInvoice,
+    this.isProcessing = false,
   });
 
   @override
@@ -79,9 +81,19 @@ class PaymentProcessingView extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              icon: const Icon(Icons.check_circle_outline),
+              icon: isProcessing
+                  ? Container(
+                      width: 24,
+                      height: 24,
+                      padding: const EdgeInsets.all(2.0),
+                      child: const CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : const Icon(Icons.check_circle_outline),
               label: const Text('Confirm & Pay'),
-              onPressed: onConfirmAndPay,
+              onPressed: isProcessing ? null : onConfirmAndPay,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.teal[700],
                 foregroundColor: Colors.white,

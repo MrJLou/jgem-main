@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -201,6 +202,7 @@ class QueueService {
     DateTime? consultationStartedAt,
     DateTime? servedAt,
     DateTime? removedAt,
+    String? paymentStatus,
   }) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
     if (item == null) {
@@ -216,6 +218,10 @@ class QueueService {
 
     // Create a copy with the new status first
     updatedItem = item.copyWith(status: newStatus);
+
+    if (paymentStatus != null) {
+      updatedItem = updatedItem.copyWith(paymentStatus: paymentStatus);
+    }
 
     // Update timestamps based on the new status
     switch (newStatus.toLowerCase()) {
@@ -267,29 +273,110 @@ class QueueService {
               'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
         }
 
-        // ADDED: Propagate to original Appointment if exists
-        if (updatedItem.originalAppointmentId != null) {
+        // If it's a walk-in (no original appointment), create/update a corresponding Appointment record for history.
+        /*if (updatedItem.originalAppointmentId == null ||
+            updatedItem.originalAppointmentId!.isEmpty) {
+          final walkInAppointmentId = 'walkin_${updatedItem.queueEntryId}';
           try {
-            Appointment? originalAppointment = await _dbHelper.appointmentDbService.getAppointmentById(updatedItem.originalAppointmentId!);
-            if (originalAppointment != null) {
-              Appointment updatedOriginalAppointment = originalAppointment.copyWith(
-                status: newStatus == 'served' ? 'Completed' : (newStatus == 'in_consultation' ? 'In Consultation' : originalAppointment.status), // Also update appointment status
-                consultationStartedAt: updatedItem.consultationStartedAt ?? originalAppointment.consultationStartedAt,
-                servedAt: updatedItem.servedAt ?? originalAppointment.servedAt,
-                // selectedServices, totalPrice, paymentStatus are more tied to payment/finalization
+            Appointment? existingAppointment = await _dbHelper
+                .appointmentDbService
+                .getAppointmentById(walkInAppointmentId);
+
+            if (existingAppointment == null) {
+              // Create if it's a significant status and doesn't exist yet
+              if (newStatus == 'in_consultation' ||
+                  newStatus == 'served' ||
+                  newStatus == 'done') {
+                final newAppointment = Appointment(
+                  id: walkInAppointmentId,
+                  patientId: updatedItem.patientId!,
+                  date: updatedItem.arrivalTime,
+                  time: TimeOfDay.fromDateTime(updatedItem.arrivalTime),
+                  doctorId: updatedItem.doctorId ?? 'unknown_doctor_id',
+                  consultationType:
+                      updatedItem.conditionOrPurpose ?? 'Walk-in Consultation',
+                  status: newStatus == 'served' ? 'Completed' : 'In Consultation',
+                  notes: 'Generated from walk-in queue.',
+                  isWalkIn: true,
+                  createdAt: DateTime.now(),
+                  updatedAt: DateTime.now(),
+                  selectedServices: updatedItem.selectedServices ?? [],
+                  totalPrice: updatedItem.totalPrice ?? 0.0,
+                  paymentStatus: updatedItem.paymentStatus,
+                  consultationStartedAt: updatedItem.consultationStartedAt,
+                  servedAt: updatedItem.servedAt,
+                );
+                await _dbHelper.appointmentDbService
+                    .insertAppointment(newAppointment);
+                if (kDebugMode) {
+                  print(
+                      'QueueService: Created historical appointment record $walkInAppointmentId for walk-in patient.');
+                }
+              }
+            } else {
+              // Update the existing appointment record for the walk-in
+              final updatedAppointment = existingAppointment.copyWith(
+                status: newStatus == 'served'
+                    ? 'Completed'
+                    : (newStatus == 'in_consultation'
+                        ? 'In Consultation'
+                        : existingAppointment.status),
+                consultationStartedAt: updatedItem.consultationStartedAt,
+                servedAt: updatedItem.servedAt,
+                paymentStatus: updatedItem.paymentStatus,
+                totalPrice: updatedItem.totalPrice ?? existingAppointment.totalPrice,
+                selectedServices: updatedItem.selectedServices ?? existingAppointment.selectedServices,
+                updatedAt: DateTime.now(),
               );
-              await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
+              await _dbHelper.appointmentDbService
+                  .updateAppointment(updatedAppointment);
               if (kDebugMode) {
-                print('QueueService: Updated original appointment ${originalAppointment.id} due to queue status change.');
+                print(
+                    'QueueService: Updated historical appointment record $walkInAppointmentId for walk-in patient.');
               }
             }
           } catch (e) {
             if (kDebugMode) {
-              print('QueueService: Error updating original appointment after queue status change: $e');
+              print(
+                  'QueueService: Error creating/updating historical appointment for walk-in: $e');
+            }
+          }
+        }*/
+        // ADDED: Propagate to original Appointment if exists
+        else if (updatedItem.originalAppointmentId != null) {
+          try {
+            Appointment? originalAppointment = await _dbHelper
+                .appointmentDbService
+                .getAppointmentById(updatedItem.originalAppointmentId!);
+            if (originalAppointment != null) {
+              Appointment updatedOriginalAppointment =
+                  originalAppointment.copyWith(
+                status: newStatus == 'served'
+                    ? 'Completed'
+                    : (newStatus == 'in_consultation'
+                        ? 'In Consultation'
+                        : originalAppointment.status), // Also update appointment status
+                consultationStartedAt: updatedItem.consultationStartedAt ??
+                    originalAppointment.consultationStartedAt,
+                servedAt: updatedItem.servedAt ?? originalAppointment.servedAt,
+                paymentStatus: updatedItem.paymentStatus,
+                totalPrice: updatedItem.totalPrice ?? originalAppointment.totalPrice,
+                selectedServices: updatedItem.selectedServices ?? originalAppointment.selectedServices,
+              );
+              await _dbHelper.appointmentDbService
+                  .updateAppointment(updatedOriginalAppointment);
+              if (kDebugMode) {
+                print(
+                    'QueueService: Updated original appointment ${originalAppointment.id} due to queue status change.');
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print(
+                  'QueueService: Error updating original appointment after queue status change: $e');
             }
           }
         }
-        // END ADDED
         return true;
       } else {
         if (kDebugMode) {
@@ -670,49 +757,64 @@ class QueueService {
       return false; 
     }
 
-    final now = DateTime.now();
-    final ActivePatientQueueItem updatedItem = item.copyWith(
-      status: 'served',
+    final success = await updatePatientStatusInQueue(
+      queueEntryId,
+      'served',
       paymentStatus: 'Paid',
-      servedAt: now,
-      // If consultationStartedAt is somehow null here, set it to now as well.
-      consultationStartedAt: item.consultationStartedAt ?? now,
     );
 
-    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
-
-    if (result > 0) {
+    if (success) {
       if (kDebugMode) {
         print('QueueService: Item $queueEntryId marked as Paid and Served.');
       }
-      if (updatedItem.originalAppointmentId != null) {
-        try {
-          // Fetch the original appointment
-          Appointment? originalAppointment = await _dbHelper.appointmentDbService.getAppointmentById(updatedItem.originalAppointmentId!);
-          if (originalAppointment != null) {
-            // Update it with the new details
-            Appointment updatedOriginalAppointment = originalAppointment.copyWith(
-              status: 'Completed',
-              paymentStatus: 'Paid',
-              servedAt: updatedItem.servedAt,
-              consultationStartedAt: updatedItem.consultationStartedAt ?? originalAppointment.consultationStartedAt,
-              selectedServices: updatedItem.selectedServices,
-              totalPrice: updatedItem.totalPrice ?? originalAppointment.totalPrice,
-            );
-            await _dbHelper.appointmentDbService.updateAppointment(updatedOriginalAppointment);
-            if (kDebugMode) {
-              print('QueueService: Original appointment ${updatedItem.originalAppointmentId} updated to Completed and payment details synced.');
+
+      // After successful status update, create medical records for lab services
+      try {
+        final updatedItem = await _dbHelper.getActiveQueueItem(queueEntryId);
+        if (updatedItem != null &&
+            updatedItem.selectedServices != null &&
+            updatedItem.selectedServices!.isNotEmpty) {
+          final labServices =
+              updatedItem.selectedServices!.where((s) {
+            final category = s['category'] as String?;
+            return category != null && category.toLowerCase() == 'laboratory';
+          }).toList();
+
+          if (labServices.isNotEmpty) {
+            String? appointmentIdForRecord;
+            if (updatedItem.originalAppointmentId != null &&
+                updatedItem.originalAppointmentId!.isNotEmpty) {
+              appointmentIdForRecord = updatedItem.originalAppointmentId;
+            } else {
+              appointmentIdForRecord = 'walkin_${updatedItem.queueEntryId}';
             }
-          } else {
+
+            for (var labService in labServices) {
+              final record = {
+                'patientId': updatedItem.patientId!,
+                'appointmentId': appointmentIdForRecord,
+                'serviceId': labService['id'],
+                'recordType': labService['name'] ?? 'Laboratory Test',
+                'recordDate': DateTime.now().toIso8601String(),
+                'diagnosis': 'Pending analysis',
+                'treatment': '',
+                'prescription': '',
+                'labResults': 'Result for ${labService['name']}: PENDING',
+                'notes': 'Record automatically generated after payment.',
+                'doctorId': updatedItem.doctorId ?? 'unknown_doctor_id',
+              };
+              await _dbHelper.insertMedicalRecord(record);
+            }
             if (kDebugMode) {
-              print('QueueService: Original appointment ${updatedItem.originalAppointmentId} not found for updating after payment.');
+              print(
+                  'QueueService: Created ${labServices.length} placeholder medical records for lab services.');
             }
           }
-        } catch (e) {
-          if (kDebugMode) {
-            print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} after payment: $e');
-          }
-          // Decide if this error should affect the return value
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print(
+              'QueueService: Error creating placeholder medical records for lab services: $e');
         }
       }
       return true;

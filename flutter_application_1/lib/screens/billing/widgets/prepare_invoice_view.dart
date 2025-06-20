@@ -7,6 +7,8 @@ class PrepareInvoiceView extends StatelessWidget {
   final NumberFormat currencyFormat;
   final VoidCallback onGenerateAndPay;
   final VoidCallback onSaveUnpaid;
+  final bool isGenerating;
+  final bool isSaving;
 
   const PrepareInvoiceView({
     super.key,
@@ -14,6 +16,8 @@ class PrepareInvoiceView extends StatelessWidget {
     required this.currencyFormat,
     required this.onGenerateAndPay,
     required this.onSaveUnpaid,
+    this.isGenerating = false,
+    this.isSaving = false,
   });
 
   @override
@@ -74,9 +78,19 @@ class PrepareInvoiceView extends StatelessWidget {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.receipt_long),
+                      icon: isGenerating
+                          ? Container(
+                              width: 24,
+                              height: 24,
+                              padding: const EdgeInsets.all(2.0),
+                              child: const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : const Icon(Icons.receipt_long),
                       label: const Text('Generate & Pay'),
-                      onPressed: onGenerateAndPay,
+                      onPressed: isGenerating ? null : onGenerateAndPay,
                       style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.teal[700],
                           foregroundColor: Colors.white,
@@ -90,9 +104,19 @@ class PrepareInvoiceView extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save_alt_outlined),
+                      icon: isSaving
+                          ? Container(
+                              width: 24,
+                              height: 24,
+                              padding: const EdgeInsets.all(2.0),
+                              child: const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : const Icon(Icons.save_alt_outlined),
                       label: const Text('Save Unpaid'),
-                      onPressed: onSaveUnpaid,
+                      onPressed: isSaving ? null : onSaveUnpaid,
                       style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange[700],
                           foregroundColor: Colors.white,

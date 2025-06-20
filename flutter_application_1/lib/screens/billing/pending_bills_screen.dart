@@ -1,7 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import '../../services/database_helper.dart';
+import '../../services/pdf_invoice_service.dart';
 import '../payment/payment_screen.dart';
+import '../../models/patient.dart';
+import '../../models/active_patient_queue_item.dart';
 
 class PendingBillsScreen extends StatefulWidget {
   const PendingBillsScreen({super.key});
@@ -13,6 +21,7 @@ class PendingBillsScreen extends StatefulWidget {
 class PendingBillsScreenState extends State<PendingBillsScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   
   List<Map<String, dynamic>> _pendingBills = [];
   bool _isLoading = false;
@@ -98,6 +107,88 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       _selectedDateRange = null;
     });
     _loadAllPendingBills();
+  }
+
+  Future<void> _handlePrintOrSaveBill(Map<String, dynamic> bill,
+      {required bool isPrinting}) async {
+    final invoiceNumber = bill['invoiceNumber'] as String?;
+    if (invoiceNumber == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invoice number not found.')));
+      return;
+    }
+
+    // Since the bill card already has most patient info, we can use that
+    // and fetch bill items separately for a complete invoice.
+    final patientDetails = {
+      'fullName': bill['patient_name'],
+      'id': bill['patientId'],
+      // Add other patient details if available and needed by the PDF service
+    };
+
+    setState(() => _isLoading = true);
+    try {
+      // Fetch only the items for the bill, as we have the rest of the data.
+      final billItems = await _dbHelper.getBillItems(bill['id']);
+
+      final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
+        // The service expects specific object types, so we build them
+        patientDetails: Patient.fromJson(patientDetails),
+        invoiceNumber: invoiceNumber,
+        invoiceDate: DateTime.parse(bill['billDate']),
+        // Create a temporary queue item to pass service details
+        queueItem: ActivePatientQueueItem(
+          queueEntryId: '', // Not needed for PDF
+          patientId: bill['patientId'],
+          patientName: bill['patient_name'],
+          arrivalTime: DateTime.now(),
+          queueNumber: 0,
+          status: 'unpaid',
+          createdAt: DateTime.now(),
+          // Convert bill items to the format expected by the service
+          selectedServices: billItems.map((item) {
+            return {
+              'name': item['description'],
+              'price': item['unitPrice'],
+            };
+          }).toList(),
+        ),
+      );
+
+      if (isPrinting) {
+        await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final receiptsDir = Directory('${directory.path}/Invoice');
+        if (!await receiptsDir.exists()) {
+          await receiptsDir.create(recursive: true);
+        }
+        final filePath = '${receiptsDir.path}/$invoiceNumber.pdf';
+        final file = File(filePath);
+        await file.writeAsBytes(pdfBytes);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bill saved to: $filePath'),
+            action: SnackBarAction(
+                label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error generating bill PDF: ${e.toString()}'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   double _calculateTotalPending() {
@@ -482,6 +573,24 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.print_outlined, size: 16),
+                  label: const Text('Print Bill'),
+                  onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: true),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.save_alt_outlined, size: 16),
+                  label: const Text('Save Bill'),
+                  onPressed: () =>
+                      _handlePrintOrSaveBill(bill, isPrinting: false),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -566,7 +675,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       );
       return;
     }
-    Navigator.of(context).push(
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => PaymentScreen(invoiceNumber: invoiceNumber),
       ),

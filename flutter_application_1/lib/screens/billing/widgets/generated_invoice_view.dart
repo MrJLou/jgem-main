@@ -41,156 +41,163 @@ class GeneratedInvoiceView extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // --- Header ---
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- Header ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'INVOICE',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal[800],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text("Invoice #: $generatedInvoiceNumber",
+                        style: TextStyle(color: Colors.grey[700])),
+                    Text(
+                        "Issued: ${DateFormat('dd MMM, yyyy').format(invoiceDate)}",
+                        style: TextStyle(color: Colors.grey[700])),
+                  ],
+                ),
+                Image.asset(
+                  'assets/images/slide1.png',
+                  width: 80,
+                  height: 80,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: Icon(Icons.business_center)),
+                ),
+              ],
+            ),
+            const Divider(height: 30, thickness: 1),
+
+            // --- Patient and Doctor Info ---
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("BILLED TO",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[600])),
+                      const SizedBox(height: 4),
+                      Text(
+                          detailedPatientForInvoice?.fullName ??
+                              selectedPatientQueueItem.patientName,
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
+                      if (detailedPatientForInvoice?.address != null)
+                        Text(detailedPatientForInvoice!.address!),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            if (selectedPatientQueueItem.doctorName != null) ...[
+              const Divider(height: 24),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'INVOICE',
+                    "DOCTOR INFORMATION",
                     style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800],
-                      letterSpacing: 1.2,
-                    ),
+                        fontWeight: FontWeight.bold, color: Colors.grey[600]),
                   ),
-                  const SizedBox(height: 8),
-                  Text("Invoice #: $generatedInvoiceNumber",
-                      style: TextStyle(color: Colors.grey[700])),
+                  const SizedBox(height: 4),
                   Text(
-                      "Issued: ${DateFormat('dd MMM, yyyy').format(invoiceDate)}",
-                      style: TextStyle(color: Colors.grey[700])),
+                    "Name: Dr. ${selectedPatientQueueItem.doctorName!}",
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const Text(
+                    "Occupation: Doctor",
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ],
               ),
-              Image.asset(
-                'assets/images/slide1.png',
-                width: 80,
-                height: 80,
-                errorBuilder: (context, error, stackTrace) => const SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: Icon(Icons.business_center)),
-              ),
             ],
-          ),
-          const Divider(height: 30, thickness: 1),
 
-          // --- Patient and Doctor Info ---
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("BILLED TO",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[600])),
-                    const SizedBox(height: 4),
-                    Text(
-                        detailedPatientForInvoice?.fullName ??
-                            selectedPatientQueueItem.patientName,
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
-                    if (detailedPatientForInvoice?.address != null)
-                      Text(detailedPatientForInvoice!.address!),
-                  ],
-                ),
-              ),
-              if (selectedPatientQueueItem.doctorName != null)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        "ATTENDING DOCTOR",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[600]),
-                        textAlign: TextAlign.right,
-                      ),
-                      const SizedBox(height: 4),
-                      Text("Dr. ${selectedPatientQueueItem.doctorName!}",
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                          textAlign: TextAlign.right),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
 
-          // --- Items Table ---
-          _buildItemsTable(),
-          const SizedBox(height: 24),
+            // --- Items Table ---
+            _buildItemsTable(),
+            const SizedBox(height: 24),
 
-          // --- Totals ---
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              SizedBox(
-                width: 250,
-                child: Column(
-                  children: [
-                    _buildTotalRow("Subtotal", subtotal),
-                    _buildTotalRow("Discount", 0.00),
-                    _buildTotalRow("Tax", 0.00),
-                    const Divider(height: 10),
-                    _buildTotalRow("TOTAL", total, isTotal: true),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
-
-          // --- Buttons ---
-          if (generatedPdfBytes != null)
+            // --- Totals ---
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text("Print"),
-                  onPressed: () => onPrint(generatedPdfBytes!),
-                  style:
-                      TextButton.styleFrom(foregroundColor: Colors.grey[700]),
-                ),
-                const SizedBox(width: 10),
-                TextButton.icon(
-                  icon: const Icon(Icons.save_alt_outlined),
-                  label: const Text("Save"),
-                  onPressed: () => onSave(generatedPdfBytes!, generatedInvoiceNumber),
-                  style:
-                      TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                SizedBox(
+                  width: 250,
+                  child: Column(
+                    children: [
+                      _buildTotalRow("Subtotal", subtotal),
+                      _buildTotalRow("Discount", 0.00),
+                      _buildTotalRow("Tax", 0.00),
+                      const Divider(height: 10),
+                      _buildTotalRow("TOTAL", total, isTotal: true),
+                    ],
+                  ),
                 ),
               ],
             ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.payment_outlined),
-              label: const Text("Proceed to Payment"),
-              onPressed: onProceedToPayment,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[600],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8))),
-            ),
-          )
-        ],
+            const SizedBox(height: 30),
+
+            // --- Buttons ---
+            if (generatedPdfBytes != null)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text("Print"),
+                    onPressed: () => onPrint(generatedPdfBytes!),
+                    style:
+                        TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                  ),
+                  const SizedBox(width: 10),
+                  TextButton.icon(
+                    icon: const Icon(Icons.save_alt_outlined),
+                    label: const Text("Save"),
+                    onPressed: () => onSave(generatedPdfBytes!, generatedInvoiceNumber),
+                    style:
+                        TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.payment_outlined),
+                label: const Text("Proceed to Payment"),
+                onPressed: onProceedToPayment,
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[600],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8))),
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
