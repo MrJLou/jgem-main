@@ -919,6 +919,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         await ApiService.updatePatient(updatedPatient);
         await _fetchPatientDetailsAndSetState(updatedPatient); 
 
+        if (!mounted) return;
         setState(() {
           _isEditing = false; 
           _isLoading = false;
@@ -935,6 +936,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         );
 
       } catch (e) {
+        if (!mounted) return;
         setState(() { 
           _isLoading = false; 
         });
@@ -1003,6 +1005,7 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         _foundPatient = null; // Clear patient if details fetch failed
         _patientData = null;
       });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error fetching patient details: $_errorMessage'),

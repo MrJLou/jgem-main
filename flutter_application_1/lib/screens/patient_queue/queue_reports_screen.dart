@@ -56,6 +56,7 @@ class QueueReportsScreenState extends State<QueueReportsScreen> {
           await _dbHelper.getQueueReportByDate(reportDateString);
 
       if (existingReportForDate != null) {
+        if (!mounted) return;
         bool overwrite = await showDialog(
               context: context,
               builder: (context) => AlertDialog(
@@ -73,8 +74,8 @@ class QueueReportsScreenState extends State<QueueReportsScreen> {
               ),
             ) ??
             false;
-        if (!mounted) return;
         if (!overwrite) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content:
                   Text('Report generation for $reportDateString cancelled.')));
@@ -105,6 +106,7 @@ class QueueReportsScreenState extends State<QueueReportsScreen> {
       );
       _loadReports(); // Refresh the list of saved reports
 
+      if (!mounted) return;
       bool exportNow = await showDialog(
             context: context,
             builder: (context) => AlertDialog(
@@ -135,6 +137,7 @@ class QueueReportsScreenState extends State<QueueReportsScreen> {
       if (dateForReport.year == today.year &&
           dateForReport.month == today.month &&
           dateForReport.day == today.day) {
+        if (!mounted) return;
         bool clearQueue = await showDialog(
               context: context,
               builder: (context) => AlertDialog(

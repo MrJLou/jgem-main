@@ -283,7 +283,14 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
   Future<void> _selectDate(BuildContext context) async {
     final today = DateUtils.dateOnly(DateTime.now());
-    final initialPickerDate = _selectedDate.isBefore(today) ? today : _selectedDate;
+    
+    // Ensure initialPickerDate is a valid selectable date
+    DateTime initialPickerDate = _selectedDate.isBefore(today) ? today : _selectedDate;
+    
+    // If the initial date is not selectable (e.g., Sunday), find the next selectable date
+    while (!_isSelectable(initialPickerDate)) {
+      initialPickerDate = initialPickerDate.add(const Duration(days: 1));
+    }
 
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -320,13 +327,29 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       return;
     }
 
-    // Determine booked time slots for the selected doctor and date
-    final Set<TimeOfDay> bookedTimes = widget.existingAppointments
+    // Debug: Print all existing appointments for this doctor and date
+    final relevantAppointments = widget.existingAppointments
         .where((appt) =>
             appt.doctorId == _selectedDoctor!.id &&
             DateUtils.isSameDay(appt.date, _selectedDate))
+        .toList();
+    
+    debugPrint('AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
+    for (var appt in relevantAppointments) {
+      debugPrint('  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
+    }
+
+    // Determine booked time slots for the selected doctor and date
+    // Exclude cancelled appointments to make those timeslots available again
+    final Set<TimeOfDay> bookedTimes = widget.existingAppointments
+        .where((appt) =>
+            appt.doctorId == _selectedDoctor!.id &&
+            DateUtils.isSameDay(appt.date, _selectedDate) &&
+            appt.status.toLowerCase().trim() != 'cancelled')
         .map((appt) => appt.time)
         .toSet();
+
+    debugPrint('AddAppointmentScreen: Booked times after filtering cancelled: ${bookedTimes.map((t) => t.format(context)).join(', ')}');
 
     final TimeOfDay? picked = await showDialog<TimeOfDay>(
       context: context,
@@ -710,11 +733,11 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                       final newPatientId = await ApiService.createPatient(patientToSave);
                                       final savedPatient = patientToSave.copyWith(id: newPatientId);
                                       
-                                      if (!mounted) return;
+                                      if (!context.mounted) return;
                                       Navigator.of(context).pop(savedPatient);
                                     } catch (e) {
                                       debugPrint("Error saving new patient from dialog: $e");
-                                      if (!mounted) return;
+                                      if (!context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
                                           content: Text('Failed to save patient: ${e.toString()}'),
@@ -795,6 +818,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         List<Map<String, dynamic>> servicesForDb = _selectedServices.map((s) => {
           'id': s.id,
           'name': s.serviceName,
+          'category': s.category,
           'price': s.defaultPrice
         }).toList();
 

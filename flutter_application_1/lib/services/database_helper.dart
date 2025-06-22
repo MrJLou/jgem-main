@@ -34,7 +34,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 27;
+  static const int _databaseVersion = 28;
 
   // Tables
   static const String tableUsers = 'users';
@@ -552,7 +552,8 @@ class DatabaseHelper {
         consultationStartedAt TEXT,
         originalAppointmentId TEXT,
         doctorId TEXT,
-        doctorName TEXT
+        doctorName TEXT,
+        isWalkIn INTEGER DEFAULT 0 NOT NULL
       )
     ''');
     debugPrint('DATABASE_HELPER: Table $tableActivePatientQueue created');
@@ -630,6 +631,10 @@ class DatabaseHelper {
       await _addColumnIfNotExists(db, tableAppointments, 'cancellationReason', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'notes', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'isWalkIn', 'INTEGER DEFAULT 0');
+    }
+
+    if (oldVersion < 28) {
+      await _addColumnIfNotExists(db, tableActivePatientQueue, 'isWalkIn', 'INTEGER DEFAULT 0 NOT NULL');
     }
 
     debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");

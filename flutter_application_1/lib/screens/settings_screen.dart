@@ -66,6 +66,7 @@ class SettingsScreen extends StatelessWidget {
   Future<void> _performReset(BuildContext context) async {
     try {
       await ApiService.resetDatabase();
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Database has been reset successfully.'),
@@ -73,6 +74,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to reset database: $e'),

@@ -13,7 +13,7 @@ class AppointmentOverviewScreen extends StatefulWidget {
   State<AppointmentOverviewScreen> createState() => _AppointmentOverviewScreenState();
 }
 
-class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
+class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> with WidgetsBindingObserver {
   DateTime _selectedDate = DateTime.now();
   List<Appointment> _appointments = []; // For the right pane (filtered by _selectedDate)
   List<Appointment> _allCalendarAppointments = []; // Holds ALL appointments for conflict checking and filtering
@@ -28,9 +28,30 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Initialize with a few dummy appointments for UI testing
     // _simulatedAppointments = [ ... ]; // REMOVED OLD SIMULATION
     _initializeServicesAndFetch();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh appointments when the app comes back into focus
+      _initializeServicesAndFetch();
+    }
+  }
+
+  /// Public method to refresh appointments data
+  /// Call this method when appointments are updated from other screens
+  Future<void> refreshAppointments() async {
+    await _initializeServicesAndFetch();
   }
 
   Future<void> _initializeServicesAndFetch() async {
@@ -316,13 +337,13 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
       appBar: AppBar(
         title: const Text('Appointment Management', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.teal[700],
-        // actions: [ // Example: Add a refresh button if needed
-        //   IconButton(
-        //     icon: const Icon(Icons.refresh),
-        //     onPressed: _initializeServicesAndFetch,
-        //     tooltip: 'Refresh Appointments',
-        //   )
-        // ],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _initializeServicesAndFetch,
+            tooltip: 'Refresh Appointments',
+          )
+        ],
       ),
       body: Row(
         children: [
@@ -482,4 +503,4 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen> {
       ),
     );
   }
-} 
+}

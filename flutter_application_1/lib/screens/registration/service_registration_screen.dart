@@ -52,6 +52,7 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> {
 
       try {
         await ApiService.createClinicService(newService);
+        if (!mounted) return;
         Navigator.of(context).pop(); // Close dialog on success
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Service Added Successfully')),
@@ -62,6 +63,7 @@ class ServiceRegistrationScreenState extends State<ServiceRegistrationScreen> {
         _priceController.clear();
         _loadServices(); // Refresh data table
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to add service: $e')),
         );

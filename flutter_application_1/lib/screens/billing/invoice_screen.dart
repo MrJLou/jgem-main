@@ -7,13 +7,14 @@ import 'package:flutter_application_1/models/bill_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/screens/billing/widgets/generated_invoice_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/in_consultation_patient_list.dart';
-import 'package:flutter_application_1/screens/billing/widgets/payment_complete_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/payment_processing_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/prepare_invoice_view.dart';
+import 'package:flutter_application_1/screens/patient_queue/view_queue_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:flutter_application_1/services/pdf_invoice_service.dart';
 import 'package:flutter_application_1/services/queue_service.dart';
+import 'package:flutter_application_1/services/receipt_service.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:printing/printing.dart';
@@ -49,6 +50,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
   List<BillItem> _currentBillItems = [];
   DateTime? _invoiceDate;
   Uint8List? _generatedPdfBytes;
+  Uint8List? _generatedReceiptBytes;
   final TextEditingController _amountPaidController = TextEditingController();
   double _paymentChange = 0.0;
   String? _paymentReferenceNumber;
@@ -133,6 +135,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       _currentBillItems = [];
       _invoiceDate = null;
       _generatedPdfBytes = null;
+      _generatedReceiptBytes = null;
       _amountPaidController.clear();
       _paymentChange = 0.0;
       _paymentReferenceNumber = null;
@@ -214,16 +217,50 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         amountPaidByCustomer: amountPaid,
         paymentMethod: 'Cash',
         paymentNotes: 'Payment for Invoice #$_generatedInvoiceNumber',
-      );
+      );      // Use the specialized payment success method that handles appointment status updates
+      await _queueService.markPaymentSuccessfulAndServe(
+          _selectedPatientQueueItem!.queueEntryId);
 
-      await _queueService.updatePatientStatusInQueue(
-          _selectedPatientQueueItem!.queueEntryId, 'served');
+      // --- Generate Receipt ---
+      final receiptDetails = {
+        'patientName': _selectedPatientQueueItem!.patientName,
+        'invoiceNumber': _generatedInvoiceNumber!,
+        'referenceNumber': result['paymentReferenceNumber'],
+        'paymentDate': DateTime.now(),
+        'totalAmount': totalBillAmount,
+        'amountPaid': amountPaid,
+        'change': amountPaid - totalBillAmount,
+        'receivedByUserId': _currentUserId!,
+        'billItems': _currentBillItems
+            .map((item) => {
+                  'description': item.description,
+                  'quantity': item.quantity,
+                  'unitPrice': item.unitPrice,
+                  'itemTotal': item.itemTotal,
+                })
+            .toList(),
+      };
+      final receiptBytes =
+          await ReceiptService.generateReceiptPdfBytes(receiptDetails);
+      // --- End Generate Receipt ---
 
       setState(() {
         _paymentReferenceNumber = result['paymentReferenceNumber'];
         _paymentChange = amountPaid - totalBillAmount;
         _currentStep = InvoiceFlowStep.paymentComplete;
+        _generatedReceiptBytes = receiptBytes;
       });
+          if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment processed successfully for ${_selectedPatientQueueItem?.patientName}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Refresh queue displays after successful payment
+        ViewQueueScreen.refreshDashboardAfterPayment();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -260,11 +297,9 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         dueDate: now.add(const Duration(days: 30)),
         currentUserId: _currentUserId!,
         notes: "Unpaid invoice for ${patientQueueItem.patientName}",
-      );
-
-      // Also update status to 'served' so they leave the queue
-      await _queueService.updatePatientStatusInQueue(
-          patientQueueItem.queueEntryId, 'served');
+      );      // Use the specialized payment success method that also handles appointment status
+      await _queueService.markPaymentSuccessfulAndServe(
+          patientQueueItem.queueEntryId);
 
       final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
         queueItem: patientQueueItem,
@@ -273,16 +308,18 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         invoiceDate: now,
       );
 
-      await _savePdfToDevice(pdfBytes, invoiceNumber);
-
-      if (mounted) {
+      await _savePdfToDevice(pdfBytes, invoiceNumber);      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Unpaid invoice $invoiceNumber saved.'),
-              backgroundColor: Colors.teal),
+            content: Text('Unpaid invoice $invoiceNumber saved for ${patientQueueItem.patientName}'),
+            backgroundColor: Colors.teal,
+          ),
         );
+        
+        // Refresh patient list and queue displays
+        _fetchInConsultationPatients();
+        ViewQueueScreen.refreshDashboardAfterPayment();
       }
-      _fetchInConsultationPatients();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -339,6 +376,37 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving PDF: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _saveReceiptToDevice(
+      Uint8List pdfBytes, String receiptNumber) async {
+    try {
+      final dbFile = File((await _dbHelper.database).path);
+      final receiptDir = Directory('${dbFile.parent.path}/Receipts');
+      if (!await receiptDir.exists()) {
+        await receiptDir.create(recursive: true);
+      }
+
+      final filePath = '${receiptDir.path}/$receiptNumber.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Receipt saved to: $filePath'),
+            action: SnackBarAction(
+                label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error saving receipt: $e'),
+            backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -437,33 +505,79 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           isProcessing: _isProcessingPayment,
         );
       case InvoiceFlowStep.paymentComplete:
-        return PaymentCompleteView(
-          generatedInvoiceNumber: _generatedInvoiceNumber!,
-          paymentReferenceNumber: _paymentReferenceNumber ?? 'N/A',
-          selectedPatientQueueItem: _selectedPatientQueueItem!,
-          currentBillItems: _currentBillItems,
-          paymentChange: _paymentChange,
-          currencyFormat: _currencyFormat,
-          onPrintReceipt: () => _printPdf(_generatedPdfBytes!),
-          onNewInvoice: _fetchInConsultationPatients,
-          pdfPreviewThumbnail: _buildPdfPreviewThumbnail(),
-        );
+        return _buildPaymentCompleteContent();
     }
   }
 
-  Widget _buildPdfPreviewThumbnail() {
-    if (_generatedPdfBytes == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () => _printPdf(_generatedPdfBytes!),
-      child: Container(
-        height: 100,
-        width: 70,
-        decoration: BoxDecoration(border: Border.all(color: Colors.grey)),
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [Icon(Icons.picture_as_pdf, color: Colors.red), Text("Print", style: TextStyle(fontSize: 12))],
-        ),
+  Widget _buildPaymentCompleteContent() {
+    if (_selectedPatientQueueItem == null) {
+      return const Center(
+          child: Text("Error: Patient data lost. Please start a new invoice."));
+    }
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle, color: Colors.green[600], size: 80),
+          const SizedBox(height: 20),
+          const Text(
+            'Payment Successful',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Patient: ${_selectedPatientQueueItem!.patientName}',
+            style: const TextStyle(fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Reference: ${_paymentReferenceNumber ?? 'N/A'}',
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Change Due: ${_currencyFormat.format(_paymentChange)}',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          ),
+          const Spacer(),
+          if (_generatedReceiptBytes != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _printPdf(_generatedReceiptBytes!),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Print Receipt'),
+                  style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.teal),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: () => _saveReceiptToDevice(
+                      _generatedReceiptBytes!, 'RECEIPT-${_generatedInvoiceNumber!}'),
+                  icon: const Icon(Icons.save_alt_outlined),
+                  label: const Text('Save Receipt'),
+                  style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.blue),
+                ),
+              ],
+            ),
+          const SizedBox(height: 24),
+          OutlinedButton.icon(
+            onPressed: () {
+              _fetchInConsultationPatients();
+              ViewQueueScreen.refreshDashboardAfterPayment();
+            },
+            icon: const Icon(Icons.receipt_long),
+            label: const Text('Start New Invoice'),
+          ),
+        ],
       ),
     );
   }
+
 } 

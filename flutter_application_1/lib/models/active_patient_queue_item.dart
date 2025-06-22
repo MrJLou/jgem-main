@@ -27,6 +27,7 @@ class ActivePatientQueueItem {
   final String? originalAppointmentId; // ADDED: To link back to the original appointment if applicable
   final String? doctorId; // ADDED: To assign a doctor to the queue entry
   final String? doctorName; // ADDED: To display doctor's name easily
+  final bool isWalkIn;
   const ActivePatientQueueItem({
     required this.queueEntryId,
     this.patientId,
@@ -48,6 +49,7 @@ class ActivePatientQueueItem {
     this.originalAppointmentId, // ADDED
     this.doctorId, // ADDED
     this.doctorName, // ADDED
+    this.isWalkIn = false,
   });  // Empty constructor for B-Tree initialization
   ActivePatientQueueItem.empty()
     : queueEntryId = '',
@@ -69,7 +71,8 @@ class ActivePatientQueueItem {
       consultationStartedAt = null,
       originalAppointmentId = null,
       doctorId = null,
-      doctorName = null;
+      doctorName = null,
+      isWalkIn = false;
 
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? services;
@@ -133,6 +136,7 @@ class ActivePatientQueueItem {
       originalAppointmentId: json['originalAppointmentId'] as String?, // ADDED
       doctorId: json['doctorId'] as String?, // ADDED
       doctorName: json['doctorName'] as String?, // ADDED
+      isWalkIn: (json['isWalkIn'] is bool) ? json['isWalkIn'] : (json['isWalkIn'] == 1),
     );
   }
   Map<String, dynamic> toJson() {
@@ -159,6 +163,7 @@ class ActivePatientQueueItem {
       'originalAppointmentId': originalAppointmentId, // ADDED
       'doctorId': doctorId, // ADDED
       'doctorName': doctorName, // ADDED
+      'isWalkIn': isWalkIn ? 1 : 0,
     };
   }
 
@@ -183,6 +188,7 @@ class ActivePatientQueueItem {
     String? originalAppointmentId, // ADDED
     String? doctorId, // ADDED
     String? doctorName, // ADDED
+    bool? isWalkIn,
   }) {
     return ActivePatientQueueItem(
       queueEntryId: queueEntryId ?? this.queueEntryId,
@@ -206,6 +212,7 @@ class ActivePatientQueueItem {
       originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId, // ADDED
       doctorId: doctorId ?? this.doctorId, // ADDED
       doctorName: doctorName ?? this.doctorName, // ADDED
+      isWalkIn: isWalkIn ?? this.isWalkIn,
     );
   }
 }

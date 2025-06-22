@@ -1,4 +1,5 @@
 // Live queue dashboard view - main dashboard content
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -24,8 +25,7 @@ class LiveQueueDashboardView extends StatefulWidget {
   LiveQueueDashboardViewState createState() => LiveQueueDashboardViewState();
 }
 
-class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
-  DateTime _calendarSelectedDate = DateTime.now();
+class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateTime _calendarSelectedDate = DateTime.now();
   DateTime _calendarFocusedDay = DateTime.now();
   List<Appointment> _allAppointmentsForCalendar = [];
   List<Appointment> _dailyAppointmentsForDisplay = [];
@@ -34,6 +34,8 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   List<ActivePatientQueueItem> _walkInQueueItems = [];
   List<Appointment> _appointmentsForSelectedDate = [];
   bool _isLoadingQueueAndAppointments = true;
+  
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -47,9 +49,22 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     _loadAppointments().then((_) {
       _loadCombinedQueueData(_calendarSelectedDate);
     });
+      // Set up periodic refresh every 15 seconds to catch payment updates quickly
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (mounted) {
+        _loadCombinedQueueData(_calendarSelectedDate);
+      }
+    });
+    
     if (kDebugMode) {
       print('DEBUG: LiveQueueDashboardView initState END');
     }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadAppointments() async {
@@ -92,17 +107,16 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     }
     setState(() {
       _isLoadingQueueAndAppointments = true;
-    });
-
-    try {
+    });    try {
       final now = DateTime.now();
       final isToday = selectedDateForQueue.year == now.year &&
                       selectedDateForQueue.month == now.month &&
                       selectedDateForQueue.day == now.day;
-
-      // Load walk-in patients (only for today)
+      
+      // Load walk-in patients (for today - active patients only)
       List<ActivePatientQueueItem> walkInQueueItems = [];
       if (isToday) {
+        // Get active queue items only (served patients are now removed from active queue)
         final allActiveItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
         walkInQueueItems = allActiveItems.where((item) => 
           item.originalAppointmentId == null || 
@@ -110,15 +124,25 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           item.originalAppointmentId!.trim().isEmpty
         ).toList();
         if (kDebugMode) {
-          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today.');
+          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today (active patients only).');
         }
       }
-
-      // Load appointments for the selected date
+      
+      // Load appointments for the selected date (exclude completed and cancelled from active view)
       final appointmentsForSelectedDate = _allAppointmentsForCalendar.where((appt) {
         final appointmentDate = DateTime(appt.date.year, appt.date.month, appt.date.day);
         final selectedDate = DateTime(selectedDateForQueue.year, selectedDateForQueue.month, selectedDateForQueue.day);
-        return appointmentDate.isAtSameMomentAs(selectedDate);
+        final dateMatches = appointmentDate.isAtSameMomentAs(selectedDate);
+        
+        // Only show active appointments in the live dashboard (not completed, cancelled, or served)
+        final isActiveStatus = appt.status.toLowerCase() != 'completed' && 
+                              appt.status.toLowerCase() != 'cancelled' &&
+                              appt.status.toLowerCase() != 'served';
+        
+        // ADDED: Exclude walk-ins from the 'Scheduled Appointments' list
+        final isNotWalkIn = appt.consultationType.toLowerCase() != 'walk-in';
+
+        return dateMatches && isActiveStatus && isNotWalkIn;
       }).toList();
 
       // Sort appointments by time
@@ -209,32 +233,32 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
 
       if (addedToActiveQueue) {
         // Update the appointment status to "In Consultation"
-        await ApiService.updateAppointmentStatus(appointmentId, 'In Consultation');
-        
-        // Update the local appointment list immediately
-        setState(() {
-          final appointmentIndex = _allAppointmentsForCalendar.indexWhere((appt) => appt.id == appointmentId);
-          if (appointmentIndex != -1) {
-            _allAppointmentsForCalendar[appointmentIndex] = _allAppointmentsForCalendar[appointmentIndex].copyWith(status: 'In Consultation');
-          }
-          
-          final selectedDateIndex = _appointmentsForSelectedDate.indexWhere((appt) => appt.id == appointmentId);
-          if (selectedDateIndex != -1) {
-            _appointmentsForSelectedDate[selectedDateIndex] = _appointmentsForSelectedDate[selectedDateIndex].copyWith(status: 'In Consultation');
-          }
-          
-          _filterDailyAppointments();
-        });
+        await ApiService.updateAppointmentStatus(appointmentId, 'In Consultation');          // Update the local appointment list immediately
+          setState(() {
+            final appointmentIndex = _allAppointmentsForCalendar.indexWhere((appt) => appt.id == appointmentId);
+            if (appointmentIndex != -1) {
+              _allAppointmentsForCalendar[appointmentIndex] = _allAppointmentsForCalendar[appointmentIndex].copyWith(status: 'In Consultation');
+            }
+            
+            final selectedDateIndex = _appointmentsForSelectedDate.indexWhere((appt) => appt.id == appointmentId);
+            if (selectedDateIndex != -1) {
+              _appointmentsForSelectedDate[selectedDateIndex] = _appointmentsForSelectedDate[selectedDateIndex].copyWith(status: 'In Consultation');
+            }
+            
+            // Refresh appointments display
+            _filterDailyAppointments();
+          });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${newQueueItem.patientName} is now In Consultation.'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          _loadCombinedQueueData(_calendarSelectedDate);
-        }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${newQueueItem.patientName} is now In Consultation.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            // Reload data to get updated appointment status and queue
+            _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
+          }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -267,9 +291,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
     });
 
     try {
-      bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);
-
-      if (success) {
+      bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);      if (success) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -277,7 +299,8 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
               backgroundColor: Colors.green,
             ),
           );
-          _loadCombinedQueueData(_calendarSelectedDate);
+          // Reload both appointments and queue data to reflect changes
+          _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
         }
       } else {
         if (mounted) {

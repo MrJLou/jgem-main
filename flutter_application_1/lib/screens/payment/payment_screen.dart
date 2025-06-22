@@ -6,8 +6,10 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
+import '../../models/active_patient_queue_item.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
 import '../../services/database_helper.dart';
+import '../../services/queue_service.dart';
 import '../../services/receipt_service.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -25,6 +27,7 @@ class PaymentScreenState extends State<PaymentScreen> {
   double _change = 0.0;
   String? _generatedReferenceNumber;
   String? _currentUserId;
+  ActivePatientQueueItem? _relatedQueueItem;
   
   // PDF / Receipt state
   Uint8List? _generatedReceiptBytes;
@@ -83,6 +86,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       _generatedReferenceNumber = null;
       _isLoadingInvoice = false;
       _generatedReceiptBytes = null;
+      _relatedQueueItem = null;
     });
       }
 
@@ -129,6 +133,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       final pdfBytes = await ReceiptService.generateReceiptPdfBytes(details);
       await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error generating receipt for printing: $e'), backgroundColor: Colors.red),
       );
@@ -153,6 +158,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       final file = File(filePath);
       await file.writeAsBytes(pdfBytes);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Receipt saved to: $filePath'),
@@ -161,6 +167,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       );
 
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error saving receipt: $e'), backgroundColor: Colors.red),
       );
@@ -212,6 +219,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
+
     try {
       final uuidString = _uuid.v4().replaceAll('-', '');
       final referenceNumber = 'PAY-${uuidString.length >= 8 ? uuidString.substring(0, 8).toUpperCase() : uuidString.toUpperCase()}';
@@ -230,6 +238,11 @@ class PaymentScreenState extends State<PaymentScreen> {
       };
 
       await _dbHelper.insertPayment(paymentData); // This now also updates bill status
+      
+      // If the patient was found in the active queue, update their status
+      if (_relatedQueueItem != null) {
+        await QueueService().markPaymentSuccessfulAndServe(_relatedQueueItem!.queueEntryId);
+      }
       
       await _dbHelper.logUserActivity(
         _currentUserId!,
@@ -281,7 +294,9 @@ class PaymentScreenState extends State<PaymentScreen> {
         // Consider resetting _searchedInvoiceDetails or parts of it to prevent re-payment without new search
         _searchedInvoiceDetails = null; // Reset after payment to force new search
         _invoiceNumberController.clear();
+        _relatedQueueItem = null;
       });
+
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -302,23 +317,40 @@ class PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  // void _generateReceipt() { // Placeholder - can be implemented later
-  //   if (!_isPaymentProcessed || _generatedReferenceNumber == null) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text('Please process the payment first.'),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //     return;
-  //   }
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     SnackBar(
-  //       content: Text('Receipt generation for $_generatedReferenceNumber to be implemented.'),
-  //       backgroundColor: Colors.blue,
-  //     ),
-  //   );
-  // }
+  Future<void> _saveFinalReceipt(String invoiceNumber) async {
+    if (_generatedReceiptBytes == null || _generatedReferenceNumber == null) {
+      return;
+    }
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final receiptsDir = Directory('${directory.path}/Receipts');
+      if (!await receiptsDir.exists()) {
+        await receiptsDir.create(recursive: true);
+      }
+      final filePath =
+          '${receiptsDir.path}/RECEIPT_${invoiceNumber}_$_generatedReferenceNumber.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(_generatedReceiptBytes!);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Receipt saved to: $filePath'),
+            action: SnackBarAction(
+                label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error saving receipt: $e'),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   // Placeholder for the new search method
   Future<void> _searchInvoice() async {
@@ -339,6 +371,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       _generatedReferenceNumber = null;
       _change = 0.0;
       _generatedReceiptBytes = null;
+      _relatedQueueItem = null;
     });
 
     try {
@@ -348,13 +381,28 @@ class PaymentScreenState extends State<PaymentScreen> {
         setState(() {
           _searchedInvoiceDetails = details;
         });
-        final billStatus = (_searchedInvoiceDetails!['bill'] as Map<String, dynamic>)['status'] as String?;
+
+        final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+        final patientId = billData['patientId'] as String?;
+
+        if (patientId != null) {
+          final queueItem = await QueueService().findPatientInQueue(patientId);
+          if (mounted && queueItem != null) {
+            setState(() {
+              _relatedQueueItem = queueItem;
+            });
+          }
+        }
+
+        final billStatus = billData['status'] as String?;
         if (billStatus == 'Paid') {
+           if (!mounted) return;
            ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Invoice $invoiceNum has already been paid.'), backgroundColor: Colors.blueAccent),
           );
         }
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Invoice number "$invoiceNum" not found.'), backgroundColor: Colors.red),
         );
@@ -463,6 +511,7 @@ class PaymentScreenState extends State<PaymentScreen> {
     final List<Map<String, dynamic>> billItems = (_searchedInvoiceDetails!['items'] as List<dynamic>).cast<Map<String, dynamic>>();
     final String patientName = patientData?['fullName'] as String? ?? 'N/A';
     final double totalAmount = (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final String processedInvoiceNumber = billData['invoiceNumber'];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -481,15 +530,15 @@ class PaymentScreenState extends State<PaymentScreen> {
                     fontWeight: FontWeight.bold,
                     color: Colors.teal[800]),
               ),
-              if (billData['status'] == 'Paid')
+              if (_isPaymentProcessed)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: Text('Status: PAID', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[700])),
                 )
-              else
-                 Padding(
+              else if (billData['status'] == 'Paid')
+                Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text('Status: ${billData['status']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange[700])),
+                  child: Text('Status: PAID', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[700])),
                 ),
               const SizedBox(height: 10),
               Text('Patient: $patientName', style: const TextStyle(fontSize: 15)),
@@ -597,31 +646,57 @@ class PaymentScreenState extends State<PaymentScreen> {
                 ),
               ),
               ],
-              if (_isPaymentProcessed && _generatedReferenceNumber != null && billData['status'] == 'Paid') ...[
+              if (_isPaymentProcessed && _generatedReferenceNumber != null) ...[
                 const Divider(height: 30),
                 Text('Payment Successful!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green[700])),
                 const SizedBox(height: 8),
                 SelectableText('Payment Reference: $_generatedReferenceNumber', style: const TextStyle(fontSize: 16)),
                 Text('Change Due: ₱${_change.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16)),
-                const SizedBox(height: 10),
-                 Row(
-                   children: [
-                     ElevatedButton.icon(
-                      icon: const Icon(Icons.refresh_outlined), 
-                      label: const Text("New Payment"), 
-                      onPressed: _resetPaymentScreen,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent)
-                                 ),
-                      const SizedBox(width: 10),
-                      if (_generatedReceiptBytes != null)
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.receipt_long),
-                          label: const Text("View Receipt"),
-                          onPressed: () => _showReceiptPreviewDialog(_generatedReceiptBytes!),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                        ),
-                   ],
-                 )
+                const SizedBox(height: 16),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12.0,
+                  runSpacing: 12.0,
+                  children: [
+                    ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh_outlined),
+                        label: const Text("New Payment"),
+                        onPressed: _resetPaymentScreen,
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.blueAccent)),
+                    if (_generatedReceiptBytes != null) ...[
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.receipt_long),
+                        label: const Text("View Receipt"),
+                        onPressed: () =>
+                            _showReceiptPreviewDialog(_generatedReceiptBytes!),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.orange),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text("Print"),
+                        onPressed: () => Printing.layoutPdf(
+                            onLayout: (format) async =>
+                                _generatedReceiptBytes!),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.teal),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.save_alt_outlined),
+                        label: const Text("Save"),
+                        onPressed: () =>
+                            _saveFinalReceipt(processedInvoiceNumber),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.indigo),
+                      ),
+                    ]
+                  ],
+                )
               ],
             ],
           ),

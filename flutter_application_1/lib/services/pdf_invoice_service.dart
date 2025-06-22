@@ -40,7 +40,7 @@ class PdfInvoiceService {
               pw.SizedBox(height: 30),
               _buildMainInfo(invoiceNumber, invoiceDate, queueItem, patientDetails, baseColor, accentColor, boldStyle, textStyle),
               pw.SizedBox(height: 30),
-              _buildServicesTable(queueItem, accentColor, boldStyle, textStyle),
+              _buildServicesTable(context, queueItem, accentColor, boldStyle, textStyle),
               pw.SizedBox(height: 1),
               _buildTotals(queueItem, accentColor, boldStyle, textStyle),
               pw.Spacer(),
@@ -188,7 +188,7 @@ class PdfInvoiceService {
     );
   }
 
-  pw.Widget _buildServicesTable(ActivePatientQueueItem queueItem, PdfColor accentColor, pw.TextStyle boldStyle, pw.TextStyle textStyle) {
+  pw.Widget _buildServicesTable(pw.Context context, ActivePatientQueueItem queueItem, PdfColor accentColor, pw.TextStyle boldStyle, pw.TextStyle textStyle) {
     final services = queueItem.selectedServices ?? [];
     final data = services.map((service) {
       const qty = 1;
@@ -197,7 +197,8 @@ class PdfInvoiceService {
       return [ service['name'] as String? ?? 'Unknown Service', qty.toString(), unitPrice.toStringAsFixed(2), total.toStringAsFixed(2) ];
     }).toList();
 
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
+      context: context,
       headers: ['DESCRIPTION', 'QTY', 'UNIT PRICE', 'TOTAL'],
       data: data,
       headerStyle: boldStyle.copyWith(color: PdfColors.white),

@@ -33,11 +33,25 @@ class ViewQueueScreen extends StatefulWidget {
   // Static method to refresh B-Tree from external screens
   static void refreshBTreeIfExists() {
     // This can be called from other screens when new patients are added
-    final BTreeQueueManager queueManager = BTreeQueueManager();
-    if (queueManager.isInitialized) {
-      queueManager.refresh().catchError((e) {
-        debugPrint('Error refreshing B-Tree from external call: $e');
-      });
+    try {
+      final BTreeQueueManager queueManager = BTreeQueueManager();
+      if (queueManager.isInitialized) {
+        queueManager.refresh().catchError((e) {
+          debugPrint('Error refreshing B-Tree from external call: $e');
+        });
+      }
+    } catch (e) {
+      debugPrint('Error accessing B-Tree manager: $e');
+    }
+  }
+
+  // Static method to trigger dashboard refresh after payments
+  static void refreshDashboardAfterPayment() {
+    // Refresh B-Tree data which will be picked up by dashboard
+    try {
+      refreshBTreeIfExists();
+    } catch (e) {
+      debugPrint('Error refreshing dashboard after payment: $e');
     }
   }
 }
@@ -123,16 +137,16 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     });
     
     if (_queueManager.isInitialized) {
-      // Use B-Tree for faster loading if initialized
+      // Use B-Tree for faster loading if initialized - only show active patients
       _liveQueueFuture = Future.value(_queueManager.getFilteredItems(
-        statuses: ['waiting', 'in_consultation', 'served', 'removed'],
+        statuses: ['waiting', 'in_consultation'],
         todayOnly: true,
         prioritySort: true,
       ));
     } else {
-      // Fallback to database query
+      // Fallback to database query - only show active patients
       _liveQueueFuture = widget.queueService.getActiveQueueItems(
-          statuses: ['waiting', 'in_consultation', 'served', 'removed']);
+          statuses: ['waiting', 'in_consultation']);
     }
     
     _liveQueueFuture.whenComplete(() {
@@ -300,8 +314,14 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     try {
       await _queueManager.initialize(widget.queueService);
       debugPrint('B-Tree Queue Manager initialized successfully');
+      if (mounted) {
+        setState(() {
+          // Trigger a rebuild to show B-Tree features
+        });
+      }
     } catch (e) {
       debugPrint('Error initializing B-Tree Queue Manager: $e');
+      // Continue without B-Tree functionality
     }
   }
 
@@ -364,6 +384,17 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     }
 
     return filteredItems;
+  }
+
+  // Helper method to get status priority for sorting
+  int _getStatusPriority(String status) {
+    switch (status.toLowerCase()) {
+      case 'in_consultation': return 1;
+      case 'waiting': return 2;
+      case 'served': return 3;
+      case 'removed': return 4;
+      default: return 5;
+    }
   }
 
   @override
@@ -503,19 +534,32 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
               } else {
                 // Traditional filtering for backward compatibility
                 filteredQueue = queue.where((item) {
-                  bool isActive = item.status == 'waiting' || item.status == 'in_consultation';
-                  bool isFinalizedWalkIn = (item.status == 'served' || item.status == 'removed') &&
-                                           (item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty);
+                  // Show all statuses in view queue screen for administrative purposes
                   bool statusMatch = _selectedStatusFilter == 'all' || item.status == _selectedStatusFilter;
                   bool todayMatch = _isToday(item.arrivalTime);
                   
-                  return (isActive || isFinalizedWalkIn) && statusMatch && todayMatch;
+                  // Apply search if present
+                  bool searchMatch = true;
+                  if (_searchQuery.isNotEmpty) {
+                    final lowerQuery = _searchQuery.toLowerCase();
+                    searchMatch = item.patientName.toLowerCase().contains(lowerQuery) ||
+                                 (item.patientId?.toLowerCase().contains(lowerQuery) ?? false) ||
+                                 item.queueNumber.toString().contains(_searchQuery);
+                  }
+                  
+                  return statusMatch && todayMatch && searchMatch;
                 }).toList();
                 
                 // Sort traditionally if B-Tree is not used for filtering
                 filteredQueue.sort((a, b) {
-                  if (a.status == 'in_consultation' && b.status != 'in_consultation') return -1;
-                  if (a.status != 'in_consultation' && b.status == 'in_consultation') return 1;
+                  // Priority sort: in_consultation > waiting > served > removed
+                  int statusPriorityA = _getStatusPriority(a.status);
+                  int statusPriorityB = _getStatusPriority(b.status);
+                  
+                  if (statusPriorityA != statusPriorityB) {
+                    return statusPriorityA.compareTo(statusPriorityB);
+                  }
+                  
                   if (a.queueNumber != 0 && b.queueNumber != 0) {
                     return a.queueNumber.compareTo(b.queueNumber);
                   }
@@ -825,8 +869,6 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       }
     }
   }
-
-  // ...existing code...
 
   // Helper method to check if a date is today
   bool _isToday(DateTime date) {

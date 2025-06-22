@@ -37,11 +37,7 @@ class PatientTrendsScreenState extends State<PatientTrendsScreen> {
 
       // 2. Fetch all queue items and filter for "Walk-ins"
       final allQueueItems = await ApiService.getAllQueueItems();
-      final walkInQueueItems = allQueueItems
-          .where((q) =>
-              q.originalAppointmentId == null ||
-              q.originalAppointmentId!.isEmpty)
-          .toList();
+      final walkInQueueItems = allQueueItems.where((q) => q.isWalkIn).toList();
 
       // --- Process Scheduled Appointments ---
       final scheduledMonthlyData = _calculateMonthlyTrendsForAppointments(allAppointments);
@@ -170,30 +166,44 @@ class PatientTrendsScreenState extends State<PatientTrendsScreen> {
     return ((currentMonth - lastMonth) / lastMonth) * 100;
   }
 
-  Map<String, int> _calculateServiceDistribution(List<List<Map<String, dynamic>>?> servicesList) {
-    if (servicesList.isEmpty) return {};
+  Map<String, int> _calculateServiceDistribution(
+      List<dynamic> items) {
+    if (items.isEmpty) return {};
     final serviceCounts = <String, int>{};
 
-    for (final services in servicesList) {
-      if (services != null) {
+    for (final item in items) {
+      List<Map<String, dynamic>>? services;
+      String? fallbackPurpose;
+
+      if (item is Appointment) {
+        services = item.selectedServices;
+        fallbackPurpose = item.consultationType;
+      } else if (item is ActivePatientQueueItem) {
+        services = item.selectedServices;
+        fallbackPurpose = item.conditionOrPurpose;
+      }
+
+      if (services != null && services.isNotEmpty) {
         for (final service in services) {
           final serviceName = service['name'] as String?;
           if (serviceName != null) {
-            serviceCounts[serviceName] = (serviceCounts[serviceName] ?? 0) + 1;
+            serviceCounts[serviceName] =
+                (serviceCounts[serviceName] ?? 0) + 1;
           }
         }
+      } else if (fallbackPurpose != null && fallbackPurpose.isNotEmpty) {
+        // Fallback: Parse the purpose string.
+        // This handles cases where structured data is missing but a summary exists.
+        final purposes = fallbackPurpose
+            .split(';')
+            .expand((e) => e.split(','))
+            .map((e) => e.trim().replaceAll('Other: ', ''))
+            .where((e) => e.isNotEmpty);
+
+        for (final purpose in purposes) {
+          serviceCounts[purpose] = (serviceCounts[purpose] ?? 0) + 1;
+        }
       }
-    }
-    
-    if (serviceCounts.length > 5) {
-      final sortedEntries = serviceCounts.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      final top5 = Map.fromEntries(sortedEntries.take(5));
-      final otherCount = sortedEntries.skip(5).fold(0, (sum, e) => sum + e.value);
-      if (otherCount > 0) {
-        top5['Other'] = otherCount;
-      }
-      return top5;
     }
     return serviceCounts;
   }
@@ -213,13 +223,11 @@ class PatientTrendsScreenState extends State<PatientTrendsScreen> {
   }
 
   Map<String, int> _calculateServiceDistributionForAppointments(List<Appointment> appointments) {
-    final servicesList = appointments.map((a) => a.selectedServices).toList();
-    return _calculateServiceDistribution(servicesList);
+    return _calculateServiceDistribution(appointments);
   }
 
   Map<String, int> _calculateServiceDistributionForQueueItems(List<ActivePatientQueueItem> queueItems) {
-    final servicesList = queueItems.map((q) => q.selectedServices).toList();
-    return _calculateServiceDistribution(servicesList);
+    return _calculateServiceDistribution(queueItems);
   }
 
   @override

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -10,6 +9,7 @@ import '../models/appointment.dart';
 import 'auth_service.dart';
 import 'dart:math';
 import 'api_service.dart';
+import 'package:uuid/uuid.dart';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -22,7 +22,7 @@ class QueueService {
   /// Get current active queue items from the database.
   /// By default, fetches 'waiting' and 'in_consultation' statuses.
   Future<List<ActivePatientQueueItem>> getActiveQueueItems(
-      {List<String>? statuses}) async {
+      {List<String> statuses = const ['waiting', 'in_consultation']}) async {
     return await _dbHelper.getActiveQueue(statuses: statuses);
   }
 
@@ -80,6 +80,7 @@ class QueueService {
       totalPrice: patientData['totalPrice'] as double?,
       doctorId: patientData['doctorId'] as String?,
       doctorName: patientData['doctorName'] as String?,
+      isWalkIn: patientData['isWalkIn'] as bool? ?? false,
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
@@ -174,7 +175,7 @@ class QueueService {
   /// Search patients in active queue by name or patient ID (partial matches).
   Future<List<ActivePatientQueueItem>> searchPatientsInQueue(
       String searchTerm) async {
-    final allQueueItems = await getActiveQueueItems(statuses: null);
+    final allQueueItems = await getActiveQueueItems(statuses: []);
     if (searchTerm.trim().isEmpty) {
       return allQueueItems
           .where((item) =>
@@ -271,6 +272,19 @@ class QueueService {
         if (kDebugMode) {
           print(
               'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
+        }
+
+        // If the new status is 'served', create a medical record for history.
+        if (newStatus.toLowerCase() == 'served') {
+          try {
+            await _createMedicalRecordForServedPatient(updatedItem);
+          } catch (e) {
+            if (kDebugMode) {
+              print('QueueService: Error creating medical record for served patient $queueEntryId: $e');
+            }
+            // Decide if this error should affect the overall success of the operation.
+            // For now, we log it but don't return false, as the primary status update succeeded.
+          }
         }
 
         // If it's a walk-in (no original appointment), create/update a corresponding Appointment record for history.
@@ -396,34 +410,8 @@ class QueueService {
 
   /// Mark patient as served in the active queue.
   Future<bool> markPatientAsServed(String queueEntryId) async {
-    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null || item.status == 'removed') return false;
-
-    final now = DateTime.now();
-    ActivePatientQueueItem updatedItem;
-
-    if (item.consultationStartedAt == null) {
-      updatedItem = item.copyWith(
-          status: 'served', servedAt: now, consultationStartedAt: now);
-    } else {
-      updatedItem = item.copyWith(status: 'served', servedAt: now);
-    }
-    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
-
-    if (result > 0 && updatedItem.originalAppointmentId != null) {
-      try {
-        await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Completed');
-        if (kDebugMode) {
-          print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Completed.');
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Completed: $e');
-        }
-        // Decide if this error should affect the return value of markPatientAsServed
-      }
-    }
-    return result > 0;
+    // Reroute to the central status update method to ensure all logic is applied.
+    return await updatePatientStatusInQueue(queueEntryId, 'served');
   }
 
   /// Mark patient as 'in_consultation' in the active queue.
@@ -739,91 +727,17 @@ class QueueService {
 
   /// Marks a patient as payment processed, updates status to Served, and original appointment to Completed.
   Future<bool> markPaymentSuccessfulAndServe(String queueEntryId) async {
-    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
-    if (item == null) {
-      if (kDebugMode) {
-        print('QueueService: Item $queueEntryId not found for payment processing.');
-      }
-      return false;
+    if (kDebugMode) {
+      print(
+          'QueueService: Marking payment as successful and status as served for queue entry $queueEntryId.');
     }
-
-    if (item.status.toLowerCase() != 'in_consultation') {
-      if (kDebugMode) {
-        print('QueueService: Item $queueEntryId is not In Consultation. Current status: ${item.status}. Cannot process payment unless in consultation.');
-      }
-      // Optionally show a message to the user or handle differently
-      // For now, just preventing the update if not 'in_consultation'
-      // Consider if 'waiting' patients should be allowed to pay and then be set to 'in_consultation' or 'served'
-      return false; 
-    }
-
-    final success = await updatePatientStatusInQueue(
+    // This updates the status to 'served', sets the servedAt timestamp,
+    // and also updates the payment status to 'Paid'.
+    return await updatePatientStatusInQueue(
       queueEntryId,
       'served',
       paymentStatus: 'Paid',
     );
-
-    if (success) {
-      if (kDebugMode) {
-        print('QueueService: Item $queueEntryId marked as Paid and Served.');
-      }
-
-      // After successful status update, create medical records for lab services
-      try {
-        final updatedItem = await _dbHelper.getActiveQueueItem(queueEntryId);
-        if (updatedItem != null &&
-            updatedItem.selectedServices != null &&
-            updatedItem.selectedServices!.isNotEmpty) {
-          final labServices =
-              updatedItem.selectedServices!.where((s) {
-            final category = s['category'] as String?;
-            return category != null && category.toLowerCase() == 'laboratory';
-          }).toList();
-
-          if (labServices.isNotEmpty) {
-            String? appointmentIdForRecord;
-            if (updatedItem.originalAppointmentId != null &&
-                updatedItem.originalAppointmentId!.isNotEmpty) {
-              appointmentIdForRecord = updatedItem.originalAppointmentId;
-            } else {
-              appointmentIdForRecord = 'walkin_${updatedItem.queueEntryId}';
-            }
-
-            for (var labService in labServices) {
-              final record = {
-                'patientId': updatedItem.patientId!,
-                'appointmentId': appointmentIdForRecord,
-                'serviceId': labService['id'],
-                'recordType': labService['name'] ?? 'Laboratory Test',
-                'recordDate': DateTime.now().toIso8601String(),
-                'diagnosis': 'Pending analysis',
-                'treatment': '',
-                'prescription': '',
-                'labResults': 'Result for ${labService['name']}: PENDING',
-                'notes': 'Record automatically generated after payment.',
-                'doctorId': updatedItem.doctorId ?? 'unknown_doctor_id',
-              };
-              await _dbHelper.insertMedicalRecord(record);
-            }
-            if (kDebugMode) {
-              print(
-                  'QueueService: Created ${labServices.length} placeholder medical records for lab services.');
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print(
-              'QueueService: Error creating placeholder medical records for lab services: $e');
-        }
-      }
-      return true;
-    } else {
-      if (kDebugMode) {
-        print('QueueService: Failed to update item $queueEntryId after payment.');
-      }
-      return false;
-    }
   }
 
   // Helper function to check if two DateTime objects represent the same day.
@@ -831,6 +745,31 @@ class QueueService {
     return date1.year == date2.year &&
            date1.month == date2.month &&
            date1.day == date2.day;
+  }
+
+  Future<void> _createMedicalRecordForServedPatient(ActivePatientQueueItem item) async {
+    final db = await _dbHelper.database;
+    final now = DateTime.now();
+
+    // Prepare the notes from the services provided
+    String notes = 'Consultation for: ${item.conditionOrPurpose}';
+
+    final medicalRecordData = {
+      'id': const Uuid().v4(), // Generate a unique ID for the record
+      'patientId': item.patientId,
+      'doctorId': item.doctorId,
+      'recordDate': now.toIso8601String(),
+      'recordType': 'Consultation', // This is the key for the history screen
+      'notes': notes,
+      'diagnosis': 'See consultation details.', // Placeholder
+      'createdAt': now.toIso8601String(),
+      'updatedAt': now.toIso8601String(),
+    };
+
+    await db.insert('medical_records', medicalRecordData);
+    if (kDebugMode) {
+      print('Successfully created a medical record for served patient: ${item.patientName}');
+    }
   }
 }
 

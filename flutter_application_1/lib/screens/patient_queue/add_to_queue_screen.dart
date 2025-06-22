@@ -301,7 +301,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         }).toList();
 
         if (todaysAppointments.isNotEmpty) {
-          // ignore: use_build_context_synchronously
+          if (!mounted) return;
           bool? proceedDespiteAppointment = await showDialog<bool>(
             context: context,
             barrierDismissible: false,
@@ -356,6 +356,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           final calculatedAge =
               dbBirthDate != null ? _calculateAge(dbBirthDate) : null;
 
+          if (!mounted) return;
           bool confirmUseDbData = await showDialog(
                 context: context,
                 barrierDismissible: false,
@@ -429,50 +430,59 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           // Proceed to add to queue with final chosen/confirmed details
           final now = DateTime.now();
 
-          String conditionSummary =
-              _selectedServices.map((s) => s.serviceName).join(', ');
-          if (_showOtherConditionField &&
-              _otherConditionController.text.trim().isNotEmpty) {
+          String conditionSummary = _selectedServices.map((s) => s.serviceName).join(', ');
+          if (_showOtherConditionField && _otherConditionController.text.trim().isNotEmpty) {
             if (conditionSummary.isNotEmpty) {
-              conditionSummary +=
-                  "; Other: ${_otherConditionController.text.trim()}";
+              conditionSummary += "; Other: ${_otherConditionController.text.trim()}";
             } else {
               conditionSummary = _otherConditionController.text.trim();
             }
           }
-          if (conditionSummary.isEmpty) conditionSummary = "Not specified";
+          if (conditionSummary.isEmpty) conditionSummary = "General Consultation";
 
-          final List<Map<String, dynamic>> servicesForQueue = _selectedServices
-              .map((service) => {
-                    'id': service.id, // Store ID for reference
-                    'name': service.serviceName,
-                    'category': service.category ?? 'Uncategorized',
-                    'price': service.defaultPrice ?? 0.0,
-                    // selectionCount is not directly needed for queue item, but for DB update
-                  })
-              .toList();
+          final List<Map<String, dynamic>> servicesForDb = _selectedServices.map((service) => {
+            'id': service.id,
+            'name': service.serviceName,
+            'category': service.category ?? 'Uncategorized',
+            'price': service.defaultPrice ?? 0.0,
+          }).toList();
 
-          final newPatientQueueData = {
-            'name': finalPatientNameToUse,
-            'patientId':
-                finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
+          // 1. Create a corresponding Appointment record for this walk-in encounter.
+          // This ensures that walk-ins are treated like appointments for historical records.
+          final walkInAppointment = Appointment(
+            id: '', // DB will generate ID
+            patientId: finalPatientIdToUse,
+            doctorId: _selectedDoctor!.id,
+            date: now,
+            time: TimeOfDay.fromDateTime(now),
+            status: 'Waiting', // Represents a patient who has arrived and is in the queue
+            consultationType: conditionSummary,
+            selectedServices: servicesForDb,
+            totalPrice: _totalPrice,
+            createdAt: now,
+            isWalkIn: true,
+            notes: 'Walk-in patient added to queue.',
+            paymentStatus: 'Pending',
+          );
+
+          // Save the appointment to get its database-generated ID
+          final savedAppointment = await ApiService.saveAppointment(walkInAppointment);
+
+          // 2. Now, add the patient to the live queue, linking it to the created appointment record.
+          await widget.queueService.addPatientDataToQueue({
+            'patientName': finalPatientNameToUse,
+            'patientId': finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
             'arrivalTime': now.toIso8601String(),
-            'addedTime': now.toIso8601String(),
+            'status': 'waiting',
             'gender': finalGenderToUse,
             'age': finalAgeToUse,
-            // 'condition': _conditionController.text.trim().isEmpty // Replaced
-            //     ? 'General consultation'
-            //     : _conditionController.text.trim(),
-            'condition': conditionSummary,
-            'status': 'waiting',
-            'selectedServices': servicesForQueue, // Added
-            'totalPrice': _totalPrice, // Added
-          };
-
-          await widget.queueService.addPatientDataToQueue({
-            ...newPatientQueueData,
-            'doctorId': _selectedDoctor?.id, // ADDED
-            'doctorName': _selectedDoctor?.fullName, // ADDED
+            'conditionOrPurpose': conditionSummary,
+            'selectedServices': servicesForDb,
+            'totalPrice': _totalPrice,
+            'isWalkIn': true,
+            'originalAppointmentId': savedAppointment.id, // Link to the persistent appointment record
+            'doctorId': _selectedDoctor?.id,
+            'doctorName': _selectedDoctor?.fullName,
           });
 
           // ---- Increment service usage count ----
@@ -520,6 +530,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           }); // Trigger rebuild to update queue list display
         } else {
           // Patient not found in the database
+          if (!mounted) return;
           await showDialog(
             context: context,
             builder: (context) => AlertDialog(
@@ -534,7 +545,6 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
               ],
             ),
           );
-          if (!mounted) return;
         }
       } catch (e) {
         if (!mounted) return;
@@ -1348,6 +1358,5 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     super.dispose();
   }
 }
-
 
 

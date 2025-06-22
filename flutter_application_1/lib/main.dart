@@ -20,7 +20,7 @@ void main() async {
   if (!kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.linux ||
-          defaultTargetPlatform == TargetPlatform.macOS)) {
+          defaultTargetPlatform == TargetPlatform.macOS)) { 
     // Initialize FFI for desktop platforms
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;

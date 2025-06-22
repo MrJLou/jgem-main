@@ -15,11 +15,6 @@ class PaymentHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Placeholder onTap actions - replace with actual navigation
-    placeholderOnTap() {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Navigation to be implemented.')),
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(
@@ -124,17 +119,6 @@ class PaymentHubScreen extends StatelessWidget {
                           MaterialPageRoute(builder: (context) => const ReceiptsScreen()),
                         );
                       },
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFeatureCard(
-                      // Changed to _buildFeatureCard
-                      context,
-                      icon: Icons
-                          .settings_applications_outlined, // More specific icon
-                      title: 'Payment Settings',
-                      subtitle: 'Configure payment methods and options',
-                      color: Colors.teal[400]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
                     ),
                   ],
                 ),

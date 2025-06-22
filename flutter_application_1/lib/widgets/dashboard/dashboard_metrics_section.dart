@@ -1,4 +1,5 @@
 // Metrics section widget for dashboard
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
@@ -15,21 +16,34 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
   int _currentQueueNumber = 0;
   int _availableDoctors = 0;
   bool _isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadMetrics();
+    
+    // Refresh metrics every 20 seconds to catch queue changes
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      if (mounted) {
+        _loadMetrics();
+      }
+    });
   }
-  Future<void> _loadMetrics() async {
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }  Future<void> _loadMetrics() async {
     try {
       // Get today's date
       final today = DateTime.now();
 
-      // Load appointments for today
+      // Load appointments for today - count all appointments including completed for total count
       final todayAppointments = await ApiService.getAppointments(today);
       
-      // Load current queue and count active patients
+      // Load current queue and count only active patients (waiting + in_consultation)
       final queueService = QueueService();
       final activeQueueItems = await queueService.getActiveQueueItems(
         statuses: ['waiting', 'in_consultation']
@@ -42,7 +56,7 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
       if (mounted) {
         setState(() {
           _totalAppointmentsToday = todayAppointments.length;
-          _currentQueueNumber = activeQueueItems.length;
+          _currentQueueNumber = activeQueueItems.length; // Only active patients in queue
           _availableDoctors = doctors.length;
           _isLoading = false;
         });

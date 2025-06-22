@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,11 +6,15 @@ import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
+import 'package:uuid/uuid.dart';
+import '../../models/active_patient_queue_item.dart';
+import '../../models/patient.dart';
+import '../../services/auth_service.dart';
 import '../../services/database_helper.dart';
 import '../../services/pdf_invoice_service.dart';
+import '../../services/queue_service.dart';
 import '../payment/payment_screen.dart';
-import '../../models/patient.dart';
-import '../../models/active_patient_queue_item.dart';
+import '../patient_queue/view_queue_screen.dart';
 
 class PendingBillsScreen extends StatefulWidget {
   const PendingBillsScreen({super.key});
@@ -22,6 +27,9 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   final TextEditingController _patientIdController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
+  final QueueService _queueService = QueueService();
+  final AuthService _authService = AuthService();
+  static const Uuid _uuid = Uuid();
   
   List<Map<String, dynamic>> _pendingBills = [];
   bool _isLoading = false;
@@ -110,7 +118,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   }
 
   Future<void> _handlePrintOrSaveBill(Map<String, dynamic> bill,
-      {required bool isPrinting}) async {
+      {required bool isPrinting, bool markAsPaid = false}) async {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
       if (!mounted) return;
@@ -119,34 +127,81 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       return;
     }
 
-    // Since the bill card already has most patient info, we can use that
-    // and fetch bill items separately for a complete invoice.
-    final patientDetails = {
-      'fullName': bill['patient_name'],
-      'id': bill['patientId'],
-      // Add other patient details if available and needed by the PDF service
-    };
-
     setState(() => _isLoading = true);
+
     try {
-      // Fetch only the items for the bill, as we have the rest of the data.
+      if (markAsPaid) {
+        final currentUserId = await _authService.getCurrentUserId();
+        if (currentUserId == null) {
+          throw Exception('User not logged in.');
+        }
+
+        final billId = bill['id'] as String;
+        final patientId = bill['patientId'] as String?;
+        final totalAmount = (bill['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        
+        // Create payment record
+        final uuidString = _uuid.v4().replaceAll('-', '');
+        final referenceNumber = 'PAY-${uuidString.substring(0, 8).toUpperCase()}';
+        final paymentDateTime = DateTime.now();
+        final paymentData = {
+          'billId': billId,
+          'patientId': patientId,
+          'referenceNumber': referenceNumber,
+          'paymentDate': paymentDateTime.toIso8601String(),
+          'amountPaid': totalAmount, // Assuming full amount is paid
+          'paymentMethod': 'Cash', // Defaulting to Cash
+          'receivedByUserId': currentUserId,
+          'notes': 'Payment marked as paid from Pending Bills screen for Invoice #: $invoiceNumber',
+          'totalBillAmount': totalAmount,
+        };
+        await _dbHelper.insertPayment(paymentData);
+
+        // Update queue status
+        if (patientId != null) {
+          final queueItem = await _queueService.findPatientInQueue(patientId);
+          if (queueItem != null) {
+            await _queueService.markPaymentSuccessfulAndServe(queueItem.queueEntryId);
+          }
+        }
+        
+        await _dbHelper.logUserActivity(
+          currentUserId,
+          'Marked bill as paid and saved for invoice $invoiceNumber',
+          targetRecordId: billId,
+          targetTable: DatabaseHelper.tablePatientBills,
+          details: jsonEncode({'paymentReference': referenceNumber, 'amountPaid': totalAmount}),
+        );
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invoice $invoiceNumber marked as paid.'), backgroundColor: Colors.green),
+        );
+        
+        // Refresh queue displays after marking payment
+        ViewQueueScreen.refreshDashboardAfterPayment();
+      }
+
+      // PDF generation part, runs for all cases
+      final patientDetails = {
+        'fullName': bill['patient_name'],
+        'id': bill['patientId'],
+      };
+
       final billItems = await _dbHelper.getBillItems(bill['id']);
 
       final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
-        // The service expects specific object types, so we build them
         patientDetails: Patient.fromJson(patientDetails),
         invoiceNumber: invoiceNumber,
         invoiceDate: DateTime.parse(bill['billDate']),
-        // Create a temporary queue item to pass service details
         queueItem: ActivePatientQueueItem(
-          queueEntryId: '', // Not needed for PDF
+          queueEntryId: '',
           patientId: bill['patientId'],
           patientName: bill['patient_name'],
           arrivalTime: DateTime.now(),
           queueNumber: 0,
-          status: 'unpaid',
+          status: markAsPaid ? 'paid' : 'unpaid', // Reflect status in PDF
           createdAt: DateTime.now(),
-          // Convert bill items to the format expected by the service
           selectedServices: billItems.map((item) {
             return {
               'name': item['description'],
@@ -169,9 +224,12 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         await file.writeAsBytes(pdfBytes);
 
         if (!mounted) return;
+        final message = markAsPaid
+            ? 'Paid invoice saved to: $filePath'
+            : 'Unpaid bill saved to: $filePath';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Bill saved to: $filePath'),
+            content: Text(message),
             action: SnackBarAction(
                 label: 'Open', onPressed: () => OpenFilex.open(filePath)),
           ),
@@ -181,12 +239,15 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Error generating bill PDF: ${e.toString()}'),
+            content: Text('Error processing bill: ${e.toString()}'),
             backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+        if (markAsPaid) {
+          _loadAllPendingBills(); // Refresh the list
+        }
       }
     }
   }
@@ -571,23 +632,33 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                   icon: const Icon(Icons.payment, size: 16),
                   label: const Text('Process Payment'),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.print_outlined, size: 16),
-                  label: const Text('Print Bill'),
-                  onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: true),
-                ),
                 const SizedBox(width: 8),
-                TextButton.icon(
-                  icon: const Icon(Icons.save_alt_outlined, size: 16),
-                  label: const Text('Save Bill'),
-                  onPressed: () =>
-                      _handlePrintOrSaveBill(bill, isPrinting: false),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.print_outlined, size: 16),
+                      label: const Text('Print Bill'),
+                      onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: true),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      icon: const Icon(Icons.save_alt_outlined, size: 16),
+                      label: const Text('Save Bill'),
+                      onPressed: () =>
+                          _handlePrintOrSaveBill(bill, isPrinting: false),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.check_circle_outline, size: 16),
+                      label: const Text('Mark Paid'),
+                      onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: false, markAsPaid: true),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                    )
+                  ],
                 ),
               ],
             ),

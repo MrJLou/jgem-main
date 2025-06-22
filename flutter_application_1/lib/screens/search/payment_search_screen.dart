@@ -416,11 +416,13 @@ class PaymentSearchScreenState extends State<PaymentSearchScreen> {
             _selectedPaymentType == 'all' ? null : _selectedPaymentType,
       );
 
+      if (!mounted) return;
       setState(() {
         _paymentResults = results;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _paymentResults = [];
