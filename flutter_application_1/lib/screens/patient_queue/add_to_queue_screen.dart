@@ -56,7 +56,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   // Predefined services - Will be fetched from DB
   List<ClinicService> _availableServices = []; // Changed to List<ClinicService>
   List<ClinicService> _selectedServices = []; // Changed to List<ClinicService>
-  Map<String, bool> _serviceSelectionState = {}; // To track selection in the dialog
+  Map<String, bool> _serviceSelectionState =
+      {}; // To track selection in the dialog
 
   // ADDED - Doctor selection state
   List<User> _doctors = [];
@@ -210,7 +211,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   void _onPatientSearchChanged(String query) {
-    if (_patientSearchDebounce?.isActive ?? false) _patientSearchDebounce!.cancel();
+    if (_patientSearchDebounce?.isActive ?? false) {
+      _patientSearchDebounce!.cancel();
+    }
     _patientSearchDebounce = Timer(const Duration(milliseconds: 500), () {
       _searchPatients(query);
     });
@@ -269,29 +272,34 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       if (enteredPatientId.isNotEmpty) {
         patientIdForAppointmentCheck = enteredPatientId;
       }
-      
-      final Map<String, dynamic>? preliminaryRegisteredPatientData = await _dbHelper.findRegisteredPatient(
-          patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
-          fullName: enteredPatientName,
+
+      final Map<String, dynamic>? preliminaryRegisteredPatientData =
+          await _dbHelper.findRegisteredPatient(
+        patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
+        fullName: enteredPatientName,
       );
 
       if (preliminaryRegisteredPatientData != null) {
-          final patient = Patient.fromJson(preliminaryRegisteredPatientData);
-          if (patient.id.isNotEmpty) {
-            patientIdForAppointmentCheck = patient.id;
-          }
+        final patient = Patient.fromJson(preliminaryRegisteredPatientData);
+        if (patient.id.isNotEmpty) {
+          patientIdForAppointmentCheck = patient.id;
+        }
       }
 
-
-      if (patientIdForAppointmentCheck != null && patientIdForAppointmentCheck.isNotEmpty) {
-        final List<Appointment> patientAppointments = await _appointmentDbService.getPatientAppointments(patientIdForAppointmentCheck);
+      if (patientIdForAppointmentCheck != null &&
+          patientIdForAppointmentCheck.isNotEmpty) {
+        final List<Appointment> patientAppointments =
+            await _appointmentDbService
+                .getPatientAppointments(patientIdForAppointmentCheck);
         if (!mounted) return;
         final DateTime today = DateTime.now();
         final todaysAppointments = patientAppointments.where((appt) {
           return appt.date.year == today.year &&
-                 appt.date.month == today.month &&
-                 appt.date.day == today.day &&
-                 (appt.status.toLowerCase() == 'scheduled' || appt.status.toLowerCase() == 'confirmed' || appt.status.toLowerCase() == 'in consultation');
+              appt.date.month == today.month &&
+              appt.date.day == today.day &&
+              (appt.status.toLowerCase() == 'scheduled' ||
+                  appt.status.toLowerCase() == 'confirmed' ||
+                  appt.status.toLowerCase() == 'in consultation');
         }).toList();
 
         if (todaysAppointments.isNotEmpty) {
@@ -301,7 +309,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             barrierDismissible: false,
             builder: (BuildContext dialogContext) {
               String appointmentsSummary = todaysAppointments
-                  .map((a) => "${a.consultationType} at ${a.time.format(dialogContext)}")
+                  .map((a) =>
+                      "${a.consultationType} at ${a.time.format(dialogContext)}")
                   .join(", ");
               return AlertDialog(
                 title: const Text('Existing Appointment Found'),
@@ -313,7 +322,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     onPressed: () => Navigator.of(dialogContext).pop(false),
                   ),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.teal),
                     onPressed: () => Navigator.of(dialogContext).pop(true),
                     child: const Text('Yes, Add to Queue'),
                   ),
@@ -335,7 +345,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       });
 
       try {
-        final Map<String, dynamic>? registeredPatientData = await _dbHelper.findRegisteredPatient(
+        final Map<String, dynamic>? registeredPatientData =
+            await _dbHelper.findRegisteredPatient(
           patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
           fullName: enteredPatientName,
         );
@@ -343,7 +354,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         if (registeredPatientData != null) {
           final registeredPatient = Patient.fromJson(registeredPatientData);
           // Patient found in the database
-          final calculatedAge = _calculateAge(registeredPatient.birthDate.toIso8601String());
+          final calculatedAge =
+              _calculateAge(registeredPatient.birthDate.toIso8601String());
 
           if (!mounted) return;
           bool confirmUseDbData = await showDialog(
@@ -360,11 +372,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         Text('DB ID: ${registeredPatient.id}'),
                         Text('DB Name: ${registeredPatient.fullName}'),
                         Text('DB Gender: ${registeredPatient.gender}'),
-                        Text('DB BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
+                        Text(
+                            'DB BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
                         Text(
                             'Calculated Age: ${calculatedAge?.toString() ?? 'N/A'}'),
                         const SizedBox(height: 15),
-                        const Text('Do you want to use these details for the queue?'),
+                        const Text(
+                            'Do you want to use these details for the queue?'),
                       ],
                     ),
                   ),
@@ -415,28 +429,36 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           // Proceed to add to queue with final chosen/confirmed details
           final now = DateTime.now();
 
-          String conditionSummary = _selectedServices.map((s) => s.serviceName).join(', ');
-          if (_showOtherConditionField && _otherConditionController.text.trim().isNotEmpty) {
+          String conditionSummary =
+              _selectedServices.map((s) => s.serviceName).join(', ');
+          if (_showOtherConditionField &&
+              _otherConditionController.text.trim().isNotEmpty) {
             if (conditionSummary.isNotEmpty) {
-              conditionSummary += "; Other: ${_otherConditionController.text.trim()}";
+              conditionSummary +=
+                  "; Other: ${_otherConditionController.text.trim()}";
             } else {
               conditionSummary = _otherConditionController.text.trim();
             }
           }
-          if (conditionSummary.isEmpty) conditionSummary = "General Consultation";
+          if (conditionSummary.isEmpty) {
+            conditionSummary = "General Consultation";
+          }
 
-          final List<Map<String, dynamic>> servicesForDb = _selectedServices.map((service) => {
-            'id': service.id,
-            'name': service.serviceName,
-            'category': service.category ?? 'Uncategorized',
-            'price': service.defaultPrice ?? 0.0,
-          }).toList();
+          final List<Map<String, dynamic>> servicesForDb = _selectedServices
+              .map((service) => {
+                    'id': service.id,
+                    'name': service.serviceName,
+                    'category': service.category ?? 'Uncategorized',
+                    'price': service.defaultPrice ?? 0.0,
+                  })
+              .toList();
 
           // Walk-in patients are added directly to the queue and do not create a separate appointment record.
           // This keeps walk-ins distinct from scheduled appointments.
           await widget.queueService.addPatientDataToQueue({
             'patientName': finalPatientNameToUse,
-            'patientId': finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
+            'patientId':
+                finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
             'arrivalTime': now.toIso8601String(),
             'status': 'waiting',
             'gender': finalGenderToUse,
@@ -452,11 +474,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
           // ---- Increment service usage count ----
           if (_selectedServices.isNotEmpty) {
-            final List<String> selectedServiceIds = _selectedServices.map((s) => s.id).toList();
+            final List<String> selectedServiceIds =
+                _selectedServices.map((s) => s.id).toList();
             try {
               await ApiService.incrementServiceUsage(selectedServiceIds);
               if (kDebugMode) {
-                print('Successfully incremented usage for services: $selectedServiceIds');
+                print(
+                    'Successfully incremented usage for services: $selectedServiceIds');
               }
             } catch (e) {
               if (kDebugMode) {
@@ -485,10 +509,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           setState(() {
             _selectedDoctor = null; // ADDED
             // _selectedServices // Reset selection states - handled by _serviceSelectionState
-            //     .forEach((s) => s.isSelected = false); 
+            //     .forEach((s) => s.isSelected = false);
             _selectedServices.clear();
-             _serviceSelectionState = { // Reset selection states
-              for (var service in _availableServices) service.id: _selectedServices.any((s) => s.id == service.id)
+            _serviceSelectionState = {
+              // Reset selection states
+              for (var service in _availableServices)
+                service.id: _selectedServices.any((s) => s.id == service.id)
             };
             _totalPrice = 0.0;
             _showOtherConditionField = false;
@@ -533,10 +559,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   void _openServiceSelectionDialog() {
     // Reset isSelected state for all available services before opening dialog
     // Use a temporary map to manage selections within the dialog
-    Map<String, bool> currentDialogSelectionState = Map.from(_serviceSelectionState);
-    
+    Map<String, bool> currentDialogSelectionState =
+        Map.from(_serviceSelectionState);
+
     // Preserve the current "Other" text and selection state for the dialog
-    TextEditingController dialogOtherController = TextEditingController(text: _otherConditionController.text);
+    TextEditingController dialogOtherController =
+        TextEditingController(text: _otherConditionController.text);
     bool currentShowOtherField = _showOtherConditionField;
 
     showDialog(
@@ -551,13 +579,14 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
             Map<String, List<ClinicService>> groupedServices = {};
             for (var service in _availableServices) {
-              (groupedServices[service.category ?? 'Uncategorized'] ??= []).add(service);
+              (groupedServices[service.category ?? 'Uncategorized'] ??= [])
+                  .add(service);
             }
             // Ensure 'Consultation' and 'Laboratory' appear first if they exist, then others.
             List<String> categoryOrder = ['Consultation', 'Laboratory'];
             List<String> allCategories = groupedServices.keys.toList();
-            categoryOrder.addAll(allCategories.where((cat) => !categoryOrder.contains(cat)));
-
+            categoryOrder.addAll(
+                allCategories.where((cat) => !categoryOrder.contains(cat)));
 
             return AlertDialog(
               title: const Text('Select Services / Purpose of Visit'),
@@ -566,38 +595,59 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                 child: ListBody(
                   children: <Widget>[
                     if (_availableServices.isEmpty)
-                      const Center(child: Padding(
+                      const Center(
+                          child: Padding(
                         padding: EdgeInsets.all(16.0),
-                        child: Text("No services available. Please add services in settings."),
+                        child: Text(
+                            "No services available. Please add services in settings."),
                       )),
-                    ...categoryOrder.where((cat) => groupedServices.containsKey(cat)).expand((category) => [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10.0, bottom: 4.0),
-                        child: Text(category, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal[700], fontSize: 16)),
-                      ),
-                      ...groupedServices[category]!.map((service) => CheckboxListTile(
-                            title: Text(
-                                '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
-                                style: const TextStyle(fontSize: 14)),
-                            value: currentDialogSelectionState[service.id] ?? false,
-                            onChanged: (bool? value) {
-                              setDialogState(() {
-                                currentDialogSelectionState[service.id] = value!;
-                                currentDialogPrice = _availableServices
-                                    .where((s) => currentDialogSelectionState[s.id] == true)
-                                    .fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
-                              });
-                            },
-                            dense: true,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            activeColor: Colors.teal,
-                          )),
-                      const Divider(),
-                    ]),
-                    
+                    ...categoryOrder
+                        .where((cat) => groupedServices.containsKey(cat))
+                        .expand((category) => [
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                    top: 10.0, bottom: 4.0),
+                                child: Text(category,
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.teal[700],
+                                        fontSize: 16)),
+                              ),
+                              ...groupedServices[category]!.map((service) =>
+                                  CheckboxListTile(
+                                    title: Text(
+                                        '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
+                                        style: const TextStyle(fontSize: 14)),
+                                    value: currentDialogSelectionState[
+                                            service.id] ??
+                                        false,
+                                    onChanged: (bool? value) {
+                                      setDialogState(() {
+                                        currentDialogSelectionState[
+                                            service.id] = value!;
+                                        currentDialogPrice = _availableServices
+                                            .where((s) =>
+                                                currentDialogSelectionState[
+                                                    s.id] ==
+                                                true)
+                                            .fold(
+                                                0.0,
+                                                (sum, item) =>
+                                                    sum +
+                                                    (item.defaultPrice ?? 0.0));
+                                      });
+                                    },
+                                    dense: true,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    activeColor: Colors.teal,
+                                  )),
+                              const Divider(),
+                            ]),
                     CheckboxListTile(
                       title: const Text("Other Purpose (Specify below)",
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal)),
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.normal)),
                       value: currentShowOtherField,
                       onChanged: (bool? value) {
                         setDialogState(() {
@@ -610,15 +660,17 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     ),
                     if (currentShowOtherField)
                       Padding(
-                        padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
+                        padding: const EdgeInsets.only(
+                            left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
                         child: TextFormField(
-                          controller: dialogOtherController, // Use dialogOtherController here
+                          controller:
+                              dialogOtherController, // Use dialogOtherController here
                           decoration: const InputDecoration(
                               labelText: 'Specify other purpose or details',
                               border: OutlineInputBorder(),
-                              hintText: 'e.g., Medical Certificate, Fit to Work',
-                              isDense: true
-                          ),
+                              hintText:
+                                  'e.g., Medical Certificate, Fit to Work',
+                              isDense: true),
                           maxLines: 2,
                           style: const TextStyle(fontSize: 14),
                         ),
@@ -634,15 +686,17 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                             color: Colors.green[700]),
                       ),
                     ),
-                     const SizedBox(height: 10),
+                    const SizedBox(height: 10),
                   ],
                 ),
               ),
               actionsAlignment: MainAxisAlignment.end,
-              actionsPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               actions: <Widget>[
                 TextButton(
-                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Colors.grey)),
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
                   },
@@ -652,17 +706,23 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)
-                  ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      textStyle: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold)),
                   onPressed: () {
                     setState(() {
-                      _serviceSelectionState = Map.from(currentDialogSelectionState);
-                      _selectedServices = _availableServices.where((s) => _serviceSelectionState[s.id] == true).toList();
-                      _totalPrice = _selectedServices.fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
+                      _serviceSelectionState =
+                          Map.from(currentDialogSelectionState);
+                      _selectedServices = _availableServices
+                          .where((s) => _serviceSelectionState[s.id] == true)
+                          .toList();
+                      _totalPrice = _selectedServices.fold(
+                          0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
                       _showOtherConditionField = currentShowOtherField;
                       if (currentShowOtherField) {
-                        _otherConditionController.text = dialogOtherController.text.trim();
+                        _otherConditionController.text =
+                            dialogOtherController.text.trim();
                       } else {
                         _otherConditionController.clear();
                       }
@@ -739,7 +799,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                   controller: _searchController,
                                   decoration: InputDecoration(
                                     labelText: 'Search Patient by Name or ID',
-                                    hintText: 'Type patient name or ID to search...',
+                                    hintText:
+                                        'Type patient name or ID to search...',
                                     prefixIcon: _isLoading
                                         ? Transform.scale(
                                             scale: 0.5,
@@ -750,7 +811,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    suffixIcon: _searchController.text.isNotEmpty
+                                    suffixIcon: _searchController
+                                            .text.isNotEmpty
                                         ? IconButton(
                                             icon: const Icon(Icons.clear),
                                             onPressed: () {
@@ -767,16 +829,20 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                   ),
                                   onChanged: _onPatientSearchChanged,
                                 ),
-                                if (_searchResults != null && _searchResults!.isNotEmpty)
+                                if (_searchResults != null &&
+                                    _searchResults!.isNotEmpty)
                                   _buildSearchResultsList(),
-                                if (_searchResults != null && _searchResults!.isEmpty && _searchController.text.isNotEmpty)
+                                if (_searchResults != null &&
+                                    _searchResults!.isEmpty &&
+                                    _searchController.text.isNotEmpty)
                                   Container(
                                     margin: const EdgeInsets.only(top: 4),
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
                                       color: Colors.grey[50],
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey[300]!),
+                                      border:
+                                          Border.all(color: Colors.grey[300]!),
                                     ),
                                     child: Text(
                                       'No patients found matching "${_searchController.text}"',
@@ -804,7 +870,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                               decoration: const InputDecoration(
                                 labelText: 'Assign Doctor *',
                                 border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.medical_services_outlined),
+                                prefixIcon:
+                                    Icon(Icons.medical_services_outlined),
                               ),
                               value: _selectedDoctor,
                               hint: const Text('Select a Doctor'),
@@ -823,8 +890,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                   _selectedDoctor = newValue;
                                 });
                               },
-                              validator: (value) =>
-                                  value == null ? 'Please select a doctor' : null,
+                              validator: (value) => value == null
+                                  ? 'Please select a doctor'
+                                  : null,
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -850,14 +918,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     decoration: const InputDecoration(
                                         labelText: 'Gender (from DB)',
                                         border: OutlineInputBorder(),
-                                        prefixIcon:
-                                            Icon(Icons.person_outline)),
+                                        prefixIcon: Icon(Icons.person_outline)),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 16),
-                            
+
                             // New Service Selection UI
                             Text('Services / Purpose of Visit',
                                 style: TextStyle(
@@ -901,8 +968,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                               ),
                             if (_selectedServices.isNotEmpty ||
                                 (_showOtherConditionField &&
-                                    _otherConditionController
-                                        .text.isNotEmpty))
+                                    _otherConditionController.text.isNotEmpty))
                               Padding(
                                 padding: const EdgeInsets.only(top: 12.0),
                                 child: Text(
@@ -1078,7 +1144,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
               itemBuilder: (context, index) {
                 final patient = _searchResults![index];
                 final age = _calculateAge(patient.birthDate.toIso8601String());
-                
+
                 return ListTile(
                   leading: CircleAvatar(
                     radius: 20,
@@ -1114,11 +1180,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       _searchController.text = patient.fullName;
                       _patientIdController.text = patient.id;
                       _ageController.text = age?.toString() ?? '';
-                      _genderController.text = patient.gender ?? '';
+                      _genderController.text = patient.gender;
                       _searchResults = null;
                     });
                   },
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 4.0),
                   dense: false,
                   tileColor: Colors.white,
                   hoverColor: Colors.teal.withAlpha(20),
@@ -1196,7 +1263,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     ? 2
                     : (text == 'Purpose')
                         ? 2
-                        : (text == 'Doctor') ? 2 : (text == 'Status') ? 2 : 1), // ADDED
+                        : (text == 'Doctor')
+                            ? 2
+                            : (text == 'Status')
+                                ? 2
+                                : 1), // ADDED
             child: Text(text,
                 style: const TextStyle(
                     color: Colors.white,
@@ -1232,7 +1303,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           Expanded(
               flex: 1,
               child: Text(item.queueNumber.toString(),
-                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13))),
           Expanded(
               flex: 2,
               child: Text(
@@ -1244,21 +1316,25 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           Expanded(
               flex: 2,
               child: Text(item.patientId ?? 'N/A',
-                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
-          Expanded( // ADDED Doctor column
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13))),
+          Expanded(
+              // ADDED Doctor column
               flex: 2,
               child: Tooltip(
                 message: "Dr. $doctorText",
-                child: Text("Dr. $doctorText",
-                    textAlign: TextAlign.center, 
-                    style: const TextStyle(fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
+                child: Text(
+                  "Dr. $doctorText",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
                 ),
               )),
           Expanded(
               flex: 1,
               child: Text(arrivalDisplayTime,
-                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 13))),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13))),
           Expanded(
               flex: 2,
               child: Tooltip(
@@ -1327,5 +1403,3 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     super.dispose();
   }
 }
-
-

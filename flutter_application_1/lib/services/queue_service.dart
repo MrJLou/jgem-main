@@ -73,13 +73,14 @@ class QueueService {
       status: patientData['status']?.toString() ?? 'waiting',
       createdAt: now,
       addedByUserId: currentUserId,
-      selectedServices:
-          (patientData['selectedServices'] as List?)?.cast<Map<String, dynamic>>(),
+      selectedServices: (patientData['selectedServices'] as List?)
+          ?.cast<Map<String, dynamic>>(),
       totalPrice: (patientData['totalPrice'] as num?)?.toDouble() ?? 0.0,
       doctorId: patientData['doctorId']?.toString() ?? '',
       doctorName: patientData['doctorName']?.toString() ?? '',
       isWalkIn: patientData['isWalkIn'] as bool? ?? false,
-      originalAppointmentId: patientData['originalAppointmentId']?.toString() ?? '',
+      originalAppointmentId:
+          patientData['originalAppointmentId']?.toString() ?? '',
     );
 
     return await _dbHelper.addToActiveQueue(newItem);
@@ -93,12 +94,14 @@ class QueueService {
       // It returns the item, so we assume success if no exception.
       await _dbHelper.addToActiveQueue(queueItem);
       if (kDebugMode) {
-        print('QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
+        print(
+            'QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
       }
       return true; // Return true on success
     } catch (e) {
       if (kDebugMode) {
-        print("QueueService: Error in addPatientToQueue for ${queueItem.patientName}: $e");
+        print(
+            "QueueService: Error in addPatientToQueue for ${queueItem.patientName}: $e");
       }
       return false; // Return false on failure
     }
@@ -135,13 +138,16 @@ class QueueService {
 
     if (result > 0 && updatedItem.originalAppointmentId != null) {
       try {
-        await ApiService.updateAppointmentStatus(updatedItem.originalAppointmentId!, 'Cancelled');
+        await ApiService.updateAppointmentStatus(
+            updatedItem.originalAppointmentId!, 'Cancelled');
         if (kDebugMode) {
-          print('QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+          print(
+              'QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
         }
       } catch (e) {
         if (kDebugMode) {
-          print('QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
+          print(
+              'QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
         }
         // Decide if this error should affect the return value of removeFromQueue
       }
@@ -279,7 +285,8 @@ class QueueService {
             await _createMedicalRecordForServedPatient(updatedItem);
           } catch (e) {
             if (kDebugMode) {
-              print('QueueService: Error creating medical record for served patient $queueEntryId: $e');
+              print(
+                  'QueueService: Error creating medical record for served patient $queueEntryId: $e');
             }
             // Decide if this error should affect the overall success of the operation.
             // For now, we log it but don't return false, as the primary status update succeeded.
@@ -368,13 +375,16 @@ class QueueService {
                     ? 'Completed'
                     : (newStatus == 'in_consultation'
                         ? 'In Consultation'
-                        : originalAppointment.status), // Also update appointment status
+                        : originalAppointment
+                            .status), // Also update appointment status
                 consultationStartedAt: updatedItem.consultationStartedAt ??
                     originalAppointment.consultationStartedAt,
                 servedAt: updatedItem.servedAt ?? originalAppointment.servedAt,
                 paymentStatus: updatedItem.paymentStatus,
-                totalPrice: updatedItem.totalPrice ?? originalAppointment.totalPrice,
-                selectedServices: updatedItem.selectedServices ?? originalAppointment.selectedServices,
+                totalPrice:
+                    updatedItem.totalPrice ?? originalAppointment.totalPrice,
+                selectedServices: updatedItem.selectedServices ??
+                    originalAppointment.selectedServices,
               );
               await _dbHelper.appointmentDbService
                   .updateAppointment(updatedOriginalAppointment);
@@ -437,6 +447,7 @@ class QueueService {
   Future<bool> markPatientAsDone(String queueEntryId) async {
     return await updatePatientStatusInQueue(queueEntryId, 'done');
   }
+
   /// Generate daily queue report from the active queue data for a specific date.
   /// The report will reflect the state of the queue *at the time of generation* for that day.
   /// Enhanced to include appointment data for more comprehensive reporting.
@@ -464,10 +475,16 @@ class QueueService {
     }
 
     // Separate queue items by origin (appointment vs walk-in)
-    final appointmentOriginatedItems = reportItems.where((item) => 
-        item.originalAppointmentId != null && item.originalAppointmentId!.isNotEmpty).toList();
-    final walkInItems = reportItems.where((item) => 
-        item.originalAppointmentId == null || item.originalAppointmentId!.isEmpty).toList();
+    final appointmentOriginatedItems = reportItems
+        .where((item) =>
+            item.originalAppointmentId != null &&
+            item.originalAppointmentId!.isNotEmpty)
+        .toList();
+    final walkInItems = reportItems
+        .where((item) =>
+            item.originalAppointmentId == null ||
+            item.originalAppointmentId!.isEmpty)
+        .toList();
 
     final totalProcessed = reportItems.length;
     final servedPatients =
@@ -481,17 +498,23 @@ class QueueService {
     int cancelledAppointmentsForReportDate = 0;
 
     if (dayAppointments.isNotEmpty) {
-        totalScheduledAppointmentsForReportDate = dayAppointments.length;
-        completedAppointmentsForReportDate = dayAppointments.where((appt) => 
-            (appt.status.toLowerCase() == 'completed' || appt.status.toLowerCase() == 'served') &&
-            isSameDay(appt.date, dateToReport) // Double check, though getAppointmentsByDate should ensure this
-        ).length;
-        cancelledAppointmentsForReportDate = dayAppointments.where((appt) => 
-            appt.status.toLowerCase() == 'cancelled' &&
-            isSameDay(appt.date, dateToReport) // Double check
-        ).length;
+      totalScheduledAppointmentsForReportDate = dayAppointments.length;
+      completedAppointmentsForReportDate = dayAppointments
+          .where((appt) =>
+                  (appt.status.toLowerCase() == 'completed' ||
+                      appt.status.toLowerCase() == 'served') &&
+                  isSameDay(appt.date,
+                      dateToReport) // Double check, though getAppointmentsByDate should ensure this
+              )
+          .length;
+      cancelledAppointmentsForReportDate = dayAppointments
+          .where((appt) =>
+                  appt.status.toLowerCase() == 'cancelled' &&
+                  isSameDay(appt.date, dateToReport) // Double check
+              )
+          .length;
     }
-    // final noShowAppointments = dayAppointments.where((appt) => 
+    // final noShowAppointments = dayAppointments.where((appt) =>
     //     appt.status.toLowerCase() == 'no show').length;
 
     String averageWaitTimeDisplay = "N/A";
@@ -511,7 +534,8 @@ class QueueService {
             microseconds: totalWait.inMicroseconds ~/ waitTimes.length);
         averageWaitTimeDisplay = _formatDuration(avgWait);
       }
-    }    String peakHour =
+    }
+    String peakHour =
         _findPeakHour(reportItems.map((item) => item.arrivalTime).toList());
 
     final report = {
@@ -525,14 +549,21 @@ class QueueService {
       'generatedAt': DateTime.now().toIso8601String(),
       // Enhanced appointment statistics for the report date
       'appointmentStats': {
-        'totalScheduledAppointmentsForReportDate': totalScheduledAppointmentsForReportDate,
-        'completedAppointmentsToday': completedAppointmentsForReportDate, // Renamed for clarity in report
-        'cancelledAppointmentsToday': cancelledAppointmentsForReportDate, // Renamed for clarity in report
+        'totalScheduledAppointmentsForReportDate':
+            totalScheduledAppointmentsForReportDate,
+        'completedAppointmentsToday':
+            completedAppointmentsForReportDate, // Renamed for clarity in report
+        'cancelledAppointmentsToday':
+            cancelledAppointmentsForReportDate, // Renamed for clarity in report
         // 'noShowAppointments': noShowAppointments, // Kept commented if not immediately needed
-        'appointmentOriginatedQueueItems': appointmentOriginatedItems.length, // From active queue items for the day
-        'walkInQueueItems': walkInItems.length, // From active queue items for the day
+        'appointmentOriginatedQueueItems': appointmentOriginatedItems
+            .length, // From active queue items for the day
+        'walkInQueueItems':
+            walkInItems.length, // From active queue items for the day
       },
-      'appointmentData': dayAppointments.map((appt) => appt.toMap()).toList(), // Full appointment data for the day
+      'appointmentData': dayAppointments
+          .map((appt) => appt.toMap())
+          .toList(), // Full appointment data for the day
     };
     return report;
   }
@@ -636,10 +667,11 @@ class QueueService {
                 'Average Wait Time (Served):',
                 '${reportData['averageWaitTimeMinutes'] ?? reportData['averageWaitTime'] ?? 'N/A'}',
                 estiloTexto,
-                estiloValor),            _buildPdfStatRow('Peak Hour:', '${reportData['peakHour'] ?? 'N/A'}',
+                estiloValor),
+            _buildPdfStatRow('Peak Hour:', '${reportData['peakHour'] ?? 'N/A'}',
                 estiloTexto, estiloValor),
             pw.SizedBox(height: 20),
-            
+
             // Add appointment statistics section
             pw.Text('Appointment Statistics:', style: estiloSubtitulo),
             pw.SizedBox(height: 10),
@@ -706,7 +738,8 @@ class QueueService {
   Future<void> removeScheduledEntryForAppointment(String appointmentId) async {
     if (appointmentId.isEmpty) {
       if (kDebugMode) {
-        print("QueueService: removeScheduledEntryForAppointment called with empty appointmentId.");
+        print(
+            "QueueService: removeScheduledEntryForAppointment called with empty appointmentId.");
       }
       return;
     }
@@ -714,39 +747,129 @@ class QueueService {
     try {
       await _dbHelper.deleteActiveQueueItemByQueueEntryId(queueEntryIdToRemove);
       if (kDebugMode) {
-        print("QueueService: Attempted to remove scheduled entry $queueEntryIdToRemove for appointment $appointmentId.");
+        print(
+            "QueueService: Attempted to remove scheduled entry $queueEntryIdToRemove for appointment $appointmentId.");
       }
     } catch (e) {
       if (kDebugMode) {
-        print("QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
+        print(
+            "QueueService: Error removing scheduled entry for appointment $appointmentId: $e");
       }
       // Depending on policy, you might want to rethrow or handle silently
     }
   }
 
-  /// Marks a patient as payment processed, updates status to Served, and original appointment to Completed.
+  /// Marks a queue item as 'served' and its payment status as 'Paid'.
+  /// Also creates a corresponding medical record.
   Future<bool> markPaymentSuccessfulAndServe(String queueEntryId) async {
-    if (kDebugMode) {
-      print(
-          'QueueService: Marking payment as successful and status as served for queue entry $queueEntryId.');
+    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+    if (item == null) {
+      if (kDebugMode) {
+        print(
+            'QueueService: Item with ID $queueEntryId not found for marking as served.');
+      }
+      return false;
     }
-    // This updates the status to 'served', sets the servedAt timestamp,
-    // and also updates the payment status to 'Paid'.
-    return await updatePatientStatusInQueue(
-      queueEntryId,
-      'served',
+
+    final now = DateTime.now();
+    // Update status to 'served' and paymentStatus to 'Paid'
+    final updatedItem = item.copyWith(
+      status: 'done', // Use 'done' to signify completion
       paymentStatus: 'Paid',
+      servedAt: now,
+      // If consultation hasn't officially started, mark it as started now
+      consultationStartedAt: item.consultationStartedAt ?? now,
     );
+
+    final updateResult = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+    if (updateResult > 0) {
+      // Logic to create medical record(s) based on services
+      try {
+        final currentUserId = await AuthService.getCurrentUserId();
+        final doctorId = item.doctorId ?? currentUserId ?? 'default_doctor_id';
+
+        if (item.selectedServices != null &&
+            item.selectedServices!.isNotEmpty) {
+          // Create a medical record for each service
+          for (var service in item.selectedServices!) {
+            final recordId = const Uuid().v4();
+            final serviceName = service['serviceName'] as String? ?? 'Service';
+            final serviceCategory =
+                (service['category'] as String? ?? '').toLowerCase();
+
+            // Determine the recordType based on the user's constraint.
+            // All non-consultation services are treated as Laboratory.
+            final String recordType = serviceCategory == 'consultation'
+                ? 'Consultation'
+                : 'Laboratory';
+
+            final medicalRecordData = {
+              'id': recordId,
+              'patientId': item.patientId,
+              'appointmentId': item.originalAppointmentId,
+              'serviceId': service['id'] as String?,
+              'recordType': recordType, // Use the simplified category
+              'recordDate': now.toIso8601String(),
+              'diagnosis': 'See consultation details.',
+              'notes': 'Service performed: $serviceName',
+              'doctorId': doctorId,
+              'createdAt': now.toIso8601String(),
+              'updatedAt': now.toIso8601String(),
+            };
+            await _dbHelper.insertMedicalRecord(medicalRecordData);
+          }
+        } else {
+          // Fallback: if no services are listed, create a general consultation record
+          final recordId = const Uuid().v4();
+          final medicalRecordData = {
+            'id': recordId,
+            'patientId': item.patientId,
+            'appointmentId': item.originalAppointmentId,
+            'recordType': 'Consultation', // Default type
+            'recordDate': now.toIso8601String(),
+            'diagnosis': 'See consultation details.',
+            'notes': item.conditionOrPurpose ?? 'General consultation.',
+            'doctorId': doctorId,
+            'createdAt': now.toIso8601String(),
+            'updatedAt': now.toIso8601String(),
+          };
+          await _dbHelper.insertMedicalRecord(medicalRecordData);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print(
+              'QueueService: Failed to create medical record for ${item.patientName}: $e');
+        }
+        // Decide if this error should fail the whole operation
+      }
+
+      // If the original item was an appointment, update its status to 'Completed'
+      if (item.originalAppointmentId != null) {
+        try {
+          await ApiService.updateAppointmentStatus(
+              item.originalAppointmentId!, 'Completed');
+        } catch (e) {
+          if (kDebugMode) {
+            print(
+                'QueueService: Failed to update original appointment status to Completed: $e');
+          }
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // Helper function to check if two DateTime objects represent the same day.
   bool isSameDay(DateTime date1, DateTime date2) {
     return date1.year == date2.year &&
-           date1.month == date2.month &&
-           date1.day == date2.day;
+        date1.month == date2.month &&
+        date1.day == date2.day;
   }
 
-  Future<void> _createMedicalRecordForServedPatient(ActivePatientQueueItem item) async {
+  Future<void> _createMedicalRecordForServedPatient(
+      ActivePatientQueueItem item) async {
     final db = await _dbHelper.database;
     final now = DateTime.now();
 
@@ -767,7 +890,8 @@ class QueueService {
 
     await db.insert('medical_records', medicalRecordData);
     if (kDebugMode) {
-      print('Successfully created a medical record for served patient: ${item.patientName}');
+      print(
+          'Successfully created a medical record for served patient: ${item.patientName}');
     }
   }
 }

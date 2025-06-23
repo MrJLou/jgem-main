@@ -17,7 +17,8 @@ class PatientDataSource extends DataTableSource {
   final Function(Patient) onEdit;
   final Function(Patient) onViewHistory;
 
-  PatientDataSource(this._patients, this.context, this.onEdit, this.onViewHistory);
+  PatientDataSource(
+      this._patients, this.context, this.onEdit, this.onViewHistory);
 
   void updateData(List<Patient> newData) {
     _patients = newData;
@@ -87,7 +88,8 @@ class PreviousDiagnosesTreatmentsScreenState
   @override
   void initState() {
     super.initState();
-    _dataSource = PatientDataSource([], context, _showEditMedicalInfoDialog, _showHistoryDialog);
+    _dataSource = PatientDataSource(
+        [], context, _showEditMedicalInfoDialog, _showHistoryDialog);
     _fetchAllPatients();
     _searchController.addListener(_filterPatients);
   }
@@ -162,8 +164,10 @@ class PreviousDiagnosesTreatmentsScreenState
 
   void _showEditMedicalInfoDialog(Patient patient) {
     final allergiesController = TextEditingController(text: patient.allergies);
-    final medicationsController = TextEditingController(text: patient.currentMedications);
-    final historyController = TextEditingController(text: patient.medicalHistory);
+    final medicationsController =
+        TextEditingController(text: patient.currentMedications);
+    final historyController =
+        TextEditingController(text: patient.medicalHistory);
 
     showDialog(
       context: context,
@@ -175,19 +179,24 @@ class PreviousDiagnosesTreatmentsScreenState
             children: [
               TextField(
                 controller: allergiesController,
-                decoration: const InputDecoration(labelText: 'Allergies', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Allergies', border: OutlineInputBorder()),
                 maxLines: 2,
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: medicationsController,
-                decoration: const InputDecoration(labelText: 'Current Medications', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Current Medications',
+                    border: OutlineInputBorder()),
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: historyController,
-                decoration: const InputDecoration(labelText: 'Additional Medical History', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Additional Medical History',
+                    border: OutlineInputBorder()),
                 maxLines: 3,
               ),
             ],
@@ -211,7 +220,8 @@ class PreviousDiagnosesTreatmentsScreenState
               );
 
               try {
-                await ApiService.updatePatient(updatedPatient, source: 'PreviousDiagnosesTreatmentsScreen');
+                await ApiService.updatePatient(updatedPatient,
+                    source: 'PreviousDiagnosesTreatmentsScreen');
                 if (!mounted) return;
                 navigator.pop();
                 _fetchAllPatients();
@@ -264,7 +274,8 @@ class PreviousDiagnosesTreatmentsScreenState
                     itemBuilder: (context, index) {
                       final record = history[index];
                       final updatedAt = DateTime.parse(record['updatedAt']);
-                      final formattedDate = DateFormat.yMMMd().add_jm().format(updatedAt);
+                      final formattedDate =
+                          DateFormat.yMMMd().add_jm().format(updatedAt);
                       return Card(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         child: ListTile(
@@ -292,7 +303,9 @@ class PreviousDiagnosesTreatmentsScreenState
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load history: $e'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Failed to load history: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
@@ -308,80 +321,234 @@ class PreviousDiagnosesTreatmentsScreenState
         ),
         backgroundColor: Colors.teal[700],
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchAllPatients,
-            tooltip: 'Refresh Patient List',
-          ),
-        ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.teal),
+                  SizedBox(height: 16),
+                  Text('Loading patient data...'),
+                ],
+              ),
+            )
           : _errorMessage != null
-              ? Center(child: Text(_errorMessage!))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline,
+                          size: 64, color: Colors.red[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error: $_errorMessage',
+                        style: TextStyle(color: Colors.red[700]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchAllPatients,
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal),
+                        child: const Text('Retry',
+                            style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                )
               : _allPatients.isEmpty
-                  ? const Center(child: Text('No patients found.'))
-                  : Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1600),
-                          child: Card(
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Search Patients',
-                                      prefixIcon: const Icon(Icons.search),
-                                      border: OutlineInputBorder(
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.person_outline,
+                              size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No patient records found',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Patient medical information will appear here',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16.0),
+                      child: Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            // Header section with search
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(20.0),
+                              decoration: BoxDecoration(
+                                color: Colors.teal[50],
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(12),
+                                  topRight: Radius.circular(12),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.person,
+                                          color: Colors.teal[700], size: 24),
+                                      const SizedBox(width: 12),
+                                      const Text(
+                                        'Patient Records',
+                                        style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal[700],
                                           borderRadius:
-                                              BorderRadius.circular(8)),
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          '${_filteredPatients.length} records',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    width:
+                                        MediaQuery.of(context).size.width > 600
+                                            ? 400
+                                            : double.infinity,
+                                    child: TextField(
+                                      controller: _searchController,
+                                      decoration: InputDecoration(
+                                        labelText:
+                                            'Search by name, allergies, medications, or history',
+                                        prefixIcon: const Icon(Icons.search,
+                                            color: Colors.teal),
+                                        suffixIcon: _searchController
+                                                .text.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(Icons.clear),
+                                                onPressed: () {
+                                                  _searchController.clear();
+                                                },
+                                              )
+                                            : null,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                          borderSide: const BorderSide(
+                                              color: Colors.teal, width: 2),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 12),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Expanded(
+                                ],
+                              ),
+                            ),
+                            // Table section
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: Colors.grey[300]!),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                   child: SingleChildScrollView(
                                     child: PaginatedDataTable(
-                                      header: const Text('Patient Records'),
-                                      rowsPerPage: 10,
+                                      header: null,
+                                      rowsPerPage: 8,
                                       showCheckboxColumn: false,
-                                      sortColumnIndex: _sortColumnIndex,
-                                      sortAscending: _sortAscending,
+                                      headingRowColor: WidgetStateProperty.all(
+                                          Colors.grey[50]),
+                                      dataRowMaxHeight: 50,
+                                      columnSpacing: 16,
+                                      horizontalMargin: 12,
+                                      dividerThickness: 1,
                                       columns: [
                                         DataColumn(
-                                            label: const Text('Patient'),
-                                            onSort: _onSort),
+                                          label: const Text('Patient',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
                                         DataColumn(
-                                            label: const Text('Allergies'),
-                                            onSort: _onSort),
+                                          label: const Text('Allergies',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
                                         DataColumn(
-                                            label: const Text('Medications'),
-                                            onSort: _onSort),
+                                          label: const Text('Medications',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
                                         DataColumn(
-                                            label: const Text('History'),
-                                            onSort: _onSort),
+                                          label: const Text('History',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
                                         const DataColumn(
-                                            label: Text('Actions')),
+                                          label: Text('Actions',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                        ),
                                       ],
                                       source: _dataSource,
+                                      sortColumnIndex: _sortColumnIndex,
+                                      sortAscending: _sortAscending,
                                     ),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ),
     );
   }
 }
-

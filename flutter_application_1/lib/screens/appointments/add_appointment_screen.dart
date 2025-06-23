@@ -4,7 +4,8 @@ import 'package:intl/intl.dart'; // For DateFormat.Hm()
 import 'package:flutter_application_1/models/patient.dart'; // ADDED - Real Patient model
 import 'package:flutter_application_1/models/user.dart'; // ADDED - For Doctor data (assuming doctors are Users)
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED
-import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart' show ReusablePatientFormFields, FormType; // Specific import
+import 'package:flutter_application_1/screens/registration/patient_registration_screen.dart'
+    show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
 
@@ -39,7 +40,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   final TextEditingController _notesController = TextEditingController();
 
   // Search state variables
-  final TextEditingController _patientSearchController = TextEditingController();
+  final TextEditingController _patientSearchController =
+      TextEditingController();
   List<Patient> _patientSearchResults = [];
   bool _isSearchingPatient = false;
   Timer? _patientSearchDebounce;
@@ -59,7 +61,15 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   bool _showOtherPurposeFieldInDialog = false;
 
   final List<String> _dialogBloodTypes = [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-',
+    'Unknown'
   ];
 
   int _timeOfDayToMinutes(TimeOfDay tod) => tod.hour * 60 + tod.minute;
@@ -90,10 +100,11 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     final List<TimeOfDay> slots = [];
     slots.clear();
     int currentMinutes = 7 * 60 + 30; // 7:30 AM
-    const endMinutes = 16 * 60 + 30;   // 4:30 PM
+    const endMinutes = 16 * 60 + 30; // 4:30 PM
 
     while (currentMinutes <= endMinutes) {
-      slots.add(TimeOfDay(hour: currentMinutes ~/ 60, minute: currentMinutes % 60));
+      slots.add(
+          TimeOfDay(hour: currentMinutes ~/ 60, minute: currentMinutes % 60));
       currentMinutes += 30;
     }
     return slots;
@@ -115,7 +126,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         .map((appt) => appt.time)
         .toSet();
 
-    debugPrint('AddAppointmentScreen: Booked times after filtering cancelled: ${bookedTimes.map((t) => t.format(context)).join(', ')}');
+    debugPrint(
+        'AddAppointmentScreen: Booked times after filtering cancelled: ${bookedTimes.map((t) => t.format(context)).join(', ')}');
 
     return workingSlots.where((slot) => !bookedTimes.contains(slot)).toList();
   }
@@ -124,7 +136,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   void initState() {
     super.initState();
     debugPrint("AddAppointmentScreen: Using ApiService for data operations.");
-    
+
     if (widget.patient != null) {
       _selectedPatient = widget.patient;
       _patientSearchController.text = widget.patient!.fullName;
@@ -136,15 +148,21 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     if (widget.initialDate != null) {
       _selectedDate = widget.initialDate!;
       final now = DateTime.now();
-      if (DateUtils.isSameDay(_selectedDate, now) && 
-          (_selectedTime.hour < now.hour || (_selectedTime.hour == now.hour && _selectedTime.minute < now.minute))) {
-        _selectedTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
+      if (DateUtils.isSameDay(_selectedDate, now) &&
+          (_selectedTime.hour < now.hour ||
+              (_selectedTime.hour == now.hour &&
+                  _selectedTime.minute < now.minute))) {
+        _selectedTime =
+            TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
       }
     } else {
       final now = DateTime.now();
-      if (DateUtils.isSameDay(_selectedDate, now) && 
-          (_selectedTime.hour < now.hour || (_selectedTime.hour == now.hour && _selectedTime.minute < now.minute))) {
-         _selectedTime = TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
+      if (DateUtils.isSameDay(_selectedDate, now) &&
+          (_selectedTime.hour < now.hour ||
+              (_selectedTime.hour == now.hour &&
+                  _selectedTime.minute < now.minute))) {
+        _selectedTime =
+            TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5)));
       }
     }
 
@@ -159,28 +177,33 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         _selectedDate = _selectedDate.add(const Duration(days: 1));
       }
     }
-    
-    if (!_isSelectable(_selectedDate)) {
-        _selectedTime = minWorkingTime;
-    } else {
-        TimeOfDay proposedTime;
-        if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
-            proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
-            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) { 
-                proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
-            }
 
-            if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(minWorkingTime)) {
-                _selectedTime = minWorkingTime;
-            } else if (_timeOfDayToMinutes(proposedTime) > _timeOfDayToMinutes(maxWorkingTime)) {
-                _selectedTime = maxWorkingTime;
-            } else {
-                _selectedTime = proposedTime;
-            }
-        } else {
-            _selectedTime = minWorkingTime;
+    if (!_isSelectable(_selectedDate)) {
+      _selectedTime = minWorkingTime;
+    } else {
+      TimeOfDay proposedTime;
+      if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
+        proposedTime =
+            TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+        if (_timeOfDayToMinutes(proposedTime) <
+            _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
+          proposedTime = TimeOfDay.fromDateTime(
+              nowDateTime.add(const Duration(minutes: 5)));
         }
-        _selectedTime = _adjustTimeToNearestSlot(_selectedTime);
+
+        if (_timeOfDayToMinutes(proposedTime) <
+            _timeOfDayToMinutes(minWorkingTime)) {
+          _selectedTime = minWorkingTime;
+        } else if (_timeOfDayToMinutes(proposedTime) >
+            _timeOfDayToMinutes(maxWorkingTime)) {
+          _selectedTime = maxWorkingTime;
+        } else {
+          _selectedTime = proposedTime;
+        }
+      } else {
+        _selectedTime = minWorkingTime;
+      }
+      _selectedTime = _adjustTimeToNearestSlot(_selectedTime);
     }
   }
 
@@ -232,7 +255,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           backgroundColor: Colors.red,
         ),
       );
-      debugPrint('Error fetching available services for appointment screen: $e');
+      debugPrint(
+          'Error fetching available services for appointment screen: $e');
     }
   }
 
@@ -242,24 +266,29 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _selectedDoctor = null;
       final nowDateTime = DateTime.now();
       _selectedDate = widget.initialDate ?? nowDateTime;
-      
-      if (!_isSelectable(_selectedDate)) { 
-         _selectedDate = _selectedDate.add(Duration(days: DateTime.monday - _selectedDate.weekday));
-         if(_selectedDate.isBefore(nowDateTime) && !DateUtils.isSameDay(_selectedDate, nowDateTime)) { 
-            _selectedDate = _selectedDate.add(const Duration(days: 7));
-         }
+
+      if (!_isSelectable(_selectedDate)) {
+        _selectedDate = _selectedDate
+            .add(Duration(days: DateTime.monday - _selectedDate.weekday));
+        if (_selectedDate.isBefore(nowDateTime) &&
+            !DateUtils.isSameDay(_selectedDate, nowDateTime)) {
+          _selectedDate = _selectedDate.add(const Duration(days: 7));
+        }
       }
-      
+
       const minWorkingTime = TimeOfDay(hour: 7, minute: 30);
 
       if (DateUtils.isSameDay(_selectedDate, nowDateTime)) {
-          TimeOfDay proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
-          if (_timeOfDayToMinutes(proposedTime) < _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
-             proposedTime = TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
-          }
-         _selectedTime = _adjustTimeToNearestSlot(proposedTime);
-      } else { 
-          _selectedTime = minWorkingTime;
+        TimeOfDay proposedTime =
+            TimeOfDay.fromDateTime(nowDateTime.add(const Duration(minutes: 5)));
+        if (_timeOfDayToMinutes(proposedTime) <
+            _timeOfDayToMinutes(TimeOfDay.fromDateTime(nowDateTime))) {
+          proposedTime = TimeOfDay.fromDateTime(
+              nowDateTime.add(const Duration(minutes: 5)));
+        }
+        _selectedTime = _adjustTimeToNearestSlot(proposedTime);
+      } else {
+        _selectedTime = minWorkingTime;
       }
 
       _notesController.clear();
@@ -269,8 +298,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _formKey.currentState?.reset();
 
       _selectedServices.clear();
-      _serviceSelectionState = { 
-            for (var service in _availableServices) service.id: false
+      _serviceSelectionState = {
+        for (var service in _availableServices) service.id: false
       };
       _totalPrice = 0.0;
       _otherPurposeController.clear();
@@ -278,7 +307,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   }
 
   void _onPatientSearchChanged(String query) {
-    if (_patientSearchDebounce?.isActive ?? false) _patientSearchDebounce!.cancel();
+    if (_patientSearchDebounce?.isActive ?? false) {
+      _patientSearchDebounce!.cancel();
+    }
     _patientSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
       if (query.isNotEmpty) {
         if (!mounted) return;
@@ -313,10 +344,11 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
   Future<void> _selectDate(BuildContext context) async {
     final today = DateUtils.dateOnly(DateTime.now());
-    
+
     // Ensure initialPickerDate is a valid selectable date
-    DateTime initialPickerDate = _selectedDate.isBefore(today) ? today : _selectedDate;
-    
+    DateTime initialPickerDate =
+        _selectedDate.isBefore(today) ? today : _selectedDate;
+
     // If the initial date is not selectable (e.g., Sunday), find the next selectable date
     while (!_isSelectable(initialPickerDate)) {
       initialPickerDate = initialPickerDate.add(const Duration(days: 1));
@@ -341,7 +373,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     if (_selectedDoctor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a doctor first to see their availability.'),
+          content:
+              Text('Please select a doctor first to see their availability.'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
@@ -351,8 +384,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     final List<TimeOfDay> timeSlots = _generateSelectableTimeSlots();
     if (timeSlots.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No available time slots for this day.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No available time slots for this day.')));
       return;
     }
 
@@ -364,10 +397,12 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                 appt.doctorId == _selectedDoctor!.id &&
                 DateUtils.isSameDay(appt.date, _selectedDate))
             .toList();
-        
-        debugPrint('AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
+
+        debugPrint(
+            'AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
         for (final appt in relevantAppointments) {
-          debugPrint('  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
+          debugPrint(
+              '  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
         }
 
         return AlertDialog(
@@ -381,17 +416,21 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   runSpacing: 8.0,
                   alignment: WrapAlignment.center,
                   children: timeSlots.map((time) {
-                    final isBooked = (widget.existingAppointments ?? []).any((bookedTime) =>
-                        bookedTime.doctorId == _selectedDoctor!.id &&
-                        DateUtils.isSameDay(bookedTime.date, _selectedDate) &&
-                        bookedTime.status.toLowerCase().trim() != 'cancelled' &&
-                        bookedTime.time.hour == time.hour &&
-                        bookedTime.time.minute == time.minute);
+                    final isBooked = (widget.existingAppointments ?? []).any(
+                        (bookedTime) =>
+                            bookedTime.doctorId == _selectedDoctor!.id &&
+                            DateUtils.isSameDay(
+                                bookedTime.date, _selectedDate) &&
+                            bookedTime.status.toLowerCase().trim() !=
+                                'cancelled' &&
+                            bookedTime.time.hour == time.hour &&
+                            bookedTime.time.minute == time.minute);
 
                     final now = DateTime.now();
                     final isPast = DateUtils.isSameDay(_selectedDate, now) &&
                         (time.hour < now.hour ||
-                            (time.hour == now.hour && time.minute < now.minute));
+                            (time.hour == now.hour &&
+                                time.minute < now.minute));
 
                     return SizedBox(
                       width: 100, // Fixed width for buttons
@@ -435,8 +474,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
               const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           actions: <Widget>[
             TextButton(
-              child:
-                  const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
               onPressed: () {
                 Navigator.of(context).pop();
               },
@@ -506,37 +544,30 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                         color: Colors.teal[700],
                                         fontSize: 16)),
                               ),
-                              ...groupedServices[category]!
-                                  .map((service) => CheckboxListTile(
-                                        title: Text(
-                                            '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
-                                            style:
-                                                const TextStyle(fontSize: 14)),
-                                        value: tempSelections[service.id] ??
-                                            false,
-                                        onChanged: (bool? value) {
-                                          setDialogState(() {
-                                            tempSelections[service.id] =
-                                                value!;
-                                            currentDialogPrice =
-                                                _availableServices
-                                                    .where((s) =>
-                                                        tempSelections[
-                                                            s.id] ==
-                                                        true)
-                                                    .fold(
-                                                        0.0,
-                                                        (sum, item) =>
-                                                            sum +
-                                                            (item.defaultPrice ??
-                                                                0.0));
-                                          });
-                                        },
-                                        dense: true,
-                                        controlAffinity:
-                                            ListTileControlAffinity.leading,
-                                        activeColor: Colors.teal,
-                                     )),
+                              ...groupedServices[category]!.map((service) =>
+                                  CheckboxListTile(
+                                    title: Text(
+                                        '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
+                                        style: const TextStyle(fontSize: 14)),
+                                    value: tempSelections[service.id] ?? false,
+                                    onChanged: (bool? value) {
+                                      setDialogState(() {
+                                        tempSelections[service.id] = value!;
+                                        currentDialogPrice = _availableServices
+                                            .where((s) =>
+                                                tempSelections[s.id] == true)
+                                            .fold(
+                                                0.0,
+                                                (sum, item) =>
+                                                    sum +
+                                                    (item.defaultPrice ?? 0.0));
+                                      });
+                                    },
+                                    dense: true,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    activeColor: Colors.teal,
+                                  )),
                               const Divider(),
                             ]),
                     CheckboxListTile(
@@ -556,16 +587,14 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                     if (tempShowOtherField)
                       Padding(
                         padding: const EdgeInsets.only(
-                            left: 16.0,
-                            right: 16.0,
-                            bottom: 8.0,
-                            top: 4.0),
+                            left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
                         child: TextFormField(
                           controller: tempOtherPurposeController,
                           decoration: const InputDecoration(
                               labelText: 'Specify other purpose or details',
                               border: OutlineInputBorder(),
-                              hintText: 'e.g., Medical Certificate, Fit to Work',
+                              hintText:
+                                  'e.g., Medical Certificate, Fit to Work',
                               isDense: true),
                           maxLines: 2,
                           style: const TextStyle(fontSize: 14),
@@ -591,8 +620,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               actions: <Widget>[
                 TextButton(
-                  child:
-                      const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Colors.grey)),
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
                   },
@@ -613,7 +642,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                       'otherPurpose': tempOtherPurposeController.text,
                     });
                   },
-                   child: const Text('Confirm'),
+                  child: const Text('Confirm'),
                 ),
               ],
             );
@@ -629,9 +658,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         _selectedServices = _availableServices
             .where((service) => _serviceSelectionState[service.id] == true)
             .toList();
-        
+
         _showOtherPurposeFieldInDialog = result['showOther'];
-        if(_showOtherPurposeFieldInDialog) {
+        if (_showOtherPurposeFieldInDialog) {
           _otherPurposeController.text = result['otherPurpose'];
         } else {
           _otherPurposeController.clear();
@@ -660,22 +689,27 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.0)),
               child: Material(
                 child: Container(
-                  width: MediaQuery.of(context).size.width * 0.7, // Make dialog wider
-                  height: MediaQuery.of(context).size.height * 0.8, // Make dialog taller
+                  width: MediaQuery.of(context).size.width *
+                      0.7, // Make dialog wider
+                  height: MediaQuery.of(context).size.height *
+                      0.8, // Make dialog taller
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         'Register New Patient',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal[800],
-                        ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.teal[800],
+                                ),
                       ),
                       const SizedBox(height: 24),
                       Expanded(
@@ -719,9 +753,11 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                           TextButton(
                             onPressed: () => Navigator.of(context).pop(),
                             style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
                             ),
-                            child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                            child: const Text('Cancel',
+                                style: TextStyle(fontSize: 16)),
                           ),
                           const SizedBox(width: 16),
                           ElevatedButton(
@@ -736,30 +772,40 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                       final now = DateTime.now();
                                       Patient patientToSave = Patient(
                                         id: 'temp_${now.millisecondsSinceEpoch}',
-                                        fullName: '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
-                                        birthDate: DateFormat('yyyy-MM-dd').parse(dobController.text),
+                                        fullName:
+                                            '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
+                                        birthDate: DateFormat('yyyy-MM-dd')
+                                            .parse(dobController.text),
                                         gender: selectedGender,
-                                        contactNumber: contactController.text.trim(),
+                                        contactNumber:
+                                            contactController.text.trim(),
                                         address: addressController.text.trim(),
                                         bloodType: selectedBloodType,
-                                        allergies: allergiesController.text.trim(),
+                                        allergies:
+                                            allergiesController.text.trim(),
                                         createdAt: now,
                                         updatedAt: now,
                                         registrationDate: now,
                                       );
 
                                       try {
-                                        final newPatientId = await ApiService.createPatient(patientToSave);
-                                        final savedPatient = patientToSave.copyWith(id: newPatientId);
-                                        
+                                        final newPatientId =
+                                            await ApiService.createPatient(
+                                                patientToSave);
+                                        final savedPatient = patientToSave
+                                            .copyWith(id: newPatientId);
+
                                         if (!context.mounted) return;
                                         Navigator.of(context).pop(savedPatient);
                                       } catch (e) {
-                                        debugPrint("Error saving new patient from dialog: $e");
+                                        debugPrint(
+                                            "Error saving new patient from dialog: $e");
                                         if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
                                           SnackBar(
-                                            content: Text('Failed to save patient: ${e.toString()}'),
+                                            content: Text(
+                                                'Failed to save patient: ${e.toString()}'),
                                             backgroundColor: Colors.red,
                                           ),
                                         );
@@ -772,7 +818,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                   },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.teal,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
                             ),
                             child: isLoading
                                 ? const SizedBox(
@@ -780,10 +827,13 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                     height: 24,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
                                     ),
                                   )
-                                : const Text('Save Patient', style: TextStyle(fontSize: 16, color: Colors.white)),
+                                : const Text('Save Patient',
+                                    style: TextStyle(
+                                        fontSize: 16, color: Colors.white)),
                           ),
                         ],
                       ),
@@ -836,7 +886,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
       // Check for scheduling conflicts before submission
       bool hasConflict = (widget.existingAppointments ?? []).any((appt) {
-        if (appt.status == 'Cancelled' || appt.doctorId != _selectedDoctor!.id) {
+        if (appt.status == 'Cancelled' ||
+            appt.doctorId != _selectedDoctor!.id) {
           return false;
         }
         return DateUtils.isSameDay(appt.date, _selectedDate) &&
@@ -849,8 +900,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text('This time slot is already booked with the selected doctor.'),
+            content: Text(
+                'This time slot is already booked with the selected doctor.'),
             backgroundColor: Colors.orangeAccent,
           ),
         );
@@ -858,12 +909,14 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       }
 
       try {
-        List<Map<String, dynamic>> servicesForDb = _selectedServices.map((s) => {
-          'id': s.id,
-          'name': s.serviceName,
-          'category': s.category,
-          'price': s.defaultPrice
-        }).toList();
+        List<Map<String, dynamic>> servicesForDb = _selectedServices
+            .map((s) => {
+                  'id': s.id,
+                  'name': s.serviceName,
+                  'category': s.category,
+                  'price': s.defaultPrice
+                })
+            .toList();
 
         final appointmentToSave = Appointment(
           id: '', // Empty string to let the database generate the ID
@@ -872,8 +925,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           date: _selectedDate,
           time: _selectedTime,
           status: 'Scheduled',
-          consultationType: _otherPurposeController.text.isNotEmpty 
-              ? _otherPurposeController.text 
+          consultationType: _selectedServices.isNotEmpty
+              ? _selectedServices.map((s) => s.category).toSet().join('/')
               : 'General Consultation',
           selectedServices: servicesForDb,
           totalPrice: _totalPrice,
@@ -883,18 +936,19 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         );
 
         // Save the appointment and get it back with the generated ID
-        final savedAppointment = await ApiService.saveAppointment(appointmentToSave);
+        final savedAppointment =
+            await ApiService.saveAppointment(appointmentToSave);
 
         // Notify parent about the new appointment
         if (widget.onAppointmentAdded != null) {
           widget.onAppointmentAdded!(savedAppointment);
         }
-        
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Appointment saved successfully!'),
-            backgroundColor: Colors.green),
+              content: Text('Appointment saved successfully!'),
+              backgroundColor: Colors.green),
         );
         _clearForm();
       } catch (e) {
@@ -1159,8 +1213,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           style: ElevatedButton.styleFrom(
               backgroundColor: Colors.teal[50],
               foregroundColor: Colors.teal[700],
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               textStyle: const TextStyle(fontSize: 15)),
         ),
         const SizedBox(height: 10),
@@ -1208,7 +1261,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         TextButton(
           onPressed: _isLoading
               ? null
-              : (widget.isDialog ? () => Navigator.of(context).pop() : _clearForm),
+              : (widget.isDialog
+                  ? () => Navigator.of(context).pop()
+                  : _clearForm),
           child: const Text('Cancel'),
         ),
         const SizedBox(width: 16),

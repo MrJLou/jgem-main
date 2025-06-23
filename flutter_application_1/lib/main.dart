@@ -20,7 +20,7 @@ void main() async {
   if (!kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.linux ||
-          defaultTargetPlatform == TargetPlatform.macOS)) { 
+          defaultTargetPlatform == TargetPlatform.macOS)) {
     // Initialize FFI for desktop platforms
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -44,7 +44,8 @@ class PatientRecordManagementApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),      home: const _AuthWrapper(), // Changed to auth wrapper
+      ),
+      home: const _AuthWrapper(), // Changed to auth wrapper
       routes: {
         '/auth': (context) => const AuthScreen(),
         '/login': (context) => const LoginScreen(),
@@ -52,7 +53,7 @@ class PatientRecordManagementApp extends StatelessWidget {
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
         '/analytics-hub': (context) => const AnalyticsHubScreen(),
-        '/settings':(context) => const SettingsScreen(),
+        '/settings': (context) => const SettingsScreen(),
         '/laboratory-hub': (context) =>
             const LaboratoryHubScreen(), // Provide default accessLevel
         '/lan-connection': (context) => const LanConnectionScreen(),
