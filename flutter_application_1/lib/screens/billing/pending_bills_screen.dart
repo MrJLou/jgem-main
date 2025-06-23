@@ -28,7 +28,6 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   final QueueService _queueService = QueueService();
-  final AuthService _authService = AuthService();
   static const Uuid _uuid = Uuid();
   
   List<Map<String, dynamic>> _pendingBills = [];
@@ -131,7 +130,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
 
     try {
       if (markAsPaid) {
-        final currentUserId = await _authService.getCurrentUserId();
+        final currentUserId = await AuthService.getCurrentUserId();
         if (currentUserId == null) {
           throw Exception('User not logged in.');
         }

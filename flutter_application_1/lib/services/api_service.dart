@@ -240,9 +240,10 @@ class ApiService {
     }
   }
 
-  static Future<int> updatePatient(Patient patient) async {
+  static Future<int> updatePatient(Patient patient, {String? source}) async {
     try {
-      return await _dbHelper.updatePatient(patient.toJson());
+      final userId = await AuthService.getCurrentUserId();
+      return await _dbHelper.updatePatient(patient.toJson(), userId: userId, source: source);
     } catch (e) {
       throw Exception('Failed to update patient: $e');
     }
@@ -779,12 +780,20 @@ class ApiService {
   }
 
   // Medical Record Methods
-  static Future<List<MedicalRecord>> getMedicalRecords(String patientId) async {
+  static Future<List<MedicalRecord>> getAllMedicalRecords() async {
     try {
-      final recordsData = await _dbHelper.getPatientMedicalRecords(patientId);
+      final recordsData = await _dbHelper.getAllMedicalRecords();
       return recordsData.map((data) => MedicalRecord.fromJson(data)).toList();
     } catch (e) {
-      throw Exception('Failed to load medical records: $e');
+      throw Exception('Failed to load all medical records: $e');
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getPatientHistory(String patientId) async {
+    try {
+      return await _dbHelper.getPatientHistory(patientId);
+    } catch (e) {
+      throw Exception('Failed to load patient history: $e');
     }
   }
 }

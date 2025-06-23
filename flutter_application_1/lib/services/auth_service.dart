@@ -319,7 +319,7 @@ class AuthService {
   }
 
   // Method to get the current logged-in user's details from DB
-  Future<User?> getCurrentUser() async {
+  static Future<User?> getCurrentUser() async {
     final savedCreds = await getSavedCredentials();
     if (savedCreds != null && savedCreds['username'] != null) {
       final db = DatabaseHelper();
@@ -336,13 +336,13 @@ class AuthService {
   }
 
   // Method to get the current logged-in user's ID
-  Future<String?> getCurrentUserId() async {
+  static Future<String?> getCurrentUserId() async {
     final user = await getCurrentUser();
     return user?.id;
   }
 
   // Method to get the current user's access level
-  Future<String?> getCurrentUserAccessLevel() async {
+  static Future<String?> getCurrentUserAccessLevel() async {
     final savedCreds = await getSavedCredentials();
     if (savedCreds != null && savedCreds['accessLevel'] != null) {
       return savedCreds['accessLevel'];

@@ -9,15 +9,19 @@ import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
 
 class AddAppointmentScreen extends StatefulWidget {
-  final List<Appointment> existingAppointments;
-  final Function(Appointment) onAppointmentAdded;
+  final List<Appointment>? existingAppointments;
+  final Function(Appointment)? onAppointmentAdded;
   final DateTime? initialDate;
+  final Patient? patient;
+  final bool isDialog;
 
   const AddAppointmentScreen({
     super.key,
-    required this.existingAppointments,
-    required this.onAppointmentAdded,
+    this.existingAppointments,
+    this.onAppointmentAdded,
     this.initialDate,
+    this.patient,
+    this.isDialog = false,
   });
 
   @override
@@ -95,11 +99,37 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     return slots;
   }
 
+  List<TimeOfDay> _generateSelectableTimeSlots() {
+    final workingSlots = _generateWorkingTimeSlots();
+    if (_selectedDoctor == null) {
+      return workingSlots;
+    }
+
+    // Determine booked time slots for the selected doctor and date
+    // Exclude cancelled appointments to make those timeslots available again
+    final Set<TimeOfDay> bookedTimes = (widget.existingAppointments ?? [])
+        .where((appt) =>
+            appt.doctorId == _selectedDoctor!.id &&
+            DateUtils.isSameDay(appt.date, _selectedDate) &&
+            appt.status.toLowerCase().trim() != 'cancelled')
+        .map((appt) => appt.time)
+        .toSet();
+
+    debugPrint('AddAppointmentScreen: Booked times after filtering cancelled: ${bookedTimes.map((t) => t.format(context)).join(', ')}');
+
+    return workingSlots.where((slot) => !bookedTimes.contains(slot)).toList();
+  }
+
   @override
   void initState() {
     super.initState();
     debugPrint("AddAppointmentScreen: Using ApiService for data operations.");
     
+    if (widget.patient != null) {
+      _selectedPatient = widget.patient;
+      _patientSearchController.text = widget.patient!.fullName;
+    }
+
     _fetchInitialFormData();
     _fetchAvailableServices();
 
@@ -307,9 +337,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     }
   }
 
-  Future<void> _selectTime(BuildContext context) async {
+  Future<void> _showTimePicker() async {
     if (_selectedDoctor == null) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select a doctor first to see their availability.'),
@@ -319,7 +348,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       return;
     }
 
-    final List<TimeOfDay> timeSlots = _generateWorkingTimeSlots();
+    final List<TimeOfDay> timeSlots = _generateSelectableTimeSlots();
     if (timeSlots.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -327,102 +356,90 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       return;
     }
 
-    // Debug: Print all existing appointments for this doctor and date
-    final relevantAppointments = widget.existingAppointments
-        .where((appt) =>
-            appt.doctorId == _selectedDoctor!.id &&
-            DateUtils.isSameDay(appt.date, _selectedDate))
-        .toList();
-    
-    debugPrint('AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
-    for (var appt in relevantAppointments) {
-      debugPrint('  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
-    }
-
-    // Determine booked time slots for the selected doctor and date
-    // Exclude cancelled appointments to make those timeslots available again
-    final Set<TimeOfDay> bookedTimes = widget.existingAppointments
-        .where((appt) =>
-            appt.doctorId == _selectedDoctor!.id &&
-            DateUtils.isSameDay(appt.date, _selectedDate) &&
-            appt.status.toLowerCase().trim() != 'cancelled')
-        .map((appt) => appt.time)
-        .toSet();
-
-    debugPrint('AddAppointmentScreen: Booked times after filtering cancelled: ${bookedTimes.map((t) => t.format(context)).join(', ')}');
-
     final TimeOfDay? picked = await showDialog<TimeOfDay>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
+        final relevantAppointments = (widget.existingAppointments ?? [])
+            .where((appt) =>
+                appt.doctorId == _selectedDoctor!.id &&
+                DateUtils.isSameDay(appt.date, _selectedDate))
+            .toList();
+        
+        debugPrint('AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
+        for (final appt in relevantAppointments) {
+          debugPrint('  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
+        }
+
         return AlertDialog(
-          title: const Text('Select a Time Slot'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Wrap(
-                spacing: 10.0,
-                runSpacing: 10.0,
-                alignment: WrapAlignment.center,
-                children: timeSlots.map((time) {
-                  final isBooked = bookedTimes.any((bookedTime) =>
-                      bookedTime.hour == time.hour &&
-                      bookedTime.minute == time.minute);
+          title: const Text('Select Time'),
+          contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  alignment: WrapAlignment.center,
+                  children: timeSlots.map((time) {
+                    final isBooked = (widget.existingAppointments ?? []).any((bookedTime) =>
+                        bookedTime.doctorId == _selectedDoctor!.id &&
+                        DateUtils.isSameDay(bookedTime.date, _selectedDate) &&
+                        bookedTime.status.toLowerCase().trim() != 'cancelled' &&
+                        bookedTime.time.hour == time.hour &&
+                        bookedTime.time.minute == time.minute);
 
-                  final now = DateTime.now();
-                  final nowDateOnly = DateUtils.dateOnly(now);
-                  bool isPast = false;
-                  if (_selectedDate.isBefore(nowDateOnly)) {
-                    isPast = true;
-                  } else if (DateUtils.isSameDay(_selectedDate, nowDateOnly)) {
-                    final timeInMinutes = time.hour * 60 + time.minute;
-                    final nowInMinutes = now.hour * 60 + now.minute;
-                    if (timeInMinutes < nowInMinutes) {
-                      isPast = true;
-                    }
-                  }
+                    final now = DateTime.now();
+                    final isPast = DateUtils.isSameDay(_selectedDate, now) &&
+                        (time.hour < now.hour ||
+                            (time.hour == now.hour && time.minute < now.minute));
 
-                  final bool isDisabled = isBooked || isPast;
-
-                  return SizedBox(
-                    width: 100, // Fixed width for buttons
-                    child: ElevatedButton(
-                      onPressed: isDisabled
-                          ? null
-                          : () {
-                              Navigator.of(context).pop(time);
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isBooked
-                            ? Colors.red[300]
-                            : isPast
-                                ? Colors.grey[400]
-                                : Colors.teal[50],
-                        disabledBackgroundColor:
-                            isBooked ? Colors.red[200] : Colors.grey[300],
-                        foregroundColor: isBooked
-                            ? Colors.white
-                            : isPast
-                                ? Colors.white70
-                                : Colors.teal[800],
-                        disabledForegroundColor: Colors.white.withAlpha(50),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    return SizedBox(
+                      width: 100, // Fixed width for buttons
+                      child: ElevatedButton(
+                        onPressed: isBooked || isPast
+                            ? null
+                            : () {
+                                Navigator.of(context).pop(time);
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isBooked
+                              ? Colors.red[300]
+                              : isPast
+                                  ? Colors.grey[400]
+                                  : Colors.teal[50],
+                          disabledBackgroundColor:
+                              isBooked ? Colors.red[200] : Colors.grey[300],
+                          foregroundColor: isBooked
+                              ? Colors.white
+                              : isPast
+                                  ? Colors.white70
+                                  : Colors.teal[800],
+                          disabledForegroundColor: Colors.white.withAlpha(50),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          textStyle:
+                              const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        textStyle:
-                            const TextStyle(fontWeight: FontWeight.bold),
+                        child: Text(time.format(context)),
                       ),
-                      child: Text(time.format(context)),
-                    ),
-                  );
-                }).toList(),
-              ),
+                    );
+                  }).toList(),
+                ),
+              ],
             ),
           ),
-          actions: [
+          actionsAlignment: MainAxisAlignment.end,
+          actionsPadding:
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
             ),
           ],
         );
@@ -645,130 +662,133 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
             return Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.7, // Make dialog wider
-                height: MediaQuery.of(context).size.height * 0.8, // Make dialog taller
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Register New Patient',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal[800],
+              child: Material(
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.7, // Make dialog wider
+                  height: MediaQuery.of(context).size.height * 0.8, // Make dialog taller
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Register New Patient',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal[800],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Form(
-                          key: formKey,
-                          child: ReusablePatientFormFields(
-                            formType: FormType.mini,
-                            firstNameController: firstNameController,
-                            lastNameController: lastNameController,
-                            dobController: dobController,
-                            contactController: contactController,
-                            addressController: addressController,
-                            allergiesController: allergiesController,
-                            gender: selectedGender,
-                            onGenderChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  selectedGender = value;
-                                });
-                              }
-                            },
-                            bloodType: selectedBloodType,
-                            onBloodTypeChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  selectedBloodType = value;
-                                });
-                              }
-                            },
-                            bloodTypes: _dialogBloodTypes,
-                            isEditMode: false,
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Form(
+                            key: formKey,
+                            child: ReusablePatientFormFields(
+                              formType: FormType.mini,
+                              firstNameController: firstNameController,
+                              lastNameController: lastNameController,
+                              dobController: dobController,
+                              contactController: contactController,
+                              addressController: addressController,
+                              allergiesController: allergiesController,
+                              gender: selectedGender,
+                              onGenderChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    selectedGender = value;
+                                  });
+                                }
+                              },
+                              bloodType: selectedBloodType,
+                              onBloodTypeChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    selectedBloodType = value;
+                                  });
+                                }
+                              },
+                              bloodTypes: _dialogBloodTypes,
+                              isEditMode: false,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(fontSize: 16)),
                           ),
-                          child: const Text('Cancel', style: TextStyle(fontSize: 16)),
-                        ),
-                        const SizedBox(width: 16),
-                        ElevatedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  if (formKey.currentState!.validate()) {
-                                    setState(() {
-                                      isLoading = true;
-                                    });
-
-                                    final now = DateTime.now();
-                                    Patient patientToSave = Patient(
-                                      id: 'temp_${now.millisecondsSinceEpoch}',
-                                      fullName: '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
-                                      birthDate: DateFormat('yyyy-MM-dd').parse(dobController.text),
-                                      gender: selectedGender,
-                                      contactNumber: contactController.text.trim(),
-                                      address: addressController.text.trim(),
-                                      bloodType: selectedBloodType,
-                                      allergies: allergiesController.text.trim(),
-                                      createdAt: now,
-                                      updatedAt: now,
-                                    );
-
-                                    try {
-                                      final newPatientId = await ApiService.createPatient(patientToSave);
-                                      final savedPatient = patientToSave.copyWith(id: newPatientId);
-                                      
-                                      if (!context.mounted) return;
-                                      Navigator.of(context).pop(savedPatient);
-                                    } catch (e) {
-                                      debugPrint("Error saving new patient from dialog: $e");
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Failed to save patient: ${e.toString()}'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    } finally {
+                          const SizedBox(width: 16),
+                          ElevatedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    if (formKey.currentState!.validate()) {
                                       setState(() {
-                                        isLoading = false;
+                                        isLoading = true;
                                       });
+
+                                      final now = DateTime.now();
+                                      Patient patientToSave = Patient(
+                                        id: 'temp_${now.millisecondsSinceEpoch}',
+                                        fullName: '${firstNameController.text.trim()} ${lastNameController.text.trim()}',
+                                        birthDate: DateFormat('yyyy-MM-dd').parse(dobController.text),
+                                        gender: selectedGender,
+                                        contactNumber: contactController.text.trim(),
+                                        address: addressController.text.trim(),
+                                        bloodType: selectedBloodType,
+                                        allergies: allergiesController.text.trim(),
+                                        createdAt: now,
+                                        updatedAt: now,
+                                        registrationDate: now,
+                                      );
+
+                                      try {
+                                        final newPatientId = await ApiService.createPatient(patientToSave);
+                                        final savedPatient = patientToSave.copyWith(id: newPatientId);
+                                        
+                                        if (!context.mounted) return;
+                                        Navigator.of(context).pop(savedPatient);
+                                      } catch (e) {
+                                        debugPrint("Error saving new patient from dialog: $e");
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to save patient: ${e.toString()}'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      } finally {
+                                        setState(() {
+                                          isLoading = false;
+                                        });
+                                      }
                                     }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text('Save Patient', style: TextStyle(fontSize: 16, color: Colors.white)),
                           ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Text('Save Patient', style: TextStyle(fontSize: 16, color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -794,7 +814,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     }
   }
 
-  void _saveAppointment() async {
+  Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedPatient == null) {
         if (!mounted) return;
@@ -813,6 +833,29 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         _isLoading = true;
         _errorMessage = null;
       });
+
+      // Check for scheduling conflicts before submission
+      bool hasConflict = (widget.existingAppointments ?? []).any((appt) {
+        if (appt.status == 'Cancelled' || appt.doctorId != _selectedDoctor!.id) {
+          return false;
+        }
+        return DateUtils.isSameDay(appt.date, _selectedDate) &&
+            appt.time.hour == _selectedTime.hour &&
+            appt.time.minute == _selectedTime.minute;
+      });
+
+      if (hasConflict) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('This time slot is already booked with the selected doctor.'),
+            backgroundColor: Colors.orangeAccent,
+          ),
+        );
+        return;
+      }
 
       try {
         List<Map<String, dynamic>> servicesForDb = _selectedServices.map((s) => {
@@ -836,13 +879,16 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           totalPrice: _totalPrice,
           createdAt: DateTime.now(),
           isWalkIn: false,
+          notes: _notesController.text.trim(),
         );
 
         // Save the appointment and get it back with the generated ID
         final savedAppointment = await ApiService.saveAppointment(appointmentToSave);
 
         // Notify parent about the new appointment
-        widget.onAppointmentAdded(savedAppointment);
+        if (widget.onAppointmentAdded != null) {
+          widget.onAppointmentAdded!(savedAppointment);
+        }
         
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -905,14 +951,25 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Book New Appointment',
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineSmall
-                          ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.teal[800]),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Book New Appointment',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.teal[800]),
+                        ),
+                        if (widget.isDialog)
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(context).pop(),
+                            tooltip: 'Close',
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 24),
                     _buildPatientSelector(),
@@ -1072,7 +1129,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         const SizedBox(width: 16),
         Expanded(
           child: InkWell(
-            onTap: () => _selectTime(context),
+            onTap: () => _showTimePicker(),
             child: InputDecorator(
               decoration: const InputDecoration(
                 labelText: 'Time',
@@ -1149,12 +1206,14 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         TextButton(
-          onPressed: _isLoading ? null : _clearForm,
+          onPressed: _isLoading
+              ? null
+              : (widget.isDialog ? () => Navigator.of(context).pop() : _clearForm),
           child: const Text('Cancel'),
         ),
         const SizedBox(width: 16),
         ElevatedButton.icon(
-          onPressed: _isLoading ? null : _saveAppointment,
+          onPressed: _isLoading ? null : _submitForm,
           icon: _isLoading
               ? const SizedBox(
                   width: 20,

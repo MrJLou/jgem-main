@@ -26,18 +26,60 @@ class PatientDatabaseService {
     return patient['id'];
   }
 
-  Future<int> updatePatient(Map<String, dynamic> patient) async {
+  Future<int> updatePatient(Map<String, dynamic> patient, {String? userId, String? source}) async {
     final db = await _dbHelper.database;
-    patient['updatedAt'] = DateTime.now().toIso8601String();
+    final patientId = patient['id'];
+
+    // 1. Get current patient state before update
+    final List<Map<String, dynamic>> currentStateResult = await db.query(
+      DatabaseHelper.tablePatients,
+      where: 'id = ?',
+      whereArgs: [patientId],
+    );
+
+    if (currentStateResult.isEmpty) {
+      // Patient does not exist, so we can't update.
+      // Alternatively, you could insert it, but for an update, this is an error.
+      throw Exception("Patient with ID $patientId not found for update.");
+    }
+    final Map<String, dynamic> oldPatient = currentStateResult.first;
+
+    // 2. Compare fields and log changes to history table
+    final now = DateTime.now().toIso8601String();
+    final batch = db.batch();
+
+    patient.forEach((key, newValue) {
+      if (key != 'id' && key != 'createdAt' && key != 'updatedAt') {
+        final oldValue = oldPatient[key];
+        if (oldValue != newValue) {
+          batch.insert(DatabaseHelper.tablePatientHistory, {
+            'patientId': patientId,
+            'fieldName': key,
+            'oldValue': oldValue?.toString(),
+            'newValue': newValue?.toString(),
+            'updatedAt': now,
+            'updatedByUserId': userId,
+            'sourceOfChange': source,
+          });
+        }
+      }
+    });
+
+    await batch.commit(noResult: true);
+
+
+    // 3. Update the patient record
+    patient['updatedAt'] = now;
 
     final result = await db.update(
       DatabaseHelper.tablePatients,
       patient,
       where: 'id = ?',
-      whereArgs: [patient['id']],
+      whereArgs: [patientId],
     );
 
-    await _dbHelper.logChange(DatabaseHelper.tablePatients, patient['id'], 'update');
+    // 4. Log the update action itself
+    await _dbHelper.logChange(DatabaseHelper.tablePatients, patientId, 'update');
     return result;
   }
 

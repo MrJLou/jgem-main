@@ -63,7 +63,6 @@ class InvoiceScreenState extends State<InvoiceScreen> {
   // Services and Helpers
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
-  final AuthService _authService = AuthService();
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   final Uuid _uuid = const Uuid();
   final NumberFormat _currencyFormat =
@@ -79,7 +78,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
   // --- DATA FETCHING AND STATE MANAGEMENT ---
 
   Future<void> _loadCurrentUserId() async {
-    final user = await _authService.getCurrentUser();
+    final user = await AuthService.getCurrentUser();
     if (user != null) {
       setState(() => _currentUserId = user.id);
     }

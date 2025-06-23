@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Added import for DateFormat
 import '../../services/api_service.dart'; // Added import
@@ -6,7 +5,10 @@ import '../../models/patient.dart'; // Added import
 import '../maintenance/update_screen.dart'; // Import for RecentUpdateLogService
 
 class ModifyPatientDetailsScreen extends StatefulWidget {
-  const ModifyPatientDetailsScreen({super.key});
+  final Patient? patient;
+  final bool isMedicalInfoOnly;
+  const ModifyPatientDetailsScreen(
+      {super.key, this.patient, this.isMedicalInfoOnly = false});
 
   @override
   ModifyPatientDetailsScreenState createState() =>
@@ -23,6 +25,10 @@ class ModifyPatientDetailsScreenState
       TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _allergiesController = TextEditingController();
+  final TextEditingController _currentMedicationsController =
+      TextEditingController();
+  final TextEditingController _medicalHistoryController =
+      TextEditingController();
 
   List<Patient> _searchResults = [];
   Patient? _selectedPatient;
@@ -38,6 +44,14 @@ class ModifyPatientDetailsScreenState
   ];
   String? _selectedGender;
   final List<String> _gendersList = ['Male', 'Female'];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.patient != null) {
+      _selectPatient(widget.patient!);
+    }
+  }
 
   Future<void> _performSearch() async {
     String searchTerm = _searchController.text;
@@ -92,6 +106,8 @@ class ModifyPatientDetailsScreenState
     _contactNumberController.clear();
     _addressController.clear();
     _allergiesController.clear();
+    _currentMedicationsController.clear();
+    _medicalHistoryController.clear();
     setState(() {
       _selectedBloodType = null; // Reset selected blood type
       _selectedGender = null;
@@ -123,6 +139,8 @@ class ModifyPatientDetailsScreenState
       } else {
         _selectedBloodType = null; // No blood type recorded or empty
       }
+      _currentMedicationsController.text = patient.currentMedications ?? '';
+      _medicalHistoryController.text = patient.medicalHistory ?? '';
     });
   }
 
@@ -184,11 +202,18 @@ class ModifyPatientDetailsScreenState
         allergies: _allergiesController.text.isNotEmpty
             ? _allergiesController.text
             : null,
+        currentMedications: _currentMedicationsController.text.isNotEmpty
+            ? _currentMedicationsController.text
+            : null,
+        medicalHistory: _medicalHistoryController.text.isNotEmpty
+            ? _medicalHistoryController.text
+            : null,
         createdAt: _selectedPatient!.createdAt,
         updatedAt: DateTime.now(),
+        registrationDate: _selectedPatient!.registrationDate,
       );
 
-      await ApiService.updatePatient(updatedPatient);
+      await ApiService.updatePatient(updatedPatient, source: 'ModifyPatientDetailsScreen');
       if (!mounted) return;
 
       // Log the update
@@ -236,9 +261,11 @@ class ModifyPatientDetailsScreenState
     return Scaffold(
       backgroundColor: Colors.grey[50], // Match registration screen background
       appBar: AppBar(
-        title: const Text(
-          'Modify Patient Details',
-          style: TextStyle(
+        title: Text(
+          widget.isMedicalInfoOnly
+              ? 'Modify Medical Information'
+              : 'Modify Patient Details',
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
@@ -251,50 +278,51 @@ class ModifyPatientDetailsScreenState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Search Bar - Stays at the top
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      labelText: 'Patient ID/Name',
-                      hintText: 'Enter Patient ID or Name',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
+          if (widget.patient == null && !widget.isMedicalInfoOnly)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Patient ID/Name',
+                        hintText: 'Enter Patient ID or Name',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white, // Changed from grey[100]
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 12.0),
+                        prefixIcon: Icon(Icons.search,
+                            color: Colors.teal[700]), // Added icon
                       ),
-                      filled: true,
-                      fillColor: Colors.white, // Changed from grey[100]
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16.0, vertical: 12.0),
-                      prefixIcon: Icon(Icons.search,
-                          color: Colors.teal[700]), // Added icon
+                      onSubmitted: (_) =>
+                          _performSearch(), // Allow search on submit
                     ),
-                    onSubmitted: (_) =>
-                        _performSearch(), // Allow search on submit
                   ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.search), // Changed to icon button
-                  label: const Text('Search'), // Changed from 'Enter'
-                  onPressed: _isLoading ? null : _performSearch,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[600],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      textStyle: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.search), // Changed to icon button
+                    label: const Text('Search'), // Changed from 'Enter'
+                    onPressed: _isLoading ? null : _performSearch,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal[600],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        textStyle: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
+          if (widget.patient == null) const Divider(height: 1),
 
           // Content Area based on state
           Expanded(
@@ -312,358 +340,368 @@ class ModifyPatientDetailsScreenState
   }
 
   Widget _buildInitialPlaceholder() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off_outlined, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 20),
-            Text(
-              'Search for a patient to view and modify their details.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
+    return const Center(
+      child: Text('Search for a patient to see their details.'),
     );
   }
 
   Widget _buildSearchResultsList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(8.0),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final patient = _searchResults[index];
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          child: ListTile(
-            leading:
-                Icon(Icons.person_outline, color: Colors.teal[700], size: 30),
-            title: Text(patient.fullName,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: Text(
-                'ID: ${patient.id} \nDOB: ${DateFormat('MMM d, yyyy').format(patient.birthDate)}'),
-            isThreeLine: true,
-            trailing: Icon(Icons.arrow_forward_ios_rounded,
-                color: Colors.teal[600], size: 18),
+    return SizedBox(
+      height: 150, // Limit height of search results
+      child: ListView.builder(
+        itemCount: _searchResults.length,
+        itemBuilder: (context, index) {
+          final patient = _searchResults[index];
+          return ListTile(
+            title: Text(patient.fullName),
+            subtitle: Text(patient.id),
             onTap: () => _selectPatient(patient),
-          ),
-        );
-      },
-    );
-  }
-
-  // Helper to build styled input field similar to PatientRegistrationScreen
-  Widget _buildStyledInputField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    int? maxLines = 1,
-    String? Function(String?)? validator,
-    bool readOnly = false,
-    VoidCallback? onTap,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      readOnly: readOnly,
-      onTap: onTap,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: Colors.teal[700]),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.teal[700]!),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red[300]!),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.red[300]!),
-        ),
-        filled: true,
-        fillColor: Colors.white,
-      ),
-      validator: validator,
-    );
-  }
-
-  // Helper to build section cards similar to PatientRegistrationScreen
-  Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
-      margin: const EdgeInsets.symmetric(vertical: 10.0),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.teal[700], size: 24),
-                const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal[900],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 20, thickness: 1),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Helper to build styled DropdownButtonFormField
-  Widget _buildStyledDropdownField({
-    required String? value,
-    required List<String> items,
-    required String label,
-    required IconData icon,
-    required void Function(String?)? onChanged,
-    String? Function(String?)? validator,
-  }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: items.map((String value) {
-        return DropdownMenuItem<String>(
-          value: value,
-          child: Text(value),
-        );
-      }).toList(),
-      onChanged: onChanged,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: Colors.teal[700]),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        filled: true,
-        fillColor: Colors.white,
+          );
+        },
       ),
     );
   }
 
   Widget _buildPatientDetailsFormWithCards() {
-    if (_selectedPatient == null) return const SizedBox.shrink();
-
-    return Container(
-      decoration: BoxDecoration(
-        // Match registration screen gradient if desired, or keep simple
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.teal[50]!, Colors.white],
-        ),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Column(
-                children: [
-                  Text(
-                    'Editing: ${_selectedPatient!.fullName}',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal[800],
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Patient ID: ${_selectedPatient!.id}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              )),
-              const SizedBox(height: 20),
-
-              _buildSectionCard(
-                'Personal Information',
-                Icons.person_outline,
-                [
-                  _buildStyledInputField(
-                    controller: _fullNameController,
-                    label: 'Full Name',
-                    icon: Icons.person,
-                    validator: (value) => value == null || value.isEmpty
-                        ? 'Full Name is required'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStyledInputField(
-                    controller: _birthDateController,
-                    label: 'Birth Date (YYYY-MM-DD)',
-                    icon: Icons.calendar_today,
-                    readOnly: true,
-                    onTap: () async {
-                      DateTime initialDateTime =
-                          DateTime.now(); // Default to now
-                      if (_birthDateController.text.isNotEmpty) {
-                        try {
-                          initialDateTime = DateFormat('yyyy-MM-dd')
-                              .parseStrict(_birthDateController.text);
-                        } catch (e) {
-                          // If parsing fails, initialDateTime remains DateTime.now()
-                          if (kDebugMode) {
-                            print('Error parsing date for DatePicker: $e');
-                          }
-                        }
-                      }
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: initialDateTime,
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _birthDateController.text =
-                              DateFormat('yyyy-MM-dd').format(picked);
-                        });
-                      }
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Birth Date is required';
-                      }
-                      try {
-                        DateFormat('yyyy-MM-dd').parseStrict(value);
-                        return null;
-                      } catch (e) {
-                        return 'Invalid date format (YYYY-MM-DD)';
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStyledDropdownField(
-                    value: _selectedGender,
-                    items: _gendersList,
-                    label: 'Gender',
-                    icon: Icons.wc,
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        _selectedGender = newValue;
-                      });
-                    },
-                    validator: (value) =>
-                        value == null ? 'Gender is required' : null,
-                  ),
-                ],
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (_selectedPatient !=
+              null) // Only show title if a patient is selected
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                widget.isMedicalInfoOnly
+                    ? 'Editing Medical Info for: ${_selectedPatient!.fullName}'
+                    : 'Editing Details for: ${_selectedPatient!.fullName}',
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
+            ),
 
-              _buildSectionCard(
-                'Contact Information',
-                Icons.contact_phone_outlined,
-                [
-                  _buildStyledInputField(
-                    controller: _contactNumberController,
-                    label: 'Contact Number',
-                    icon: Icons.phone,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStyledInputField(
-                    controller: _addressController,
-                    label: 'Address',
-                    icon: Icons.home_outlined,
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-
-              _buildSectionCard(
-                'Medical Information',
-                Icons.medical_services_outlined,
-                [
-                  _buildStyledDropdownField(
-                    value: _selectedBloodType,
-                    items: _bloodTypesList,
-                    label: 'Blood Type',
-                    icon: Icons.bloodtype_outlined,
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        _selectedBloodType = newValue;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStyledInputField(
-                    controller: _allergiesController,
-                    label: 'Allergies (comma-separated)',
-                    icon: Icons.warning_amber_outlined,
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  icon: _isUpdating
-                      ? Container() // Hide icon when loading, or use a smaller one
-                      : const Icon(Icons.save_alt_outlined),
-                  label: _isUpdating
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ))
-                      : const Text('Update Patient Details',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                  onPressed: _isUpdating ? null : _updatePatientDetails,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal[700],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    // Ensure consistent text style for the button when not loading
-                    textStyle: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+          if (!widget.isMedicalInfoOnly) ...[
+            // Full Name
+            TextFormField(
+              controller: _fullNameController,
+              decoration: InputDecoration(
+                labelText: 'Full Name',
+                prefixIcon: const Icon(Icons.person),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.teal[700]!),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                filled: true,
+                fillColor: Colors.white,
               ),
-              const SizedBox(height: 20), // Bottom padding
-            ],
+              validator: (value) => value == null || value.isEmpty
+                  ? 'Full Name is required'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+
+            // Birth Date
+            TextFormField(
+              controller: _birthDateController,
+              decoration: InputDecoration(
+                labelText: 'Birth Date (YYYY-MM-DD)',
+                prefixIcon: const Icon(Icons.calendar_today),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.teal[700]!),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Birth Date is required';
+                }
+                try {
+                  DateFormat('yyyy-MM-dd').parseStrict(value);
+                  return null;
+                } catch (e) {
+                  return 'Invalid date format (YYYY-MM-DD)';
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Gender
+            DropdownButtonFormField<String>(
+              value: _selectedGender,
+              items: _gendersList.map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedGender = newValue;
+                });
+              },
+              validator: (value) =>
+                  value == null ? 'Gender is required' : null,
+              decoration: InputDecoration(
+                labelText: 'Gender',
+                prefixIcon: const Icon(Icons.wc),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Contact Number
+            TextFormField(
+              controller: _contactNumberController,
+              decoration: InputDecoration(
+                labelText: 'Contact Number',
+                prefixIcon: const Icon(Icons.phone),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.teal[700]!),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              keyboardType: TextInputType.phone,
+              validator: (value) => value == null || value.isEmpty
+                  ? 'Contact Number is required'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+
+            // Address
+            TextFormField(
+              controller: _addressController,
+              decoration: InputDecoration(
+                labelText: 'Address',
+                prefixIcon: const Icon(Icons.home),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.teal[700]!),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              maxLines: 2,
+              validator: (value) => value == null || value.isEmpty
+                  ? 'Address is required'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+          ],
+          // Blood Type
+          DropdownButtonFormField<String>(
+            value: _selectedBloodType,
+            items: _bloodTypesList.map((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _selectedBloodType = newValue;
+              });
+            },
+            validator: (value) =>
+                value == null ? 'Blood Type is required' : null,
+            decoration: InputDecoration(
+              labelText: 'Blood Type',
+              prefixIcon: const Icon(Icons.bloodtype),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+
+          // Allergies
+          TextFormField(
+            controller: _allergiesController,
+            decoration: InputDecoration(
+              labelText: 'Allergies (comma-separated)',
+              prefixIcon: const Icon(Icons.warning),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.teal[700]!),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.red[300]!),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.red[300]!),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            maxLines: 2,
+            validator: (value) => value == null || value.isEmpty
+                ? 'Allergies are required'
+                : null,
+          ),
+          const SizedBox(height: 16),
+
+          // Current Medications
+          TextFormField(
+            controller: _currentMedicationsController,
+            decoration: InputDecoration(
+              labelText: 'Current Medications (if any)',
+              prefixIcon: const Icon(Icons.medication),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.teal[700]!),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 16),
+
+          // Additional Medical Information
+          TextFormField(
+            controller: _medicalHistoryController,
+            decoration: InputDecoration(
+              labelText: 'Additional Medical Information',
+              prefixIcon: const Icon(Icons.note_alt),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.teal[700]!),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            maxLines: 3,
+          ),
+          const SizedBox(height: 30),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              icon: _isUpdating
+                  ? Container() // Hide icon when loading, or use a smaller one
+                  : const Icon(Icons.save_alt_outlined),
+              label: _isUpdating
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ))
+                  : Text(
+                      widget.isMedicalInfoOnly
+                          ? 'Update Medical Info'
+                          : 'Update Patient Details',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+              onPressed: _isUpdating ? null : _updatePatientDetails,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal[700],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                // Ensure consistent text style for the button when not loading
+                textStyle: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20), // Bottom padding
+        ],
       ),
     );
   }

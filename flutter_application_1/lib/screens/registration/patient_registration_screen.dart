@@ -518,19 +518,22 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           bloodType: _bloodType,
           allergies: _allergiesController.text.trim(),
           // Optional fields from full form
-          // email: _emailController.text.trim(), // Patient model doesn't have email
-          // emergencyContactName: _emergencyContactNameController.text.trim(),
-          // emergencyContactNumber: _emergencyContactController.text.trim(),
-          // medicalHistory: _medicalInfoController.text.trim(),
-          // currentMedications: _currentMedicationsController.text.trim(),
+          email: _emailController.text.trim(),
+          emergencyContactName: _emergencyContactNameController.text.trim(),
+          emergencyContactNumber: _emergencyContactController.text.trim(),
+          medicalHistory: _medicalInfoController.text.trim(),
+          currentMedications: _currentMedicationsController.text.trim(),
           createdAt: _isEditMode && widget.patient != null
               ? widget.patient!.createdAt
               : DateTime.now(),
           updatedAt: DateTime.now(),
+          registrationDate: _isEditMode && widget.patient != null 
+              ? widget.patient!.registrationDate 
+              : DateTime.now(),
         );
 
         if (_isEditMode) {
-          await ApiService.updatePatient(patientObject);
+          await ApiService.updatePatient(patientObject, source: 'PatientRegistrationScreen');
           if (!mounted) return;
           setState(() => _isLoading = false);
           _showSuccessDialog(context, patientObject);

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/maintenance/modify_patient_details_screen.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../models/patient.dart';
 import 'dart:async';
+import '../appointments/add_appointment_screen.dart';
+import '../../models/appointment.dart';
 
 class PatientSearchScreen extends StatefulWidget {
   const PatientSearchScreen({super.key});
@@ -584,9 +587,26 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(Icons.history),
-                      label: const Text('VIEW FULL HISTORY'),
-                      onPressed: () { /* TODO: Implement or remove */ },
+                      icon: const Icon(Icons.medical_information),
+                      label: const Text('MEDICAL INFO'),
+                      onPressed: () {
+                        if (_foundPatient != null) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ModifyPatientDetailsScreen(
+                                patient: _foundPatient!,
+                                isMedicalInfoOnly: true,
+                              ),
+                            ),
+                          ).then((value) {
+                            // Re-fetch patient details when returning to this screen
+                            if (_foundPatient != null) {
+                              _fetchPatientDetailsAndSetState(_foundPatient!);
+                            }
+                          });
+                        }
+                      },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.teal[700],
                         side: BorderSide(color: Colors.teal[700]!),
@@ -602,7 +622,38 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.add),
                       label: const Text('NEW APPOINTMENT'),
-                      onPressed: () { /* TODO: Implement or remove */ },
+                      onPressed: () {
+                        if (_foundPatient != null) {
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return Dialog(
+                                insetPadding: const EdgeInsets.symmetric(
+                                    horizontal: 50.0, vertical: 50.0),
+                                child: AddAppointmentScreen(
+                                  patient: _foundPatient,
+                                  isDialog: true,
+                                  existingAppointments: const [],
+                                  onAppointmentAdded:
+                                      (Appointment newAppointment) {
+                                    Navigator.of(context)
+                                        .pop(); // Close the dialog
+                                    ScaffoldMessenger.of(context)
+                                      ..hideCurrentSnackBar()
+                                      ..showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                              'Appointment added for ${newAppointment.consultationType}'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.teal[700],
                         foregroundColor: Colors.white,
@@ -914,9 +965,10 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
           allergies: _allergiesController.text.trim().isNotEmpty ? _allergiesController.text.trim() : null,
           createdAt: _foundPatient!.createdAt, 
           updatedAt: DateTime.now(), 
+          registrationDate: _foundPatient!.registrationDate,
         );
 
-        await ApiService.updatePatient(updatedPatient);
+        await ApiService.updatePatient(updatedPatient, source: 'PatientSearchScreen');
         await _fetchPatientDetailsAndSetState(updatedPatient); 
 
         if (!mounted) return;
@@ -1017,7 +1069,6 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         ),
       );
     }
-    _loadInitialPatients();
   }
 
   Widget _buildInfoSection(String title, IconData icon, List<Widget> children) {

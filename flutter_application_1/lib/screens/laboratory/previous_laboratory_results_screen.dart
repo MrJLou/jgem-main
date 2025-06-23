@@ -638,111 +638,116 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
                       ),
                     )
                   : Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16.0),
-                              decoration: BoxDecoration(
-                                color: Colors.teal[50],
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(12),
-                                  topRight: Radius.circular(12),
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1600),
+                          child: Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16.0),
+                                  decoration: BoxDecoration(
+                                    color: Colors.teal[50],
+                                    borderRadius: const BorderRadius.only(
+                                      topLeft: Radius.circular(12),
+                                      topRight: Radius.circular(12),
+                                    ),
+                                  ),
+                                  child: Column(
                                     children: [
-                                      Icon(Icons.science, color: Colors.teal[700]),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'Laboratory Records',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
+                                      Row(
+                                        children: [
+                                          Icon(Icons.science, color: Colors.teal[700]),
+                                          const SizedBox(width: 8),
+                                          const Text(
+                                            'Laboratory Records',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      TextField(
+                                        controller: _searchController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Search by Patient, Test, Doctor, or Category',
+                                          prefixIcon: const Icon(Icons.search, color: Colors.teal),
+                                          suffixIcon: _searchController.text.isNotEmpty
+                                              ? IconButton(
+                                                  icon: const Icon(Icons.clear),
+                                                  onPressed: () {
+                                                    _searchController.clear();
+                                                  },
+                                                )
+                                              : null,
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            borderSide: const BorderSide(color: Colors.teal),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            borderSide: const BorderSide(color: Colors.teal, width: 2),
+                                          ),
+                                          filled: true,
+                                          fillColor: Colors.white,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _searchController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Search by Patient, Test, Doctor, or Category',
-                                      prefixIcon: const Icon(Icons.search, color: Colors.teal),
-                                      suffixIcon: _searchController.text.isNotEmpty
-                                          ? IconButton(
-                                              icon: const Icon(Icons.clear),
-                                              onPressed: () {
-                                                _searchController.clear();
-                                              },
-                                            )
-                                          : null,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8.0),
-                                        borderSide: const BorderSide(color: Colors.teal),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8.0),
-                                        borderSide: const BorderSide(color: Colors.teal, width: 2),
-                                      ),
-                                      filled: true,
-                                      fillColor: Colors.white,
+                                ),
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.vertical,
+                                    child: PaginatedDataTable(
+                                      header: null,
+                                      rowsPerPage: 10,
+                                      showCheckboxColumn: false,
+                                      headingRowColor: WidgetStateProperty.all(Colors.teal[50]),
+                                      columns: [
+                                        DataColumn(
+                                          label: const Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Patient', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Date & Time', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Test/Service', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Status', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          onSort: _onSort,
+                                        ),
+                                        const DataColumn(
+                                          label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                      source: _dataSource,
+                                      sortColumnIndex: _sortColumnIndex,
+                                      sortAscending: _sortAscending,
                                     ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.vertical,
-                                child: PaginatedDataTable(
-                                  header: null,
-                                  rowsPerPage: 10,
-                                  showCheckboxColumn: false,
-                                  headingRowColor: WidgetStateProperty.all(Colors.teal[50]),
-                                  columns: [
-                                    DataColumn(
-                                      label: const Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    DataColumn(
-                                      label: const Text('Patient', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    DataColumn(
-                                      label: const Text('Date & Time', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    DataColumn(
-                                      label: const Text('Test/Service', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    DataColumn(
-                                      label: const Text('Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    DataColumn(
-                                      label: const Text('Status', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onSort: _onSort,
-                                    ),
-                                    const DataColumn(
-                                      label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
-                                  source: _dataSource,
-                                  sortColumnIndex: _sortColumnIndex,
-                                  sortAscending: _sortAscending,
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),

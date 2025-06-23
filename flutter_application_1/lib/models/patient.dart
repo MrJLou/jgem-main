@@ -16,6 +16,7 @@ class Patient {
   final String? emergencyContactNumber;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime registrationDate;
 
   Patient({
     required this.id,
@@ -33,25 +34,27 @@ class Patient {
     this.emergencyContactNumber,
     required this.createdAt,
     required this.updatedAt,
+    required this.registrationDate,
   });
 
   factory Patient.fromJson(Map<String, dynamic> json) {
     return Patient(
-      id: json['id'],
-      fullName: json['fullName'],
-      birthDate: DateTime.parse(json['birthDate']),
-      gender: json['gender'],
-      contactNumber: json['contactNumber'],
-      email: json['email'],
-      address: json['address'],
-      bloodType: json['bloodType'],
-      allergies: json['allergies'],
-      currentMedications: json['currentMedications'],
-      medicalHistory: json['medicalHistory'],
-      emergencyContactName: json['emergencyContactName'],
-      emergencyContactNumber: json['emergencyContactNumber'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      id: json['id']?.toString() ?? '',
+      fullName: json['fullName']?.toString() ?? 'Unknown Patient',
+      birthDate: json['birthDate'] != null ? DateTime.parse(json['birthDate']) : DateTime.now(),
+      gender: json['gender']?.toString() ?? 'Unknown',
+      contactNumber: json['contactNumber']?.toString(),
+      email: json['email']?.toString(),
+      address: json['address']?.toString(),
+      bloodType: json['bloodType']?.toString(),
+      allergies: json['allergies']?.toString(),
+      currentMedications: json['currentMedications']?.toString(),
+      medicalHistory: json['medicalHistory']?.toString(),
+      emergencyContactName: json['emergencyContactName']?.toString(),
+      emergencyContactNumber: json['emergencyContactNumber']?.toString(),
+      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
+      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
+      registrationDate: json['registrationDate'] != null ? DateTime.parse(json['registrationDate']) : DateTime.now(),
     );
   }
 
@@ -72,6 +75,7 @@ class Patient {
       'emergencyContactNumber': emergencyContactNumber,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'registrationDate': registrationDate.toIso8601String(),
     };
   }
 
@@ -91,6 +95,7 @@ class Patient {
     String? emergencyContactNumber,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? registrationDate,
   }) {
     return Patient(
       id: id ?? this.id,
@@ -108,6 +113,7 @@ class Patient {
       emergencyContactNumber: emergencyContactNumber ?? this.emergencyContactNumber,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      registrationDate: registrationDate ?? this.registrationDate,
     );
   }
 

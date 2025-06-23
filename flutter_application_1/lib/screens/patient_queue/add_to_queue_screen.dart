@@ -268,24 +268,18 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       String? patientIdForAppointmentCheck;
       if (enteredPatientId.isNotEmpty) {
         patientIdForAppointmentCheck = enteredPatientId;
-      } else {
-        // If ID wasn't entered, try to get it from a potential DB match (if user confirms use of DB data later)
-        // This part is tricky because patient data confirmation happens *after* this check ideally.
-        // For now, we'll rely on `enteredPatientId` or the ID confirmed from DB if we adjust flow later.
-        // Let's prioritize checking if enteredPatientId exists.
-        // If not, this check might be skipped or be less effective if only name is available.
       }
       
-      // Attempt to get patientId from registeredPatientData if not directly entered.
-      // This logic depends on how you want to sequence the user interactions (DB match dialog vs. appointment check dialog)
-      // For this iteration, let's assume we first check based on entered ID, then later refine if needed.
-      final preliminaryRegisteredPatientData = await _dbHelper.findRegisteredPatient(
+      final Map<String, dynamic>? preliminaryRegisteredPatientData = await _dbHelper.findRegisteredPatient(
           patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
           fullName: enteredPatientName,
       );
 
-      if (preliminaryRegisteredPatientData != null && preliminaryRegisteredPatientData['id'] != null) {
-          patientIdForAppointmentCheck = preliminaryRegisteredPatientData['id'] as String;
+      if (preliminaryRegisteredPatientData != null) {
+          final patient = Patient.fromJson(preliminaryRegisteredPatientData);
+          if (patient.id.isNotEmpty) {
+            patientIdForAppointmentCheck = patient.id;
+          }
       }
 
 
@@ -341,20 +335,15 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       });
 
       try {
-        final registeredPatientData = await _dbHelper.findRegisteredPatient(
+        final Map<String, dynamic>? registeredPatientData = await _dbHelper.findRegisteredPatient(
           patientId: enteredPatientId.isNotEmpty ? enteredPatientId : null,
           fullName: enteredPatientName,
         );
 
         if (registeredPatientData != null) {
+          final registeredPatient = Patient.fromJson(registeredPatientData);
           // Patient found in the database
-          final dbPatientId = registeredPatientData['id'] as String?;
-          final dbFullName = registeredPatientData['fullName'] as String?;
-          final dbBirthDate = registeredPatientData['birthDate'] as String?;
-          final dbGender = registeredPatientData['gender'] as String?;
-
-          final calculatedAge =
-              dbBirthDate != null ? _calculateAge(dbBirthDate) : null;
+          final calculatedAge = _calculateAge(registeredPatient.birthDate.toIso8601String());
 
           if (!mounted) return;
           bool confirmUseDbData = await showDialog(
@@ -368,10 +357,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         const Text(
                             'A registered patient matching the details was found:'),
                         const SizedBox(height: 10),
-                        Text('DB ID: ${dbPatientId ?? 'N/A'}'),
-                        Text('DB Name: ${dbFullName ?? 'N/A'}'),
-                        Text('DB Gender: ${dbGender ?? 'N/A'}'),
-                        Text('DB BirthDate: ${dbBirthDate ?? 'N/A'}'),
+                        Text('DB ID: ${registeredPatient.id}'),
+                        Text('DB Name: ${registeredPatient.fullName}'),
+                        Text('DB Gender: ${registeredPatient.gender}'),
+                        Text('DB BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
                         Text(
                             'Calculated Age: ${calculatedAge?.toString() ?? 'N/A'}'),
                         const SizedBox(height: 15),
@@ -400,14 +389,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           String? finalGenderToUse;
 
           if (confirmUseDbData) {
-            finalPatientIdToUse = dbPatientId ??
-                enteredPatientId; // Fallback just in case, but should be dbPatientId
-            finalPatientNameToUse = dbFullName ?? enteredPatientName;
-            finalAgeToUse = calculatedAge ??
-                (_ageController.text.isNotEmpty
-                    ? int.tryParse(_ageController.text)
-                    : null);
-            finalGenderToUse = dbGender ?? _genderController.text.trim();
+            finalPatientIdToUse = registeredPatient.id;
+            finalPatientNameToUse = registeredPatient.fullName;
+            finalAgeToUse = calculatedAge;
+            finalGenderToUse = registeredPatient.gender;
 
             // Update controllers to reflect DB data being used
             _patientIdController.text = finalPatientIdToUse;
@@ -447,28 +432,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             'price': service.defaultPrice ?? 0.0,
           }).toList();
 
-          // 1. Create a corresponding Appointment record for this walk-in encounter.
-          // This ensures that walk-ins are treated like appointments for historical records.
-          final walkInAppointment = Appointment(
-            id: '', // DB will generate ID
-            patientId: finalPatientIdToUse,
-            doctorId: _selectedDoctor!.id,
-            date: now,
-            time: TimeOfDay.fromDateTime(now),
-            status: 'Waiting', // Represents a patient who has arrived and is in the queue
-            consultationType: conditionSummary,
-            selectedServices: servicesForDb,
-            totalPrice: _totalPrice,
-            createdAt: now,
-            isWalkIn: true,
-            notes: 'Walk-in patient added to queue.',
-            paymentStatus: 'Pending',
-          );
-
-          // Save the appointment to get its database-generated ID
-          final savedAppointment = await ApiService.saveAppointment(walkInAppointment);
-
-          // 2. Now, add the patient to the live queue, linking it to the created appointment record.
+          // Walk-in patients are added directly to the queue and do not create a separate appointment record.
+          // This keeps walk-ins distinct from scheduled appointments.
           await widget.queueService.addPatientDataToQueue({
             'patientName': finalPatientNameToUse,
             'patientId': finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
@@ -480,7 +445,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             'selectedServices': servicesForDb,
             'totalPrice': _totalPrice,
             'isWalkIn': true,
-            'originalAppointmentId': savedAppointment.id, // Link to the persistent appointment record
+            'originalAppointmentId': null, // Explicitly null for walk-ins
             'doctorId': _selectedDoctor?.id,
             'doctorName': _selectedDoctor?.fullName,
           });
@@ -527,6 +492,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             };
             _totalPrice = 0.0;
             _showOtherConditionField = false;
+            _searchResults = null;
           }); // Trigger rebuild to update queue list display
         } else {
           // Patient not found in the database
@@ -791,6 +757,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                               setState(() {
                                                 _searchController.clear();
                                                 _searchResults = null;
+                                                _patientIdController.clear();
+                                                _ageController.clear();
+                                                _genderController.clear();
                                               });
                                             },
                                           )
@@ -1145,7 +1114,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       _searchController.text = patient.fullName;
                       _patientIdController.text = patient.id;
                       _ageController.text = age?.toString() ?? '';
-                      _genderController.text = patient.gender;
+                      _genderController.text = patient.gender ?? '';
                       _searchResults = null;
                     });
                   },

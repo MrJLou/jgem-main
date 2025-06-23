@@ -491,10 +491,10 @@ class PreviousConsultationScreenState extends State<PreviousConsultationScreen> 
                       ),
                     )
                   : Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.all(24.0),
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1400),
+                          constraints: const BoxConstraints(maxWidth: 1600),
                           child: Card(
                             elevation: 4,
                             shape: RoundedRectangleBorder(
@@ -562,7 +562,7 @@ class PreviousConsultationScreenState extends State<PreviousConsultationScreen> 
                                       header: null,
                                       rowsPerPage: 10,
                                       showCheckboxColumn: false,
-                                      headingRowColor: MaterialStateProperty.all(Colors.teal[50]),
+                                      headingRowColor: WidgetStateProperty.all(Colors.teal[50]),
                                       columns: [
                                         DataColumn(
                                           label: const Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),

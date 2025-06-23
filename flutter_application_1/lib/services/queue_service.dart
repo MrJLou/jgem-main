@@ -17,7 +17,6 @@ class QueueService {
   QueueService._internal();
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  final AuthService _authService = AuthService();
 
   /// Get current active queue items from the database.
   /// By default, fetches 'waiting' and 'in_consultation' statuses.
@@ -49,7 +48,7 @@ class QueueService {
   /// Add patient to the active queue in the database using raw data.
   Future<ActivePatientQueueItem> addPatientDataToQueue(
       Map<String, dynamic> patientData) async {
-    final currentUserId = await _authService.getCurrentUserId();
+    final currentUserId = await AuthService.getCurrentUserId();
     final now = DateTime.now();
     String queueEntryId = patientData['queueId']?.toString() ??
         'qentry-${now.millisecondsSinceEpoch}-${Random().nextInt(9999)}';
@@ -58,29 +57,29 @@ class QueueService {
 
     final newItem = ActivePatientQueueItem(
       queueEntryId: queueEntryId,
-      patientId: patientData['patientId'] as String?,
-      patientName: patientData['name'] as String,
+      patientId: patientData['patientId']?.toString() ?? '',
+      patientName: patientData['patientName']?.toString() ?? 'Unnamed Patient',
       arrivalTime:
           DateTime.tryParse(patientData['arrivalTime']?.toString() ?? '') ??
               now,
       queueNumber: nextQueueNumber,
-      gender: patientData['gender'] as String?,
+      gender: patientData['gender']?.toString() ?? '',
       age: patientData['age'] is int
           ? patientData['age']
           : (patientData['age'] is String
               ? int.tryParse(patientData['age']!)
               : null),
-      conditionOrPurpose: patientData['condition'] as String?,
+      conditionOrPurpose: patientData['conditionOrPurpose']?.toString() ?? '',
       status: patientData['status']?.toString() ?? 'waiting',
-      createdAt:
-          DateTime.tryParse(patientData['addedTime']?.toString() ?? '') ?? now,
+      createdAt: now,
       addedByUserId: currentUserId,
       selectedServices:
-          patientData['selectedServices'] as List<Map<String, dynamic>>?,
-      totalPrice: patientData['totalPrice'] as double?,
-      doctorId: patientData['doctorId'] as String?,
-      doctorName: patientData['doctorName'] as String?,
+          (patientData['selectedServices'] as List?)?.cast<Map<String, dynamic>>(),
+      totalPrice: (patientData['totalPrice'] as num?)?.toDouble() ?? 0.0,
+      doctorId: patientData['doctorId']?.toString() ?? '',
+      doctorName: patientData['doctorName']?.toString() ?? '',
       isWalkIn: patientData['isWalkIn'] as bool? ?? false,
+      originalAppointmentId: patientData['originalAppointmentId']?.toString() ?? '',
     );
 
     return await _dbHelper.addToActiveQueue(newItem);

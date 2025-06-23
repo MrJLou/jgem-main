@@ -55,7 +55,7 @@ class PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _loadCurrentUserId() async {
-    final user = await AuthService().getCurrentUser();
+    final user = await AuthService.getCurrentUser();
     if (!mounted) return;
     if (user != null) {
       setState(() {

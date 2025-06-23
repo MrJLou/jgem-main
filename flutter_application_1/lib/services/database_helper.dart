@@ -34,11 +34,12 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 28;
+  static const int _databaseVersion = 32;
 
   // Tables
   static const String tableUsers = 'users';
   static const String tablePatients = 'patients';
+  static const String tablePatientHistory = 'patient_history';
   static const String tableAppointments = 'appointments';
   static const String tableMedicalRecords = 'medical_records';
   static const String tableClinicServices = 'clinic_services';
@@ -343,27 +344,29 @@ class DatabaseHelper {
         medicalHistory TEXT,
         emergencyContactName TEXT,
         emergencyContactNumber TEXT,
-        registrationDate TEXT,
-        lastVisitDate TEXT,
-        isArchived INTEGER DEFAULT 0,
-        notes TEXT,
-        occupation TEXT,
-        maritalStatus TEXT,
-        nationality TEXT,
-        preferredLanguage TEXT,
-        photoUrl TEXT,
-        insuranceProvider TEXT,
-        insurancePolicyNumber TEXT,
-        familyMedicalHistory TEXT,
-        socialHistory TEXT,
-        vaccinationHistory TEXT,
-        primaryCarePhysician TEXT,
-        referralSource TEXT,
         createdAt TEXT,
-        updatedAt TEXT 
+        updatedAt TEXT,
+        registrationDate TEXT
       )
     ''');
     debugPrint('DATABASE_HELPER: Created $tablePatients table');
+
+    // Patient History table
+    await db.execute('''
+      CREATE TABLE $tablePatientHistory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patientId TEXT NOT NULL,
+        fieldName TEXT NOT NULL,
+        oldValue TEXT,
+        newValue TEXT,
+        updatedAt TEXT NOT NULL,
+        updatedByUserId TEXT,
+        sourceOfChange TEXT,
+        FOREIGN KEY (patientId) REFERENCES $tablePatients(id) ON DELETE CASCADE,
+        FOREIGN KEY (updatedByUserId) REFERENCES $tableUsers(id) ON DELETE SET NULL
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Created $tablePatientHistory table');
 
     // Appointments table
     await db.execute('''
@@ -388,7 +391,7 @@ class DatabaseHelper {
         isWalkIn INTEGER DEFAULT 0,
         createdAt TEXT,
         updatedAt TEXT,
-        FOREIGN KEY (patientId) REFERENCES $tablePatients(id),
+        FOREIGN KEY (patientId) REFERENCES $tablePatients(id) ON DELETE CASCADE,
         FOREIGN KEY (doctorId) REFERENCES $tableUsers(id)
       )
     ''');
@@ -637,6 +640,62 @@ class DatabaseHelper {
       await _addColumnIfNotExists(db, tableActivePatientQueue, 'isWalkIn', 'INTEGER DEFAULT 0 NOT NULL');
     }
 
+    if (oldVersion < 29) {
+      debugPrint("DATABASE_HELPER: Upgrading to version 29: Seeding new clinic services.");
+      await _seedInitialClinicServicesWithExecutor(db);
+    }
+
+    if (oldVersion < 30) {
+      debugPrint("DATABASE_HELPER: Upgrading to version 30: Recreating patients table with simplified schema.");
+      await db.execute('DROP TABLE IF EXISTS $tablePatients');
+      await db.execute('''
+        CREATE TABLE $tablePatients (
+          id TEXT PRIMARY KEY,
+          fullName TEXT,
+          birthDate TEXT,
+          gender TEXT,
+          contactNumber TEXT,
+          email TEXT,
+          address TEXT,
+          bloodType TEXT,
+          allergies TEXT,
+          currentMedications TEXT,
+          medicalHistory TEXT,
+          emergencyContactName TEXT,
+          emergencyContactNumber TEXT,
+          createdAt TEXT,
+          updatedAt TEXT 
+        )
+      ''');
+    }
+
+    if (oldVersion < 31) {
+      debugPrint("DATABASE_HELPER: Upgrading to version 31: Adding registrationDate to patients table.");
+      await _addColumnIfNotExists(db, tablePatients, 'registrationDate', 'TEXT');
+    }
+
+    if (oldVersion < 32) {
+      debugPrint("DATABASE_HELPER: Upgrading to version 32: Adding patient_history table.");
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tablePatientHistory (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          patientId TEXT NOT NULL,
+          fieldName TEXT NOT NULL,
+          oldValue TEXT,
+          newValue TEXT,
+          updatedAt TEXT NOT NULL,
+          updatedByUserId TEXT,
+          sourceOfChange TEXT,
+          FOREIGN KEY (patientId) REFERENCES $tablePatients(id) ON DELETE CASCADE,
+          FOREIGN KEY (updatedByUserId) REFERENCES $tableUsers(id) ON DELETE SET NULL
+        )
+      ''');
+      await _createIndexesForTable(db, tablePatientHistory, {
+        'idx_patient_history_patientId': 'patientId',
+        'idx_patient_history_updatedAt': 'updatedAt',
+      });
+    }
+
     debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
 
@@ -649,6 +708,13 @@ class DatabaseHelper {
     } else {
       debugPrint('DATABASE_HELPER: Column $columnName already exists in $tableName');
     }
+  }
+
+  Future<void> _createIndexesForTable(Database db, String tableName, Map<String, String> indexes) async {
+    for (var indexName in indexes.keys) {
+      await db.execute('CREATE INDEX IF NOT EXISTS $indexName ON $tableName (${indexes[indexName]})');
+    }
+    debugPrint('DATABASE_HELPER: Created indexes for table $tableName');
   }
 
   // Create default admin user
@@ -720,8 +786,8 @@ class DatabaseHelper {
     return patientDbService.insertPatient(patient);
   }
 
-  Future<int> updatePatient(Map<String, dynamic> patient) async {
-    return patientDbService.updatePatient(patient);
+  Future<int> updatePatient(Map<String, dynamic> patient, {String? userId, String? source}) async {
+    return patientDbService.updatePatient(patient, userId: userId, source: source);
   }
 
   Future<int> deletePatient(String id) async {
@@ -1192,6 +1258,12 @@ To view live changes in DB Browser:
         'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_arrival_time ON $tableActivePatientQueue (arrivalTime)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_active_patient_queue_patient_id ON $tableActivePatientQueue (patientId)');
+
+    // Indexes for patient_history table
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_patient_history_patientId ON $tablePatientHistory (patientId)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_patient_history_updatedAt ON $tablePatientHistory (updatedAt)');
 
     debugPrint('DATABASE_HELPER: Ensured all indexes are created.');
   }
@@ -1833,6 +1905,11 @@ To view live changes in DB Browser:
       {'name': 'Low Density Lipoprotein (LDL)', 'category': 'Laboratory', 'price': 200.0},
       {'name': 'Blood Uric Acid', 'category': 'Laboratory', 'price': 200.0},
       {'name': 'Creatinine', 'category': 'Laboratory', 'price': 200.0},
+      {'name': 'Serum Glutamic Pyruvic Transaminase (SGPT)', 'category': 'Laboratory', 'price': 250.0},
+      {'name': 'Serum Glutamic Oxaloacetic Transaminase', 'category': 'Laboratory', 'price': 250.0},
+      {'name': 'Very Low Density Lipoprotein (VLDL)', 'category': 'Laboratory', 'price': 100.0},
+      {'name': 'Blood Urea Nitrogen', 'category': 'Laboratory', 'price': 200.0},
+      {'name': 'CBC W/ Platelet', 'category': 'Laboratory', 'price': 250.0},
     ];
 
     for (var serviceData in initialServices) {
@@ -2137,6 +2214,7 @@ To view live changes in DB Browser:
       tableSyncLog,
       tablePatientQueue,
       tableActivePatientQueue,
+      tablePatientHistory,
     ];
 
     await db.transaction((txn) async {
@@ -2374,5 +2452,15 @@ To view live changes in DB Browser:
       return results.first;
     }
     return null;
+  }
+
+  Future<List<Map<String, dynamic>>> getPatientHistory(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tablePatientHistory,
+      where: 'patientId = ?',
+      whereArgs: [patientId],
+      orderBy: 'updatedAt DESC',
+    );
   }
 }
