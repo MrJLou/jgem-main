@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/active_patient_queue_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
@@ -15,121 +16,66 @@ class PreviousLaboratoryResultsScreen extends StatefulWidget {
 class LabResultDataSource extends DataTableSource {
   List<Map<String, dynamic>> _results;
   final BuildContext context;
+  final Function(Map<String, dynamic>) onViewDetails;
 
-  LabResultDataSource(this._results, this.context);
+  LabResultDataSource(this._results, this.context, this.onViewDetails);
 
   void updateData(List<Map<String, dynamic>> newResults) {
     _results = newResults;
     notifyListeners();
   }
+
   @override
   DataRow getRow(int index) {
     final result = _results[index];
-    return DataRow(
-      cells: [
-        DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.teal[50],
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              result['id']?.toString().substring(0, 8) ?? 'N/A',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            ),
+    return DataRow(cells: [
+      DataCell(Text(result['patientName'] ?? 'N/A')),
+      DataCell(Text(result['test'] ?? 'N/A')),
+      DataCell(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: _getCategoryColor(result['category']),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            result['category'] ?? 'General',
+            style: const TextStyle(fontSize: 10, color: Colors.white),
           ),
         ),
-        DataCell(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                result['patientName'] ?? 'N/A',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              if (result['patientId'] != null)
-                Text(
-                  'ID: ${result['patientId'].toString().substring(0, 8)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-            ],
+      ),
+      DataCell(Text(result['doctor'] ?? 'N/A')),
+      DataCell(Text(result['date']?.split(' ')[0] ?? 'N/A')),
+      DataCell(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: _getStatusColor(result['status']),
+            borderRadius: BorderRadius.circular(12),
           ),
-        ),
-        DataCell(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                result['date']?.split(' ')[0] ?? 'N/A',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Text(
-                result['date']?.split(' ')[1] ?? '',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-        DataCell(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                result['test'] ?? 'N/A',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _getCategoryColor(result['category']),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  result['category'] ?? 'General',
-                  style: const TextStyle(fontSize: 10, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-        DataCell(Text(result['doctor'] ?? 'N/A')),
-        DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _getStatusColor(result['status']),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              result['status'] ?? 'N/A',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
+          child: Text(
+            result['status'] ?? 'N/A',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
-        DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.visibility, color: Colors.teal),
-                onPressed: () {
-                  _showResultDetails(context, result);
-                },
-                tooltip: 'View Details',
-              ),
-            ],
-          ),
+      ),
+      DataCell(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.visibility, color: Colors.teal),
+              onPressed: () => onViewDetails(result),
+              tooltip: 'View Details',
+            ),
+          ],
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
   Color _getCategoryColor(String? category) {
@@ -137,6 +83,7 @@ class LabResultDataSource extends DataTableSource {
       case 'hematology':
         return Colors.red;
       case 'chemistry':
+      case 'laboratory':
         return Colors.blue;
       case 'urinalysis':
         return Colors.yellow[700]!;
@@ -177,17 +124,21 @@ class LabResultDataSource extends DataTableSource {
   @override
   int get selectedRowCount => 0;
 
-  void sort<T>(Comparable<T> Function(Map<String, dynamic> d) getField, bool ascending) {
+  void sort<T>(
+      Comparable<T> Function(Map<String, dynamic> d) getField, bool ascending) {
     _results.sort((a, b) {
       final aValue = getField(a);
       final bValue = getField(b);
-      return ascending ? Comparable.compare(aValue, bValue) : Comparable.compare(bValue, aValue);
+      return ascending
+          ? Comparable.compare(aValue, bValue)
+          : Comparable.compare(bValue, aValue);
     });
     notifyListeners();
   }
 }
 
-class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResultsScreen> {
+class PreviousLaboratoryResultsScreenState
+    extends State<PreviousLaboratoryResultsScreen> {
   List<Map<String, dynamic>> _allResults = [];
   List<Map<String, dynamic>> _filteredResults = [];
   bool _isLoading = true;
@@ -201,7 +152,7 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
   @override
   void initState() {
     super.initState();
-    _dataSource = LabResultDataSource([], context);
+    _dataSource = LabResultDataSource([], context, _showResultDetails);
     _fetchAllResults();
     _searchController.addListener(_filterResults);
   }
@@ -212,6 +163,7 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
     _searchController.dispose();
     super.dispose();
   }
+
   void _fetchAllResults() async {
     setState(() {
       _isLoading = true;
@@ -220,7 +172,6 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
 
     try {
       // Fetch all necessary data with proper error handling
-      final allMedicalRecords = await _dbHelper.getAllMedicalRecords();
       final patientsData = await _dbHelper.patientDbService.getPatients();
       final usersData = await _dbHelper.userDbService.getUsers();
       final appointments = await _dbHelper.getAllAppointments();
@@ -235,7 +186,7 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
           debugPrint('Error parsing patient data for ${p['id']}: $e');
         }
       }
- 
+
       final doctorMap = <String, User>{};
       for (var u in usersData) {
         try {
@@ -249,28 +200,111 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
 
       final transformedResults = <Map<String, dynamic>>[];
       final processedAppointmentIds = <String>{};
-      
-      // Define categories that ARE laboratory-related
+      final processedQueueEntryIds = <String>{}; // To prevent duplicates
+
+      // Define categories that ARE laboratory-related. This list is now the single
+      // source of truth for what constitutes a laboratory service.
       const laboratoryCategories = {
-        'laboratory', 'radiology', 'hematology', 'chemistry', 
-        'urinalysis', 'microbiology', 'pathology'
+        'laboratory',
+        'radiology',
+        'hematology',
+        'chemistry',
+        'urinalysis',
+        'microbiology',
+        'pathology'
       };
 
-      // 1. Process appointments to find and extract all lab-related services
+      // 1. Process Paid Items from the Active Patient Queue for real-time results
+      final db = await _dbHelper.database;
+      // Note: In a real-world scenario, you might query a historical table instead.
+      // Here, we check the active queue for simplicity, assuming paid items remain
+      // until fully processed or archived overnight.
+      final paidQueueItems = await db.query(
+        'active_patient_queue',
+        where: "status = 'done' OR paymentStatus = 'Paid'",
+      );
+
+      for (final item in paidQueueItems) {
+        final queueItem = ActivePatientQueueItem.fromJson(item);
+        if (processedQueueEntryIds.contains(queueItem.queueEntryId)) continue;
+
+        // Find all laboratory services for this queue item
+        final labServices = queueItem.selectedServices?.where((service) {
+          final category = (service['category'] as String? ?? '').toLowerCase();
+          return laboratoryCategories.contains(category);
+        }).toList();
+
+        // If there are lab services, create a single consolidated record for them
+        if (labServices != null && labServices.isNotEmpty) {
+          final patient = patientMap[queueItem.patientId];
+          if (patient == null) continue;
+
+          final doctor = doctorMap[queueItem.doctorId];
+          final doctorName = doctor != null
+              ? 'Dr. ${doctor.fullName}'
+              : (queueItem.doctorName ?? 'Attending');
+
+          // Consolidate service names into one string
+          final testNames = labServices
+              .map((s) =>
+                  s['serviceName'] as String? ??
+                  s['name'] as String? ??
+                  'Lab Test')
+              .join(', ');
+
+          // Use the category of the first lab service for display, or default to 'Laboratory'
+          final displayCategory =
+              labServices.first['category'] as String? ?? 'Laboratory';
+
+          transformedResults.add({
+            'id': queueItem.queueEntryId,
+            'patientName': patient.fullName,
+            'patientId': patient.id,
+            'date':
+                DateFormat('yyyy-MM-dd HH:mm').format(queueItem.arrivalTime),
+            'test': testNames, // The consolidated list of tests
+            'testType': 'Paid Service',
+            'doctor': doctorName,
+            'doctorId': queueItem.doctorId,
+            'result': {
+              'Status': 'Payment confirmed. Results pending or to be uploaded.'
+            },
+            'status': 'Completed',
+            'notes': queueItem.conditionOrPurpose ??
+                'Services paid via walk-in queue.',
+            'category': displayCategory, // Use a representative category
+            'diagnosis': '',
+            'rawLabResults':
+                'This service was processed through the patient queue.',
+            'patient': patient,
+            'doctorUser': doctor,
+            'isFromAppointment': !queueItem.isWalkIn,
+          });
+        }
+
+        // Mark this queue entry as processed to avoid duplicates from other sources
+        processedQueueEntryIds.add(queueItem.queueEntryId);
+        // If it's linked to an appointment, mark that too
+        if (queueItem.originalAppointmentId != null &&
+            queueItem.originalAppointmentId!.isNotEmpty) {
+          processedAppointmentIds.add(queueItem.originalAppointmentId!);
+        }
+      }
+
+      // 2. Process appointments to find and extract all lab-related services
       for (final appt in appointments) {
-        if (!['completed', 'served', 'finished'].contains(appt.status.toLowerCase())) {
+        if (processedAppointmentIds.contains(appt.id)) {
+          continue; // Skip if already handled via the paid queue item logic
+        }
+
+        if (!['completed', 'served', 'finished']
+            .contains(appt.status.toLowerCase())) {
           continue;
         }
 
         final labServices = appt.selectedServices.where((service) {
           final category = (service['category'] as String? ?? '').toLowerCase();
-          final serviceName = (service['serviceName'] ?? service['name'] ?? '').toLowerCase();
-
-          // Prioritize structured category, fallback to keyword search in name
-          return laboratoryCategories.contains(category) ||
-                 serviceName.contains('lab') || serviceName.contains('test') ||
-                 serviceName.contains('blood') || serviceName.contains('urine') ||
-                 serviceName.contains('x-ray') || serviceName.contains('scan');
+          return laboratoryCategories.contains(category);
         }).toList();
 
         if (labServices.isNotEmpty) {
@@ -279,89 +313,45 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
           if (patient == null) continue;
 
           final doctor = doctorMap[appt.doctorId];
-          final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
+          final doctorName =
+              doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor';
 
-          for (final service in labServices) {
-            final serviceName = service['serviceName'] ?? service['name'] ?? 'Laboratory Test';
-            // Use the more reliable category from the service data if available
-            final category = service['category'] as String? ?? _determineTestCategory(serviceName.toLowerCase(), '');
-            
-            transformedResults.add({
-              'id': '${appt.id}_${service['id'] ?? transformedResults.length}',
-              'patientName': patient.fullName,
-              'patientId': patient.id,
-              'date': DateFormat('yyyy-MM-dd HH:mm').format(appt.date),
-              'test': serviceName,
-              'testType': 'Appointment Service',
-              'doctor': doctorName,
-              'doctorId': appt.doctorId,
-              'result': {'Status': 'Test completed during consultation'},
-              'status': 'Completed',
-              'notes': appt.notes ?? 'Performed during consultation',
-              'category': category,
-              'diagnosis': '',
-              'rawLabResults': 'Service performed during appointment',
-              'patient': patient,
-              'doctorUser': doctor,
-              'isFromAppointment': true,
-            });
-          }
+          // Consolidate service names into one string
+          final testNames = labServices
+              .map((s) => s['serviceName'] ?? s['name'] ?? 'Laboratory Test')
+              .join(', ');
+
+          final displayCategory =
+              labServices.first['category'] as String? ?? 'Laboratory';
+
+          transformedResults.add({
+            'id': appt.id,
+            'patientName': patient.fullName,
+            'patientId': patient.id,
+            'date': DateFormat('yyyy-MM-dd HH:mm').format(appt.date),
+            'test': testNames,
+            'testType': 'Appointment Service',
+            'doctor': doctorName,
+            'doctorId': appt.doctorId,
+            'result': {'Status': 'Test completed during consultation'},
+            'status': 'Completed',
+            'notes': appt.notes ?? 'Performed during consultation',
+            'category': displayCategory,
+            'diagnosis': '',
+            'rawLabResults': 'Service performed during appointment',
+            'patient': patient,
+            'doctorUser': doctor,
+            'isFromAppointment': true,
+          });
         }
       }
-      
-      // 2. Process medical records, skipping any linked to already-processed appointments
-      for (final record in allMedicalRecords) {
-        try {
-          if (record['appointmentId'] != null && processedAppointmentIds.contains(record['appointmentId'])) {
-            continue;
-          }
 
-          final patient = patientMap[record['patientId']];
-          if (patient == null) {
-            debugPrint('Patient not found for record ${record['id']}');
-            continue;
-          }
-
-          final doctor = doctorMap[record['doctorId']];
-          final doctorName = doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor (ID: ${record['doctorId']})';
-
-          final recordType = (record['recordType'] as String?)?.toLowerCase() ?? '';
-          final labResults = (record['labResults'] as String?)?.toLowerCase() ?? '';
-          final diagnosis = (record['diagnosis'] as String?)?.toLowerCase() ?? '';
-          final notes = (record['notes'] as String?)?.toLowerCase() ?? '';
-          
-          if (_isLaboratoryRecord(recordType, labResults, diagnosis, notes)) {
-            Map<String, String> parsedResults = _parseLabResults(record['labResults'] as String?);
-            String status = _determineResultStatus(record['labResults'] as String?, record['notes'] as String?);
-            String category = _determineTestCategory(recordType, labResults);
-            String testName = _determineTestName(recordType, labResults, diagnosis);
-
-            transformedResults.add({
-              'id': record['id'],
-              'patientName': patient.fullName,
-              'patientId': patient.id,
-              'date': DateFormat('yyyy-MM-dd HH:mm').format(DateTime.parse(record['recordDate'] as String)),
-              'test': testName,
-              'testType': recordType,
-              'doctor': doctorName,
-              'doctorId': record['doctorId'],
-              'result': parsedResults,
-              'status': status,
-              'notes': record['notes'] ?? 'No additional notes',
-              'category': category,
-              'diagnosis': record['diagnosis'] ?? '',
-              'rawLabResults': record['labResults'] ?? '',
-              'patient': patient,
-              'doctorUser': doctor,
-            });
-          }
-        } catch (e) {
-          debugPrint('Error processing medical record ${record['id']}: $e');
-        }
-      }
+      // 3. Process medical records has been removed to prevent duplication.
+      // The sources above (Queue and Appointments) are the single source of truth for services rendered.
 
       // Sort by date (newest first)
-      transformedResults.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
+      transformedResults
+          .sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
 
       if (!mounted) return;
       setState(() {
@@ -382,158 +372,29 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
     }
   }
 
-  bool _isLaboratoryRecord(String recordType, String labResults, String diagnosis, String notes) {
-    const labKeywords = [
-      'lab', 'laboratory', 'test', 'blood', 'urine', 'urinalysis',
-      'cbc', 'chemistry', 'hematology', 'microbiology', 'pathology',
-      'x-ray', 'scan', 'imaging', 'radiology', 'ultrasound', 'ct', 'mri',
-      'glucose', 'cholesterol', 'hemoglobin', 'platelet', 'culture'
-    ];
-    
-    final combined = '$recordType $labResults $diagnosis $notes'.toLowerCase();
-    return labKeywords.any((keyword) => combined.contains(keyword));
-  }
-
-  Map<String, String> _parseLabResults(String? labResults) {
-    Map<String, String> parsed = {};
-    
-    if (labResults == null || labResults.isEmpty) {
-      return {'Result': 'No result data available'};
-    }
-
-    try {
-      final lines = labResults.split('\n');
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-        
-        if (trimmed.contains(':')) {
-          final parts = trimmed.split(':');
-          if (parts.length >= 2) {
-            final key = parts[0].trim();
-            final value = parts.sublist(1).join(':').trim();
-            if (key.isNotEmpty && value.isNotEmpty) {
-              parsed[key] = value;
-            }
-          }
-        } else if (trimmed.contains('=')) {
-          final parts = trimmed.split('=');
-          if (parts.length == 2) {
-            final key = parts[0].trim();
-            final value = parts[1].trim();
-            if (key.isNotEmpty && value.isNotEmpty) {
-              parsed[key] = value;
-            }
-          }
-        } else if (parsed.isEmpty) {
-          // If no structured data found, use the whole text as result
-          parsed['Result'] = trimmed;
-        }
-      }
-      
-      if (parsed.isEmpty) {
-        parsed['Result'] = labResults;
-      }
-    } catch (e) {
-      parsed['Result'] = labResults;
-    }
-    
-    return parsed;
-  }
-
-  String _determineTestName(String recordType, String labResults, String diagnosis) {
-    final combined = '$recordType $labResults $diagnosis'.toLowerCase();
-    
-    if (combined.contains('cbc') || combined.contains('complete blood count')) {
-      return 'Complete Blood Count (CBC)';
-    } else if (combined.contains('urinalysis') || combined.contains('urine test')) {
-      return 'Urinalysis';
-    } else if (combined.contains('blood chemistry') || combined.contains('chemistry panel')) {
-      return 'Blood Chemistry Panel';
-    } else if (combined.contains('x-ray')) {
-      return 'X-Ray Examination';
-    } else if (combined.contains('ultrasound')) {
-      return 'Ultrasound';
-    } else if (combined.contains('glucose')) {
-      return 'Blood Glucose Test';
-    } else if (combined.contains('cholesterol')) {
-      return 'Cholesterol Test';
-    } else if (combined.contains('culture')) {
-      return 'Culture Test';
-    } else if (recordType.isNotEmpty) {
-      return recordType;
-    } else {
-      return 'Laboratory Test';
-    }
-  }
   void _filterResults() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredResults = _allResults.where((result) {
-        final patientName = (result['patientName'] as String?)?.toLowerCase() ?? '';
+        final patientName =
+            (result['patientName'] as String?)?.toLowerCase() ?? '';
         final testName = (result['test'] as String?)?.toLowerCase() ?? '';
         final doctorName = (result['doctor'] as String?)?.toLowerCase() ?? '';
         final category = (result['category'] as String?)?.toLowerCase() ?? '';
         final status = (result['status'] as String?)?.toLowerCase() ?? '';
         final diagnosis = (result['diagnosis'] as String?)?.toLowerCase() ?? '';
         final notes = (result['notes'] as String?)?.toLowerCase() ?? '';
-        
-        return patientName.contains(query) || 
-               testName.contains(query) || 
-               doctorName.contains(query) ||
-               category.contains(query) ||
-               status.contains(query) ||
-               diagnosis.contains(query) ||
-               notes.contains(query);
+
+        return patientName.contains(query) ||
+            testName.contains(query) ||
+            doctorName.contains(query) ||
+            category.contains(query) ||
+            status.contains(query) ||
+            diagnosis.contains(query) ||
+            notes.contains(query);
       }).toList();
       _dataSource.updateData(_filteredResults);
     });
-  }
-
-  String _determineTestCategory(String recordType, String labResults) {
-    final combined = '$recordType $labResults'.toLowerCase();
-    
-    if (combined.contains('blood') || combined.contains('cbc') || combined.contains('hemoglobin') ||
-        combined.contains('wbc') || combined.contains('rbc') || combined.contains('platelet')) {
-      return 'Hematology';
-    } else if (combined.contains('glucose') || combined.contains('cholesterol') || 
-               combined.contains('lipid') || combined.contains('chemistry') ||
-               combined.contains('liver') || combined.contains('kidney')) {
-      return 'Chemistry';
-    } else if (combined.contains('urine') || combined.contains('urinalysis')) {
-      return 'Urinalysis';
-    } else if (combined.contains('culture') || combined.contains('bacteria') ||
-               combined.contains('sensitivity') || combined.contains('microbiology')) {
-      return 'Microbiology';
-    } else if (combined.contains('x-ray') || combined.contains('imaging') ||
-               combined.contains('radiology') || combined.contains('scan')) {
-      return 'Radiology';
-    } else {
-      return 'General';
-    }
-  }
-
-  String _determineResultStatus(String? labResults, String? notes) {
-    final combined = '${labResults ?? ''} ${notes ?? ''}'.toLowerCase();
-
-    if (combined.contains('cancelled') || combined.contains('canceled')) {
-      return 'Cancelled';
-    }
-    if (combined.contains('pending')) {
-      return 'Pending';
-    }
-    if (combined.contains('normal') || combined.contains('negative') ||
-        combined.contains('within range') || combined.contains('clear')) {
-      return 'Normal';
-    } else if (combined.contains('abnormal') || combined.contains('positive') ||
-               combined.contains('elevated') || combined.contains('high') ||
-               combined.contains('low') || combined.contains('critical')) {
-      return 'Abnormal';
-    } else if (combined.contains('borderline') || combined.contains('slightly')) {
-      return 'Borderline';
-    } else {
-      return 'Pending Review';
-    }
   }
 
   void _onSort(int columnIndex, bool ascending) {
@@ -545,15 +406,15 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
     _dataSource.sort<String>((d) {
       switch (columnIndex) {
         case 0:
-          return d['id'].toString();
-        case 1:
           return d['patientName'] as String;
-        case 2:
-          return d['date'] as String;
-        case 3:
+        case 1:
           return d['test'] as String;
-        case 4:
+        case 2:
+          return d['category'] as String;
+        case 3:
           return d['doctor'] as String;
+        case 4:
+          return d['date'] as String;
         case 5:
           return d['status'] as String;
         default:
@@ -561,201 +422,8 @@ class PreviousLaboratoryResultsScreenState extends State<PreviousLaboratoryResul
       }
     }, ascending);
   }
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
-      appBar: AppBar(
-        title: const Text(
-          'Laboratory Results',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.teal[700],
-        elevation: 0,
-        actions: [
-          if (!_isLoading && _allResults.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Center(
-                child: Text(
-                  '${_filteredResults.length} results',
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ),
-            ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.teal),
-                  SizedBox(height: 16),
-                  Text('Loading laboratory results...'),
-                ],
-              ),
-            )
-          : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error: $_errorMessage',
-                        style: TextStyle(color: Colors.red[700]),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _fetchAllResults,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                        child: const Text('Retry', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                )
-              : _allResults.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.science_outlined, 
-                               size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
-                            'No laboratory results found',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Laboratory test results will appear here',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1600),
-                          child: Card(
-                            elevation: 4,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16.0),
-                                  decoration: BoxDecoration(
-                                    color: Colors.teal[50],
-                                    borderRadius: const BorderRadius.only(
-                                      topLeft: Radius.circular(12),
-                                      topRight: Radius.circular(12),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Icon(Icons.science, color: Colors.teal[700]),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'Laboratory Records',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      TextField(
-                                        controller: _searchController,
-                                        decoration: InputDecoration(
-                                          labelText: 'Search by Patient, Test, Doctor, or Category',
-                                          prefixIcon: const Icon(Icons.search, color: Colors.teal),
-                                          suffixIcon: _searchController.text.isNotEmpty
-                                              ? IconButton(
-                                                  icon: const Icon(Icons.clear),
-                                                  onPressed: () {
-                                                    _searchController.clear();
-                                                  },
-                                                )
-                                              : null,
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8.0),
-                                            borderSide: const BorderSide(color: Colors.teal),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8.0),
-                                            borderSide: const BorderSide(color: Colors.teal, width: 2),
-                                          ),
-                                          filled: true,
-                                          fillColor: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.vertical,
-                                    child: PaginatedDataTable(
-                                      header: null,
-                                      rowsPerPage: 10,
-                                      showCheckboxColumn: false,
-                                      headingRowColor: WidgetStateProperty.all(Colors.teal[50]),
-                                      columns: [
-                                        DataColumn(
-                                          label: const Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        DataColumn(
-                                          label: const Text('Patient', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        DataColumn(
-                                          label: const Text('Date & Time', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        DataColumn(
-                                          label: const Text('Test/Service', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        DataColumn(
-                                          label: const Text('Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        DataColumn(
-                                          label: const Text('Status', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          onSort: _onSort,
-                                        ),
-                                        const DataColumn(
-                                          label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold)),
-                                        ),
-                                      ],
-                                      source: _dataSource,
-                                      sortColumnIndex: _sortColumnIndex,
-                                      sortAscending: _sortAscending,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-    );
-  }
-}
 
-void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
+  void _showResultDetails(Map<String, dynamic> result) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -780,7 +448,8 @@ void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: _getCategoryColorForDialog(result['category']),
                           borderRadius: BorderRadius.circular(10),
@@ -796,7 +465,8 @@ void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: _getStatusColorForDialog(result['status']),
                           borderRadius: BorderRadius.circular(10),
@@ -827,10 +497,11 @@ void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
                 // Patient Information Section
                 _buildSectionHeader('Patient Information'),
                 _buildDetailRow('Patient Name', result['patientName']),
-                _buildDetailRow('Patient ID', result['patientId']?.toString().substring(0, 8) ?? 'N/A'),
-                
+                _buildDetailRow('Patient ID',
+                    result['patientId']?.toString().substring(0, 8) ?? 'N/A'),
+
                 const SizedBox(height: 16),
-                
+
                 // Test Information Section
                 _buildSectionHeader('Test Information'),
                 _buildDetailRow('Test Name', result['test']),
@@ -838,49 +509,50 @@ void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
                 _buildDetailRow('Date & Time', result['date']),
                 _buildDetailRow('Requesting Doctor', result['doctor']),
                 _buildDetailRow('Status', result['status']),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Results Section
                 _buildSectionHeader('Test Results'),
                 ...(result['result'] as Map<String, dynamic>).entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 120,
-                          child: Text(
-                            '${entry.key}:',
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
+                      (entry) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 120,
+                              child: Text(
+                                '${entry.key}:',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            entry.value,
-                            style: TextStyle(
-                              color: Colors.grey[900],
-                              fontWeight: FontWeight.w600,
+                            Expanded(
+                              child: Text(
+                                entry.value,
+                                style: TextStyle(
+                                  color: Colors.grey[900],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Additional Information Section
                 _buildSectionHeader('Additional Information'),
-                if (result['diagnosis'] != null && result['diagnosis'].isNotEmpty)
+                if (result['diagnosis'] != null &&
+                    result['diagnosis'].isNotEmpty)
                   _buildDetailRow('Diagnosis', result['diagnosis']),
                 _buildDetailRow('Notes', result['notes']),
-                
+
                 if (result['isFromAppointment'] == true) ...[
                   const SizedBox(height: 8),
                   Container(
@@ -919,81 +591,342 @@ void _showResultDetails(BuildContext context, Map<String, dynamic> result) {
         ],
       ),
     );
-}
-
-Color _getCategoryColorForDialog(String? category) {
-  switch (category?.toLowerCase()) {
-    case 'hematology':
-      return Colors.red;
-    case 'chemistry':
-      return Colors.blue;
-    case 'urinalysis':
-      return Colors.yellow[700]!;
-    case 'microbiology':
-      return Colors.green;
-    case 'radiology':
-      return Colors.purple;
-    default:
-      return Colors.grey;
   }
-}
 
-Color _getStatusColorForDialog(String? status) {
-  switch (status?.toLowerCase()) {
-    case 'normal':
-      return Colors.green;
-    case 'abnormal':
-      return Colors.red;
-    case 'borderline':
-      return Colors.orange;
-    case 'pending':
-      return Colors.grey;
-    case 'completed':
-      return Colors.blue;
-    case 'cancelled':
-      return Colors.black54;
-    default:
-      return Colors.grey[600]!;
-  }
-}
-
-Widget _buildSectionHeader(String title) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 8.0),
-    child: Text(
-      title,
-      style: const TextStyle(
-        fontWeight: FontWeight.bold,
-        color: Colors.teal,
-        fontSize: 16,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4F8),
+      appBar: AppBar(
+        title: const Text(
+          'Laboratory Results',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.teal[700],
+        elevation: 0,
+        actions: [
+          if (!_isLoading && _allResults.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 16.0),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.teal[800],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_filteredResults.length} records',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
-    ),
-  );
-}
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.teal),
+                  SizedBox(height: 16),
+                  Text('Loading laboratory results...'),
+                ],
+              ),
+            )
+          : _errorMessage != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline,
+                          size: 64, color: Colors.red[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error: $_errorMessage',
+                        style: TextStyle(color: Colors.red[700]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _fetchAllResults,
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal),
+                        child: const Text('Retry',
+                            style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                )
+              : _allResults.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.science_outlined,
+                              size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No laboratory results found',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Completed laboratory tests will appear here',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16.0),
+                      child: Card(
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(20.0),
+                              decoration: BoxDecoration(
+                                color: Colors.teal[50],
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(12),
+                                  topRight: Radius.circular(12),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.science,
+                                          color: Colors.teal[700], size: 24),
+                                      const SizedBox(width: 12),
+                                      const Text(
+                                        'Laboratory Records',
+                                        style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    width:
+                                        MediaQuery.of(context).size.width > 600
+                                            ? 400
+                                            : double.infinity,
+                                    child: TextField(
+                                      controller: _searchController,
+                                      decoration: InputDecoration(
+                                        labelText:
+                                            'Search by patient, test, doctor, or status...',
+                                        prefixIcon: const Icon(Icons.search,
+                                            color: Colors.teal),
+                                        suffixIcon: _searchController
+                                                .text.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(Icons.clear),
+                                                onPressed: () {
+                                                  _searchController.clear();
+                                                },
+                                              )
+                                            : null,
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                          borderSide: const BorderSide(
+                                              color: Colors.teal, width: 2),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 12),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: Colors.grey[300]!),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: SingleChildScrollView(
+                                    child: PaginatedDataTable(
+                                      header: null,
+                                      rowsPerPage: 8,
+                                      showCheckboxColumn: false,
+                                      headingRowColor: WidgetStateProperty.all(
+                                          Colors.grey[50]),
+                                      dataRowMaxHeight: 50,
+                                      columnSpacing: 16,
+                                      horizontalMargin: 12,
+                                      dividerThickness: 1,
+                                      columns: [
+                                        DataColumn(
+                                          label: const Text('Patient',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Test',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Category',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Doctor',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Date',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        DataColumn(
+                                          label: const Text('Status',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                          onSort: _onSort,
+                                        ),
+                                        const DataColumn(
+                                          label: Text('Actions',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.teal)),
+                                        ),
+                                      ],
+                                      source: _dataSource,
+                                      sortColumnIndex: _sortColumnIndex,
+                                      sortAscending: _sortAscending,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+    );
+  }
 
-Widget _buildDetailRow(String label, String value) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8.0),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            '$label:',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[700],
+  Color _getCategoryColorForDialog(String? category) {
+    switch (category?.toLowerCase()) {
+      case 'hematology':
+        return Colors.red;
+      case 'chemistry':
+        return Colors.blue;
+      case 'urinalysis':
+        return Colors.yellow[700]!;
+      case 'microbiology':
+        return Colors.green;
+      case 'radiology':
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Color _getStatusColorForDialog(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'normal':
+        return Colors.green;
+      case 'abnormal':
+        return Colors.red;
+      case 'borderline':
+        return Colors.orange;
+      case 'pending':
+        return Colors.grey;
+      case 'completed':
+        return Colors.blue;
+      case 'cancelled':
+        return Colors.black54;
+      default:
+        return Colors.grey[600]!;
+    }
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Colors.teal,
+          fontSize: 16,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(color: Colors.grey[800]),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: Colors.grey[800]),
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-} 
+        ],
+      ),
+    );
+  }
+}
