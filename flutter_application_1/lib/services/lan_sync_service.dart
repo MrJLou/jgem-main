@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/database_helper.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'lan_session_service.dart';
 
 class LanSyncService {
   static const String _syncIntervalKey = 'sync_interval_minutes';
@@ -456,15 +457,16 @@ class LanSyncService {
             // Return server status (no auth required for status check)
             request.response.headers.contentType =
                 ContentType('application', 'json');
-            final pendingChanges = await _dbHelper!.getPendingChanges();
-
-            final status = {
+            final pendingChanges = await _dbHelper!.getPendingChanges();            final status = {
               'status': 'online',
               'dbPath': _dbPath,
               'pendingChanges': pendingChanges.length,
               'allowedNetworks':
                   _allowedIpRanges.map((prefix) => '$prefix.*').toList(),
               'timestamp': DateTime.now().toIso8601String(),
+              'sessionToken': LanSessionService.getServerToken(),
+              'sessionServerPort': 8081,
+              'activeSessions': LanSessionService.activeSessions.length,
             };
 
             request.response.write(jsonEncode(status));
@@ -729,6 +731,17 @@ class LanSyncService {
     } catch (e) {
       debugPrint('Failed to initialize LAN sharing: $e');
       return false;
+    }
+  }
+
+  // Add session service initialization
+  static Future<void> initializeWithSessionManagement() async {
+    try {
+      await initialize(DatabaseHelper());
+      await LanSessionService.initialize();
+      debugPrint('LAN Sync Service with session management initialized');
+    } catch (e) {
+      debugPrint('Failed to initialize LAN services: $e');
     }
   }
 }

@@ -3,7 +3,6 @@ import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
-import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'forgot_password_screen.dart';
 
@@ -160,13 +159,14 @@ class LoginScreenState extends State<LoginScreen>
       final username = _usernameController.text; // Store username locally
 
       try {
-        // final username = _usernameController.text; // Already defined above
-
-        // Check rate limiting before attempting login
+        // final username = _usernameController.text; // Already defined above        // Check rate limiting before attempting login
         // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
-        final response =
-            await ApiService.login(username, _passwordController.text);
+        // Use enhanced session management login
+        final response = await AuthService.loginWithSessionManagement(
+          username, 
+          _passwordController.text
+        );
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;

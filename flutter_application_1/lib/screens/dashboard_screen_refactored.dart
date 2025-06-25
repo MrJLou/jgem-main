@@ -3,15 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import '../models/appointment.dart';
-import '../services/api_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
-import '../widgets/appointments/appointment_form.dart';
-import '../screens/settings/user_profile_screen.dart';
-import '../screens/settings/appearance_settings_screen.dart';
-import '../screens/settings/system_settings_screen.dart';
-import '../screens/logs/user_activity_log_screen.dart';
 import '../screens/lan_client_connection_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -27,17 +20,7 @@ class DashboardScreenState extends State<DashboardScreen> {
   bool _isHovered = false;
   final Map<int, bool> _hoveredItems = {};
 
-  final DateTime _selectedDate = DateTime.now();
-  List<Appointment> _appointments = [];
-  bool _isAddingAppointment = false;
-  bool _isLoading = false;
-  final _appointmentFormKey = GlobalKey<FormState>();
-
-  final TextEditingController _patientNameController = TextEditingController();
-  final TextEditingController _patientIdController = TextEditingController();
-  final TextEditingController _doctorController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-  TimeOfDay _selectedTime = TimeOfDay.now();
+  final bool _isLoading = false;
 
   late List<String> _menuTitles;
   late List<Widget> _screens;
@@ -50,7 +33,6 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
     super.initState();
     _configureMenuForRole();
-    _loadInitialData();
     if (kDebugMode) {
       print('DEBUG: DashboardScreen initState END');
     }
@@ -58,11 +40,13 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   void _configureMenuForRole() {
     if (kDebugMode) {
-      print('DEBUG: Received accessLevel in _configureMenuForRole: ${widget.accessLevel}');
+      print(
+          'DEBUG: Received accessLevel in _configureMenuForRole: ${widget.accessLevel}');
     }
-    
-    final menuConfig = DashboardMenuConfig.configureMenuForRole(widget.accessLevel);
-    
+
+    final menuConfig =
+        DashboardMenuConfig.configureMenuForRole(widget.accessLevel);
+
     setState(() {
       _menuTitles = menuConfig.titles;
       _screens = menuConfig.screens;
@@ -73,177 +57,50 @@ class DashboardScreenState extends State<DashboardScreen> {
       }
     });
   }
-  String _generatePatientId() {
-    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-    return 'PT-${timestamp.length >= 6 ? timestamp.substring(timestamp.length - 6) : timestamp}';
-  }
 
-  Future<void> _loadAppointments() async {
-    if (kDebugMode) {
-      print('DEBUG: DashboardScreen _loadAppointments START');
-    }
-    if (!mounted) return;
-    
-    setState(() => _isLoading = true);
-    try {
-      final appointments = await ApiService.getAllAppointments();
-      if (!mounted) return;
-      setState(() {
-        _appointments = appointments;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      if (kDebugMode) {
-        print('DEBUG: DashboardScreen _loadAppointments ERROR: $e');
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading appointments: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _loadInitialData() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    
-    // Load appointments
-    await _loadAppointments();
-    
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
+  void _logout() async {
+    final shouldLogout = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Error'),
-          content: Text(message),
+          title: Row(
+            children: [
+              Icon(Icons.logout, color: Colors.orange[700]),
+              const SizedBox(width: 8),
+              const Text('Confirm Logout'),
+            ],
+          ),
+          content: const Text(
+            'Are you sure you want to logout? You will be redirected to the login screen.',
+            style: TextStyle(fontSize: 16),
+          ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Logout'),
             ),
           ],
         );
       },
-    );
-  }
-
-  Future<void> _saveAppointment() async {
-    if (_appointmentFormKey.currentState!.validate()) {
-      if (!mounted) return;
-      setState(() => _isLoading = true);
-      try {
-        final newAppointment = Appointment(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          patientId: _patientIdController.text,
-          doctorId: _doctorController.text,
-          date: _selectedDate,
-          time: _selectedTime,
-          status: 'Pending',
-          consultationType: _notesController.text.isNotEmpty ? _notesController.text : 'General',
-          selectedServices: [],
-          totalPrice: 0.0,
+    );    if (shouldLogout == true) {
+      await AuthService.logoutWithSessionCleanup();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
         );
-        
-        // Save appointment via API
-        await ApiService.createAppointment(newAppointment);
-        
-        if (mounted) {
-          setState(() {
-            _appointments.add(newAppointment);
-            _isAddingAppointment = false;
-          });
-          
-          // Clear form
-          _patientNameController.clear();
-          _patientIdController.clear();
-          _doctorController.clear();
-          _notesController.clear();
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Appointment saved successfully!')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          _showErrorDialog('Failed to save appointment: $e');
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
       }
-    }
-  }
-
-  Future<void> _updateAppointmentStatus(String id, String newStatus) async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    try {
-      await ApiService.updateAppointmentStatus(id, newStatus);
-      if (mounted) {
-        setState(() {
-          final index = _appointments.indexWhere((apt) => apt.id == id);
-          if (index != -1) {
-            _appointments[index] = _appointments[index].copyWith(status: newStatus);
-          }
-        });
-      }
-      await _loadAppointments();
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog('Failed to update appointment: $e');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Widget _buildAppointmentModule() {
-    return _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : Column(
-            children: [
-              if (_isAddingAppointment)
-                AppointmentForm(
-                  formKey: _appointmentFormKey,
-                  patientNameController: _patientNameController,
-                  patientIdController: _patientIdController,
-                  doctorController: _doctorController,
-                  notesController: _notesController,
-                  selectedDate: _selectedDate,
-                  selectedTime: _selectedTime,
-                  onTimeChanged: (time) => setState(() => _selectedTime = time),
-                  onSave: _saveAppointment,
-                  onCancel: () => setState(() => _isAddingAppointment = false),
-                  generatePatientId: _generatePatientId,
-                ),
-              if (!_isAddingAppointment)
-                ElevatedButton(
-                  onPressed: () => setState(() => _isAddingAppointment = true),
-                  child: const Text('Add New Appointment'),
-                ),
-            ],
-          );
-  }
-
-  void _logout() async {
-    await AuthService.logout();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
     }
   }
 
@@ -299,92 +156,21 @@ class DashboardScreenState extends State<DashboardScreen> {
         ),
         backgroundColor: Colors.teal[700],
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.settings, color: Colors.white),
-            tooltip: 'Settings & Actions',
-            onSelected: (String result) {
-              switch (result) {
-                case 'user_profile':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const UserProfileScreen()),
-                  );
-                  break;
-                case 'appearance_settings':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AppearanceSettingsScreen()),
-                  );
-                  break;
-                case 'system_settings':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SystemSettingsScreen()),
-                  );
-                  break;
-                case 'activity_log':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const UserActivityLogScreen()),
-                  );
-                  break;
-                case 'lan_connection':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LanClientConnectionScreen()),
-                  );
-                  break;
-                case 'logout':
-                  _logout();
-                  break;
-              }
+          IconButton(
+            icon: const Icon(Icons.wifi, color: Colors.white),
+            tooltip: 'LAN Connection',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const LanClientConnectionScreen()),
+              );
             },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem<String>(
-                value: 'user_profile',
-                child: ListTile(
-                  leading: Icon(Icons.account_circle_outlined),
-                  title: Text('User Profile'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'appearance_settings',
-                child: ListTile(
-                  leading: Icon(Icons.palette_outlined),
-                  title: Text('Appearance'),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'system_settings',
-                child: ListTile(
-                  leading: Icon(Icons.settings_applications),
-                  title: Text('System Settings'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'activity_log',
-                child: ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('Activity Log'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'lan_connection',
-                child: ListTile(
-                  leading: Icon(Icons.wifi),
-                  title: Text('LAN Connection'),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'logout',
-                child: ListTile(
-                  leading: Icon(Icons.logout),
-                  title: Text('Logout'),
-                ),
-              ),
-            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            tooltip: 'Logout',
+            onPressed: _logout,
           ),
         ],
       ),
@@ -429,7 +215,8 @@ class DashboardScreenState extends State<DashboardScreen> {
                     title: _menuTitles[index],
                     hoveredItems: _hoveredItems,
                     onTap: () => setState(() => _selectedIndex = index),
-                    onHover: (index, isHovered) => setState(() => _hoveredItems[index] = isHovered),
+                    onHover: (index, isHovered) =>
+                        setState(() => _hoveredItems[index] = isHovered),
                   );
                 },
               ),

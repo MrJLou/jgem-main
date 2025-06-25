@@ -11,7 +11,6 @@ import 'services/lan_connection_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
-import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +52,6 @@ class PatientRecordManagementApp extends StatelessWidget {
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
         '/analytics-hub': (context) => const AnalyticsHubScreen(),
-        '/settings': (context) => const SettingsScreen(),
         '/laboratory-hub': (context) =>
             const LaboratoryHubScreen(), // Provide default accessLevel
         '/lan-connection': (context) => const LanConnectionScreen(),
