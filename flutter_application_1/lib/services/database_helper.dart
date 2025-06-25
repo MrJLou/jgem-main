@@ -101,8 +101,10 @@ class DatabaseHelper {
     return clinicServiceDbService.getServiceUsageTrend(serviceId);
   }
 
-  Future<List<Patient>> getRecentPatientsForService(String serviceId, {int limit = 5}) {
-    return clinicServiceDbService.getRecentPatientsForService(serviceId, limit: limit);
+  Future<List<Patient>> getRecentPatientsForService(String serviceId,
+      {int limit = 5}) {
+    return clinicServiceDbService.getRecentPatientsForService(serviceId,
+        limit: limit);
   }
 
   // Public getter for the current database path
@@ -116,95 +118,129 @@ class DatabaseHelper {
   // Initialize database
   Future<Database> _initDatabase() async {
     String path; // Will be assigned in one of the branches below
-    final String projectRoot = Directory.current.path; // e.g., /path/to/jgem-main/flutter_application_1
-    final String workspaceRootDirectoryPath = Directory(projectRoot).parent.path; // e.g., /path/to/jgem-main
-    
+    final String projectRoot = Directory
+        .current.path; // e.g., /path/to/jgem-main/flutter_application_1
+    final String workspaceRootDirectoryPath =
+        Directory(projectRoot).parent.path; // e.g., /path/to/jgem-main
+
     // Path with .db extension (from _databaseName constant)
-    final String workspaceDatabasePathWithDbExt = normalize(join(workspaceRootDirectoryPath, DatabaseHelper._databaseName));
-    final File workspaceDatabaseFileWithDbExt = File(workspaceDatabasePathWithDbExt);
+    final String workspaceDatabasePathWithDbExt = normalize(
+        join(workspaceRootDirectoryPath, DatabaseHelper._databaseName));
+    final File workspaceDatabaseFileWithDbExt =
+        File(workspaceDatabasePathWithDbExt);
 
     // Path without .db (e.g., 'patient_management')
-    final String dbNameWithoutExtension = DatabaseHelper._databaseName.endsWith('.db') 
-        ? DatabaseHelper._databaseName.substring(0, DatabaseHelper._databaseName.length - 3) 
-        : DatabaseHelper._databaseName;
-    final String workspaceDatabasePathWithoutDbExt = normalize(join(workspaceRootDirectoryPath, dbNameWithoutExtension));
-    final File workspaceDatabaseFileWithoutDbExt = File(workspaceDatabasePathWithoutDbExt);
+    final String dbNameWithoutExtension =
+        DatabaseHelper._databaseName.endsWith('.db')
+            ? DatabaseHelper._databaseName
+                .substring(0, DatabaseHelper._databaseName.length - 3)
+            : DatabaseHelper._databaseName;
+    final String workspaceDatabasePathWithoutDbExt =
+        normalize(join(workspaceRootDirectoryPath, dbNameWithoutExtension));
+    final File workspaceDatabaseFileWithoutDbExt =
+        File(workspaceDatabasePathWithoutDbExt);
 
     if (await workspaceDatabaseFileWithDbExt.exists()) {
-        path = workspaceDatabasePathWithDbExt;
-        debugPrint('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (with .db ext): $path');
+      path = workspaceDatabasePathWithDbExt;
+      debugPrint(
+          'DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (with .db ext): $path');
     } else if (await workspaceDatabaseFileWithoutDbExt.exists()) {
-        path = workspaceDatabasePathWithoutDbExt;
-        debugPrint('DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (WITHOUT .db ext): $path');
+      path = workspaceDatabasePathWithoutDbExt;
+      debugPrint(
+          'DATABASE_HELPER: [GLOBAL_WORKSPACE] Using database from workspace root (WITHOUT .db ext): $path');
     } else {
-        debugPrint('DATABASE_HELPER: Database not found in workspace root (tried with/without .db: $workspaceDatabasePathWithDbExt AND $workspaceDatabasePathWithoutDbExt). Trying platform-specific locations.');
-        
-        // Platform-specific fallback logic
-        if (!kIsWeb && Platform.isWindows) {
-            final String projectDatabasesSubfolderPath = normalize(join(projectRoot, 'databases', DatabaseHelper._databaseName));
-            final File projectDbFileInSubfolder = File(projectDatabasesSubfolderPath);
+      debugPrint(
+          'DATABASE_HELPER: Database not found in workspace root (tried with/without .db: $workspaceDatabasePathWithDbExt AND $workspaceDatabasePathWithoutDbExt). Trying platform-specific locations.');
 
-            if (await projectDbFileInSubfolder.exists()) {
-              path = projectDatabasesSubfolderPath;
-              debugPrint('DATABASE_HELPER: [WINDOWS_PROJECT_DATABASES] Using database from project_root/databases/: $path');
+      // Platform-specific fallback logic
+      if (!kIsWeb && Platform.isWindows) {
+        final String projectDatabasesSubfolderPath = normalize(
+            join(projectRoot, 'databases', DatabaseHelper._databaseName));
+        final File projectDbFileInSubfolder =
+            File(projectDatabasesSubfolderPath);
+
+        if (await projectDbFileInSubfolder.exists()) {
+          path = projectDatabasesSubfolderPath;
+          debugPrint(
+              'DATABASE_HELPER: [WINDOWS_PROJECT_DATABASES] Using database from project_root/databases/: $path');
+        } else {
+          try {
+            final Directory docDir = await getApplicationDocumentsDirectory();
+            path = join(docDir.path, DatabaseHelper._databaseName);
+            debugPrint(
+                'DATABASE_HELPER: [WINDOWS_APP_DOCS] Using app documents directory for database: $path');
+          } catch (e) {
+            path = normalize(join(
+                projectRoot,
+                DatabaseHelper
+                    ._databaseName)); // Fallback to project root itself
+            debugPrint(
+                'DATABASE_HELPER: [WINDOWS_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+          }
+        }
+      } else if (!kIsWeb && Platform.isAndroid) {
+        try {
+          Directory? storageDir;
+          try {
+            storageDir = await getExternalStorageDirectory();
+          } catch (e) {
+            debugPrint(
+                'DATABASE_HELPER: [ANDROID_DEBUG] Failed to get external storage, trying app docs. Error: $e');
+          }
+
+          if (storageDir != null) {
+            String potentialPath =
+                join(storageDir.path, DatabaseHelper._databaseName);
+            final File externalDbFile = File(potentialPath);
+            if (await externalDbFile.exists()) {
+              path = potentialPath;
+              debugPrint(
+                  'DATABASE_HELPER: [ANDROID_EXTERNAL_STORAGE] Using existing database from external storage: $path');
             } else {
-              try {
-                final Directory docDir = await getApplicationDocumentsDirectory();
-                path = join(docDir.path, DatabaseHelper._databaseName);
-                debugPrint('DATABASE_HELPER: [WINDOWS_APP_DOCS] Using app documents directory for database: $path');
-              } catch (e) {
-                path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root itself
-                debugPrint('DATABASE_HELPER: [WINDOWS_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
-              }
-            }
-        } else if (!kIsWeb && Platform.isAndroid) {
-            try {
-              Directory? storageDir;
-              try {
-                  storageDir = await getExternalStorageDirectory();
-              } catch (e) {
-                  debugPrint('DATABASE_HELPER: [ANDROID_DEBUG] Failed to get external storage, trying app docs. Error: $e');
-              }
-
-              if (storageDir != null) {
-                String potentialPath = join(storageDir.path, DatabaseHelper._databaseName);
-                final File externalDbFile = File(potentialPath);
-                if (await externalDbFile.exists()) {
-                    path = potentialPath;
-                    debugPrint('DATABASE_HELPER: [ANDROID_EXTERNAL_STORAGE] Using existing database from external storage: $path');
-                } else {
-                    debugPrint('DATABASE_HELPER: [ANDROID_INFO] DB not in external storage ($potentialPath) or dir unavailable. Defaulting to app documents dir.');
-                    final docDir = await getApplicationDocumentsDirectory();
-                    path = join(docDir.path, DatabaseHelper._databaseName);
-                    debugPrint('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (external check done): $path');
-                }
-              } else { // externalDir was null
-                final docDir = await getApplicationDocumentsDirectory();
-                path = join(docDir.path, DatabaseHelper._databaseName);
-                debugPrint('DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (externalDir was null): $path');
-              }
-            } catch (e) { 
-              path = normalize(join(projectRoot, DatabaseHelper._databaseName)); 
-              debugPrint('DATABASE_HELPER: [ANDROID_PROJECT_ROOT_FALLBACK] Using project root (all other paths failed): $path. Error: $e');
-            }
-        } else if (!kIsWeb && (Platform.isIOS || Platform.isLinux || Platform.isMacOS)) {
-            try {
+              debugPrint(
+                  'DATABASE_HELPER: [ANDROID_INFO] DB not in external storage ($potentialPath) or dir unavailable. Defaulting to app documents dir.');
               final docDir = await getApplicationDocumentsDirectory();
               path = join(docDir.path, DatabaseHelper._databaseName);
-              debugPrint('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_APP_DOCS] Using app documents directory: $path');
-            } catch (e) {
-              path = normalize(join(projectRoot, DatabaseHelper._databaseName)); // Fallback to project root
-              debugPrint('DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+              debugPrint(
+                  'DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (external check done): $path');
             }
-        } else {
-            if (kIsWeb) {
-                 debugPrint('DATABASE_HELPER: [WEB] Web platform detected. Database name: "${DatabaseHelper._databaseName}" will be used by sqflite_common_ffi_web (typically IndexedDB).');
-                 path = DatabaseHelper._databaseName; // For web, path is usually just the name for IndexedDB.
-            } else {
-                debugPrint('DATABASE_HELPER: [UNKNOWN_PLATFORM] Using project root as a last resort for database: $projectRoot/${DatabaseHelper._databaseName}');
-                path = normalize(join(projectRoot, DatabaseHelper._databaseName));
-            }
+          } else {
+            // externalDir was null
+            final docDir = await getApplicationDocumentsDirectory();
+            path = join(docDir.path, DatabaseHelper._databaseName);
+            debugPrint(
+                'DATABASE_HELPER: [ANDROID_APP_DOCS] Using app documents directory (externalDir was null): $path');
+          }
+        } catch (e) {
+          path = normalize(join(projectRoot, DatabaseHelper._databaseName));
+          debugPrint(
+              'DATABASE_HELPER: [ANDROID_PROJECT_ROOT_FALLBACK] Using project root (all other paths failed): $path. Error: $e');
         }
+      } else if (!kIsWeb &&
+          (Platform.isIOS || Platform.isLinux || Platform.isMacOS)) {
+        try {
+          final docDir = await getApplicationDocumentsDirectory();
+          path = join(docDir.path, DatabaseHelper._databaseName);
+          debugPrint(
+              'DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_APP_DOCS] Using app documents directory: $path');
+        } catch (e) {
+          path = normalize(join(projectRoot,
+              DatabaseHelper._databaseName)); // Fallback to project root
+          debugPrint(
+              'DATABASE_HELPER: [${Platform.operatingSystem.toUpperCase()}_PROJECT_ROOT_FALLBACK] Using project root (app docs failed): $path. Error: $e');
+        }
+      } else {
+        if (kIsWeb) {
+          debugPrint(
+              'DATABASE_HELPER: [WEB] Web platform detected. Database name: "${DatabaseHelper._databaseName}" will be used by sqflite_common_ffi_web (typically IndexedDB).');
+          path = DatabaseHelper
+              ._databaseName; // For web, path is usually just the name for IndexedDB.
+        } else {
+          debugPrint(
+              'DATABASE_HELPER: [UNKNOWN_PLATFORM] Using project root as a last resort for database: $projectRoot/${DatabaseHelper._databaseName}');
+          path = normalize(join(projectRoot, DatabaseHelper._databaseName));
+        }
+      }
     }
 
     _instanceDbPath = path; // Store the determined path
@@ -217,7 +253,7 @@ class DatabaseHelper {
         debugPrint(
             'DATABASE_HELPER: Created directory for database at ${directory.path}');
       }
-      
+
       // Verify directory is writable
       final testFile = File(join(directory.path, 'test_write.tmp'));
       try {
@@ -226,20 +262,22 @@ class DatabaseHelper {
         debugPrint('DATABASE_HELPER: Directory is writable');
       } catch (e) {
         debugPrint('DATABASE_HELPER: Directory write test failed: $e');
-        throw Exception('Database directory is not writable: ${directory.path}');
+        throw Exception(
+            'Database directory is not writable: ${directory.path}');
       }
     } catch (e) {
       debugPrint(
           'DATABASE_HELPER: Error creating or verifying directory for database. Error: $e');
       throw Exception('Failed to prepare database directory: $e');
-    }    debugPrint(
+    }
+    debugPrint(
         '================================================================================');
     debugPrint('DATABASE_HELPER: FINAL DATABASE PATH TO BE OPENED:');
     debugPrint(_instanceDbPath);
     debugPrint(
         '================================================================================');
 
-    // --- DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs --- 
+    // --- DEVELOPMENT ONLY: Force delete database to ensure _onCreate runs ---
     // --- END DEVELOPMENT ONLY SECTION ---
 
     Database openedDb;
@@ -255,37 +293,43 @@ class DatabaseHelper {
         // }
       );
     } catch (e) {
-      debugPrint('DATABASE_HELPER: Failed to open database at $_instanceDbPath');
+      debugPrint(
+          'DATABASE_HELPER: Failed to open database at $_instanceDbPath');
       debugPrint('DATABASE_HELPER: Error details: $e');
-      
+
       // Try to recover by using a different path or cleaning up
       if (e.toString().contains('unable to open database file')) {
-        debugPrint('DATABASE_HELPER: Attempting recovery by trying alternative path...');
-        
+        debugPrint(
+            'DATABASE_HELPER: Attempting recovery by trying alternative path...');
+
         // Try alternative path in user's temp directory
         try {
           final tempDir = Directory.systemTemp;
-          final altPath = join(tempDir.path, 'flutter_app_db', DatabaseHelper._databaseName);
+          final altPath = join(
+              tempDir.path, 'flutter_app_db', DatabaseHelper._databaseName);
           final altDirectory = Directory(dirname(altPath));
-          
+
           if (!await altDirectory.exists()) {
             await altDirectory.create(recursive: true);
           }
-          
+
           debugPrint('DATABASE_HELPER: Trying alternative path: $altPath');
           _instanceDbPath = altPath;
-          
+
           openedDb = await openDatabase(
             altPath,
             version: DatabaseHelper._databaseVersion,
             onCreate: _onCreate,
             onUpgrade: _onUpgrade,
           );
-          
-          debugPrint('DATABASE_HELPER: Successfully opened database at alternative path');
+
+          debugPrint(
+              'DATABASE_HELPER: Successfully opened database at alternative path');
         } catch (altError) {
-          debugPrint('DATABASE_HELPER: Alternative path also failed: $altError');
-          throw Exception('Unable to open database at any location. Original error: $e, Alternative error: $altError');
+          debugPrint(
+              'DATABASE_HELPER: Alternative path also failed: $altError');
+          throw Exception(
+              'Unable to open database at any location. Original error: $e, Alternative error: $altError');
         }
       } else {
         rethrow;
@@ -467,7 +511,8 @@ class DatabaseHelper {
         FOREIGN KEY (createdByUserId) REFERENCES $tableUsers (id) 
       )
     ''');
-    debugPrint('DATABASE_HELPER: Created $tablePatientBills table (schema updated for invoicing)');
+    debugPrint(
+        'DATABASE_HELPER: Created $tablePatientBills table (schema updated for invoicing)');
 
     // Bill Items table (Ensure this definition is present and correct)
     await db.execute('''
@@ -505,7 +550,8 @@ class DatabaseHelper {
         FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)
       )
     ''');
-    debugPrint('DATABASE_HELPER: Created $tablePayments table (schema updated)');
+    debugPrint(
+        'DATABASE_HELPER: Created $tablePayments table (schema updated)');
 
     // Sync Log table for tracking changes
     await db.execute('''
@@ -578,52 +624,72 @@ class DatabaseHelper {
 
   // Database upgrade
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    debugPrint("DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
+    debugPrint(
+        "DATABASE_HELPER: Upgrading database from version $oldVersion to $newVersion");
 
     if (oldVersion < 23) {
       // A consolidated block for migrations that should have happened before v23
       debugPrint("DATABASE_HELPER: Applying migrations for versions < 23.");
       // This creates tables that might be missing in very old versions.
-      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
-      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
-      await db.execute(''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableUserActivityLog} (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, actionDescription TEXT NOT NULL, targetRecordId TEXT, targetTable TEXT, timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT, FOREIGN KEY (userId) REFERENCES $tableUsers (id)) ''');
-      await db.execute(''' CREATE TABLE IF NOT EXISTS $tablePatientBills (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, billDate TEXT NOT NULL, totalAmount REAL NOT NULL, status TEXT NOT NULL, notes TEXT, FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE CASCADE) ''');
-      await db.execute(''' CREATE TABLE IF NOT EXISTS $tableBillItems (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT NOT NULL, serviceId TEXT, description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unitPrice REAL NOT NULL, itemTotal REAL NOT NULL, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE CASCADE, FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)) ''');
-      await db.execute(''' CREATE TABLE IF NOT EXISTS $tablePayments (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT, patientId TEXT NOT NULL, referenceNumber TEXT UNIQUE NOT NULL, paymentDate TEXT NOT NULL, amountPaid REAL NOT NULL, paymentMethod TEXT NOT NULL, receivedByUserId TEXT NOT NULL, notes TEXT, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE SET NULL, FOREIGN KEY (patientId) REFERENCES $tablePatients (id), FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableUserActivityLog} (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, actionDescription TEXT NOT NULL, targetRecordId TEXT, targetTable TEXT, timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, details TEXT, FOREIGN KEY (userId) REFERENCES $tableUsers (id)) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS $tablePatientBills (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, billDate TEXT NOT NULL, totalAmount REAL NOT NULL, status TEXT NOT NULL, notes TEXT, FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE CASCADE) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS $tableBillItems (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT NOT NULL, serviceId TEXT, description TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unitPrice REAL NOT NULL, itemTotal REAL NOT NULL, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE CASCADE, FOREIGN KEY (serviceId) REFERENCES $tableClinicServices (id)) ''');
+      await db.execute(
+          ''' CREATE TABLE IF NOT EXISTS $tablePayments (id INTEGER PRIMARY KEY AUTOINCREMENT, billId TEXT, patientId TEXT NOT NULL, referenceNumber TEXT UNIQUE NOT NULL, paymentDate TEXT NOT NULL, amountPaid REAL NOT NULL, paymentMethod TEXT NOT NULL, receivedByUserId TEXT NOT NULL, notes TEXT, FOREIGN KEY (billId) REFERENCES $tablePatientBills (id) ON DELETE SET NULL, FOREIGN KEY (patientId) REFERENCES $tablePatients (id), FOREIGN KEY (receivedByUserId) REFERENCES $tableUsers (id)) ''');
 
       // Add columns that were introduced over time before v23
-      await _addColumnIfNotExists(db, tableAppointments, 'originalAppointmentId', 'TEXT');
-      await _addColumnIfNotExists(db, tableAppointments, 'consultationStartedAt', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'originalAppointmentId', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'consultationStartedAt', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'servedAt', 'TEXT');
-      await _addColumnIfNotExists(db, tableAppointments, 'selectedServices', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'selectedServices', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'totalPrice', 'REAL');
-      await _addColumnIfNotExists(db, tableAppointments, 'paymentStatus', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'paymentStatus', 'TEXT');
       await _addColumnIfNotExists(db, tablePayments, 'totalBillAmount', 'REAL');
       await _addColumnIfNotExists(db, tablePayments, 'invoiceNumber', 'TEXT');
     }
 
     if (oldVersion < 24) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 24: Modifying $tablePatientBills and $tablePayments for enhanced invoicing.");
-      await _addColumnIfNotExists(db, tablePatientBills, 'invoiceNumber', 'TEXT');
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 24: Modifying $tablePatientBills and $tablePayments for enhanced invoicing.");
+      await _addColumnIfNotExists(
+          db, tablePatientBills, 'invoiceNumber', 'TEXT');
       await _addColumnIfNotExists(db, tablePatientBills, 'dueDate', 'TEXT');
       await _addColumnIfNotExists(db, tablePatientBills, 'subtotal', 'REAL');
-      await _addColumnIfNotExists(db, tablePatientBills, 'discountAmount', 'REAL DEFAULT 0.0');
-      await _addColumnIfNotExists(db, tablePatientBills, 'taxAmount', 'REAL DEFAULT 0.0');
-      await _addColumnIfNotExists(db, tablePatientBills, 'createdByUserId', 'TEXT REFERENCES $tableUsers(id)');
-      
+      await _addColumnIfNotExists(
+          db, tablePatientBills, 'discountAmount', 'REAL DEFAULT 0.0');
+      await _addColumnIfNotExists(
+          db, tablePatientBills, 'taxAmount', 'REAL DEFAULT 0.0');
+      await _addColumnIfNotExists(db, tablePatientBills, 'createdByUserId',
+          'TEXT REFERENCES $tableUsers(id)');
+
       try {
-        await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_invoiceNumber ON $tablePatientBills (invoiceNumber) WHERE invoiceNumber IS NOT NULL;');
+        await db.execute(
+            'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoiceNumber ON $tablePatientBills (invoiceNumber) WHERE invoiceNumber IS NOT NULL;');
       } catch (e) {
-        debugPrint("DATABASE_HELPER: Warning - Could not create unique index on $tablePatientBills(invoiceNumber). This might be due to existing data. $e");
+        debugPrint(
+            "DATABASE_HELPER: Warning - Could not create unique index on $tablePatientBills(invoiceNumber). This might be due to existing data. $e");
       }
 
-      await _addColumnIfNotExists(db, tablePayments, 'invoiceNumber', 'TEXT'); 
-      await _addColumnIfNotExists(db, tablePayments, 'totalBillAmount', 'REAL'); 
+      await _addColumnIfNotExists(db, tablePayments, 'invoiceNumber', 'TEXT');
+      await _addColumnIfNotExists(db, tablePayments, 'totalBillAmount', 'REAL');
     }
 
     if (oldVersion < 25) {
-      await _addColumnIfNotExists(db, tableActivePatientQueue, 'doctorId', 'TEXT');
-      await _addColumnIfNotExists(db, tableActivePatientQueue, 'doctorName', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'doctorId', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableActivePatientQueue, 'doctorName', 'TEXT');
     }
 
     if (oldVersion < 26) {
@@ -634,22 +700,27 @@ class DatabaseHelper {
       // This migration ensures columns from the Appointment model are present.
       // The error "no column named cancelledAt" suggests a schema mismatch.
       await _addColumnIfNotExists(db, tableAppointments, 'cancelledAt', 'TEXT');
-      await _addColumnIfNotExists(db, tableAppointments, 'cancellationReason', 'TEXT');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'cancellationReason', 'TEXT');
       await _addColumnIfNotExists(db, tableAppointments, 'notes', 'TEXT');
-      await _addColumnIfNotExists(db, tableAppointments, 'isWalkIn', 'INTEGER DEFAULT 0');
+      await _addColumnIfNotExists(
+          db, tableAppointments, 'isWalkIn', 'INTEGER DEFAULT 0');
     }
 
     if (oldVersion < 28) {
-      await _addColumnIfNotExists(db, tableActivePatientQueue, 'isWalkIn', 'INTEGER DEFAULT 0 NOT NULL');
+      await _addColumnIfNotExists(db, tableActivePatientQueue, 'isWalkIn',
+          'INTEGER DEFAULT 0 NOT NULL');
     }
 
     if (oldVersion < 29) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 29: Seeding new clinic services.");
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 29: Seeding new clinic services.");
       await _seedInitialClinicServicesWithExecutor(db);
     }
 
     if (oldVersion < 30) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 30: Recreating patients table with simplified schema.");
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 30: Recreating patients table with simplified schema.");
       await db.execute('DROP TABLE IF EXISTS $tablePatients');
       await db.execute('''
         CREATE TABLE $tablePatients (
@@ -673,12 +744,15 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 31) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 31: Adding registrationDate to patients table.");
-      await _addColumnIfNotExists(db, tablePatients, 'registrationDate', 'TEXT');
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 31: Adding registrationDate to patients table.");
+      await _addColumnIfNotExists(
+          db, tablePatients, 'registrationDate', 'TEXT');
     }
 
     if (oldVersion < 32) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 32: Adding patient_history table.");
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 32: Adding patient_history table.");
       await db.execute('''
         CREATE TABLE IF NOT EXISTS $tablePatientHistory (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -699,31 +773,41 @@ class DatabaseHelper {
       });
     }
     if (oldVersion < 33) {
-    debugPrint("DATABASE_HELPER: Upgrading to version 33: Adding patientName to payments table.");
-    await _addColumnIfNotExists(db, tablePayments, 'patientName', 'TEXT NOT NULL DEFAULT \'Unknown\'');
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 33: Adding patientName to payments table.");
+      await _addColumnIfNotExists(db, tablePayments, 'patientName',
+          'TEXT NOT NULL DEFAULT \'Unknown\'');
     }
     if (oldVersion < 34) {
-      debugPrint("DATABASE_HELPER: Upgrading to version 34: Adding selectedServices to medical_records table.");
-      await _addColumnIfNotExists(db, tableMedicalRecords, 'selectedServices', 'TEXT');
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 34: Adding selectedServices to medical_records table.");
+      await _addColumnIfNotExists(
+          db, tableMedicalRecords, 'selectedServices', 'TEXT');
     }
 
-    debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
+    debugPrint(
+        "DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
 
-  Future<void> _addColumnIfNotExists(Database db, String tableName, String columnName, String columnType) async {
+  Future<void> _addColumnIfNotExists(Database db, String tableName,
+      String columnName, String columnType) async {
     var result = await db.rawQuery('PRAGMA table_info($tableName)');
     bool columnExists = result.any((column) => column['name'] == columnName);
     if (!columnExists) {
-      await db.execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
+      await db
+          .execute('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
       debugPrint('DATABASE_HELPER: Added column $columnName to $tableName');
     } else {
-      debugPrint('DATABASE_HELPER: Column $columnName already exists in $tableName');
+      debugPrint(
+          'DATABASE_HELPER: Column $columnName already exists in $tableName');
     }
   }
 
-  Future<void> _createIndexesForTable(Database db, String tableName, Map<String, String> indexes) async {
+  Future<void> _createIndexesForTable(
+      Database db, String tableName, Map<String, String> indexes) async {
     for (var indexName in indexes.keys) {
-      await db.execute('CREATE INDEX IF NOT EXISTS $indexName ON $tableName (${indexes[indexName]})');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS $indexName ON $tableName (${indexes[indexName]})');
     }
     debugPrint('DATABASE_HELPER: Created indexes for table $tableName');
   }
@@ -737,7 +821,6 @@ class DatabaseHelper {
     final String hashedAnswer1 = AuthService.hashSecurityAnswer('blue');
     final String hashedAnswer2 = AuthService.hashSecurityAnswer('anytown');
     final String hashedAnswer3 = AuthService.hashSecurityAnswer('alex');
-
 
     await db.insert(DatabaseHelper.tableUsers, {
       'id': 'admin-${DateTime.now().millisecondsSinceEpoch}',
@@ -797,8 +880,10 @@ class DatabaseHelper {
     return patientDbService.insertPatient(patient);
   }
 
-  Future<int> updatePatient(Map<String, dynamic> patient, {String? userId, String? source}) async {
-    return patientDbService.updatePatient(patient, userId: userId, source: source);
+  Future<int> updatePatient(Map<String, dynamic> patient,
+      {String? userId, String? source}) async {
+    return patientDbService.updatePatient(patient,
+        userId: userId, source: source);
   }
 
   Future<int> deletePatient(String id) async {
@@ -871,7 +956,8 @@ class DatabaseHelper {
     });
   }
 
-  Future<List<Appointment>> getAppointmentsForRange(DateTime startDate, DateTime endDate) async {
+  Future<List<Appointment>> getAppointmentsForRange(
+      DateTime startDate, DateTime endDate) async {
     final db = await database;
     final startDateStr = DateFormat('yyyy-MM-dd').format(startDate);
     final endDateStr = DateFormat('yyyy-MM-dd').format(endDate);
@@ -960,14 +1046,19 @@ class DatabaseHelper {
     try {
       final results = await db.query(
         DatabaseHelper.tableMedicalRecords,
-        where: "selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ''",
-        whereArgs: ['%"id":"$serviceId"%'], // Search for the service ID within the JSON string
+        where:
+            "selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ''",
+        whereArgs: [
+          '%"id":"$serviceId"%'
+        ], // Search for the service ID within the JSON string
         orderBy: 'recordDate DESC',
       );
-      debugPrint('DatabaseHelper: Found ${results.length} records for service $serviceId');
+      debugPrint(
+          'DatabaseHelper: Found ${results.length} records for service $serviceId');
       return results;
     } catch (e) {
-      debugPrint('DatabaseHelper: Error querying medical records by service: $e');
+      debugPrint(
+          'DatabaseHelper: Error querying medical records by service: $e');
       return [];
     }
   }
@@ -1021,7 +1112,7 @@ class DatabaseHelper {
       // Check if sync is enabled
       final prefs = await SharedPreferences.getInstance();
       final syncEnabled = prefs.getBool('sync_enabled') ?? false;
-      
+
       if (!syncEnabled) {
         debugPrint('Sync disabled in settings');
         return true;
@@ -1047,7 +1138,8 @@ class DatabaseHelper {
   }
 
   // Perform actual server sync
-  Future<bool> _performServerSync(String serverIp, int port, String accessCode) async {
+  Future<bool> _performServerSync(
+      String serverIp, int port, String accessCode) async {
     try {
       // This is a placeholder for actual sync implementation
       // You can implement the actual sync logic here
@@ -1518,6 +1610,7 @@ To view live changes in DB Browser:
     }
     return result;
   }
+
   /// Gets the current active patient queue, ordered by arrival time.
   /// Optionally filters by status(es).
   /// Now includes queue items from the last 2 days to handle relog visibility issues.
@@ -1543,11 +1636,12 @@ To view live changes in DB Browser:
     // whereArgs.add(endOfToday);
 
     if (statuses != null && statuses.isNotEmpty) {
-      whereClauses.add('status IN (${statuses.map((_) => '?' ).join(',')})');
+      whereClauses.add('status IN (${statuses.map((_) => '?').join(',')})');
       whereArgs.addAll(statuses);
     }
 
-    final String? finalWhereClause = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+    final String? finalWhereClause =
+        whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
 
     final List<Map<String, dynamic>> maps = await db.query(
       DatabaseHelper.tableActivePatientQueue,
@@ -1842,7 +1936,7 @@ To view live changes in DB Browser:
   /// Inserts a new payment record into the database.
   ///
   /// The [paymentData] map should contain all necessary fields for the `payments` table,
-  /// including 'billId' (optional, but crucial for updating invoice status), 
+  /// including 'billId' (optional, but crucial for updating invoice status),
   /// 'patientId', 'referenceNumber', 'paymentDate',
   /// 'amountPaid', 'paymentMethod', and 'receivedByUserId'.
   Future<int> insertPayment(Map<String, dynamic> paymentData) async {
@@ -1864,7 +1958,7 @@ To view live changes in DB Browser:
       // 1. Insert into tablePayments
       // The 'id' for payments is AUTOINCREMENT, so we don't set it here.
       paymentId = await txn.insert(DatabaseHelper.tablePayments, paymentData);
-      
+
       if (paymentId > 0) {
         // Log change for the payment itself
         await logChange(
@@ -1880,11 +1974,14 @@ To view live changes in DB Browser:
             whereArgs: [billId],
           );
           if (updateCount > 0) {
-            debugPrint('DATABASE_HELPER: Updated status to Paid for billId: $billId');
+            debugPrint(
+                'DATABASE_HELPER: Updated status to Paid for billId: $billId');
             // Optionally log this change too if your sync logic requires tracking bill status updates
-            await logChange(DatabaseHelper.tablePatientBills, billId, 'update', executor: txn);
+            await logChange(DatabaseHelper.tablePatientBills, billId, 'update',
+                executor: txn);
           } else {
-            debugPrint('DATABASE_HELPER: Warning - Tried to update status for billId: $billId but no row was updated.');
+            debugPrint(
+                'DATABASE_HELPER: Warning - Tried to update status for billId: $billId but no row was updated.');
             // This might happen if the billId is incorrect or already deleted.
           }
         }
@@ -1901,10 +1998,12 @@ To view live changes in DB Browser:
         where: 'queueEntryId = ?',
         whereArgs: [queueEntryId],
       );
-      debugPrint("DatabaseHelper: Deleted active queue item with queueEntryId: $queueEntryId, rows affected: $result");
+      debugPrint(
+          "DatabaseHelper: Deleted active queue item with queueEntryId: $queueEntryId, rows affected: $result");
       return result;
     } catch (e) {
-      debugPrint("DatabaseHelper: Error deleting active queue item with queueEntryId $queueEntryId: $e");
+      debugPrint(
+          "DatabaseHelper: Error deleting active queue item with queueEntryId $queueEntryId: $e");
       return 0; // Or throw, depending on error handling strategy
     }
   }
@@ -1926,7 +2025,8 @@ To view live changes in DB Browser:
           );
 
           if (currentService.isNotEmpty) {
-            int currentCount = currentService.first['selectionCount'] as int? ?? 0;
+            int currentCount =
+                currentService.first['selectionCount'] as int? ?? 0;
             await txn.update(
               DatabaseHelper.tableClinicServices,
               {'selectionCount': currentCount + 1},
@@ -1936,14 +2036,17 @@ To view live changes in DB Browser:
           }
         }
       });
-      debugPrint('DatabaseHelper: Incremented selection count for services: $serviceIds');
+      debugPrint(
+          'DatabaseHelper: Incremented selection count for services: $serviceIds');
     } catch (e) {
-      debugPrint('DatabaseHelper: Error incrementing service selection counts: $e');
+      debugPrint(
+          'DatabaseHelper: Error incrementing service selection counts: $e');
     }
   }
 
   // Helper method to check if a service already exists by name (for seeding)
-  Future<Map<String, dynamic>?> _getClinicServiceByName(DatabaseExecutor db, String name) async {
+  Future<Map<String, dynamic>?> _getClinicServiceByName(
+      DatabaseExecutor db, String name) async {
     final List<Map<String, dynamic>> maps = await db.query(
       DatabaseHelper.tableClinicServices,
       where: 'LOWER(serviceName) = LOWER(?)', // Case-insensitive check
@@ -1961,7 +2064,8 @@ To view live changes in DB Browser:
     return _seedInitialClinicServicesWithExecutor(db);
   }
 
-  Future<void> _seedInitialClinicServicesWithExecutor(DatabaseExecutor db) async {
+  Future<void> _seedInitialClinicServicesWithExecutor(
+      DatabaseExecutor db) async {
     var uuid = const Uuid();
     final initialServices = [
       // Services from add_to_queue_screen.dart
@@ -1971,19 +2075,40 @@ To view live changes in DB Browser:
       {'name': 'Fasting Blood Sugar', 'category': 'Laboratory', 'price': 150.0},
       {'name': 'Total Cholesterol', 'category': 'Laboratory', 'price': 250.0},
       {'name': 'Triglycerides', 'category': 'Laboratory', 'price': 250.0},
-      {'name': 'High Density Lipoprotein (HDL)', 'category': 'Laboratory', 'price': 250.0},
-      {'name': 'Low Density Lipoprotein (LDL)', 'category': 'Laboratory', 'price': 200.0},
+      {
+        'name': 'High Density Lipoprotein (HDL)',
+        'category': 'Laboratory',
+        'price': 250.0
+      },
+      {
+        'name': 'Low Density Lipoprotein (LDL)',
+        'category': 'Laboratory',
+        'price': 200.0
+      },
       {'name': 'Blood Uric Acid', 'category': 'Laboratory', 'price': 200.0},
       {'name': 'Creatinine', 'category': 'Laboratory', 'price': 200.0},
-      {'name': 'Serum Glutamic Pyruvic Transaminase (SGPT)', 'category': 'Laboratory', 'price': 250.0},
-      {'name': 'Serum Glutamic Oxaloacetic Transaminase', 'category': 'Laboratory', 'price': 250.0},
-      {'name': 'Very Low Density Lipoprotein (VLDL)', 'category': 'Laboratory', 'price': 100.0},
+      {
+        'name': 'Serum Glutamic Pyruvic Transaminase (SGPT)',
+        'category': 'Laboratory',
+        'price': 250.0
+      },
+      {
+        'name': 'Serum Glutamic Oxaloacetic Transaminase',
+        'category': 'Laboratory',
+        'price': 250.0
+      },
+      {
+        'name': 'Very Low Density Lipoprotein (VLDL)',
+        'category': 'Laboratory',
+        'price': 100.0
+      },
       {'name': 'Blood Urea Nitrogen', 'category': 'Laboratory', 'price': 200.0},
       {'name': 'CBC W/ Platelet', 'category': 'Laboratory', 'price': 250.0},
     ];
 
     for (var serviceData in initialServices) {
-      final existingService = await _getClinicServiceByName(db, serviceData['name'] as String);
+      final existingService =
+          await _getClinicServiceByName(db, serviceData['name'] as String);
       if (existingService == null) {
         final newService = ClinicService(
           id: uuid.v4(),
@@ -1999,12 +2124,15 @@ To view live changes in DB Browser:
             newService.toJson(),
             conflictAlgorithm: ConflictAlgorithm.ignore,
           );
-          debugPrint('DATABASE_HELPER: Seeded service: ${newService.serviceName}');
+          debugPrint(
+              'DATABASE_HELPER: Seeded service: ${newService.serviceName}');
         } catch (e) {
-          debugPrint('DATABASE_HELPER: Error seeding service ${newService.serviceName}: $e');
+          debugPrint(
+              'DATABASE_HELPER: Error seeding service ${newService.serviceName}: $e');
         }
       } else {
-        debugPrint('DATABASE_HELPER: Service already exists, not seeding: ${serviceData['name']}');
+        debugPrint(
+            'DATABASE_HELPER: Service already exists, not seeding: ${serviceData['name']}');
       }
     }
   }
@@ -2013,7 +2141,8 @@ To view live changes in DB Browser:
   Future<Map<String, String>> recordInvoiceAndPayment({
     String? displayInvoiceNumber,
     required ActivePatientQueueItem patient,
-    required List<Map<String, dynamic>> billItemsJson, // Using raw Map for items from ActivePatientQueueItem.selectedServices
+    required List<Map<String, dynamic>>
+        billItemsJson, // Using raw Map for items from ActivePatientQueueItem.selectedServices
     required double subtotal,
     required double discountAmount,
     required double taxAmount,
@@ -2026,7 +2155,7 @@ To view live changes in DB Browser:
     String? paymentNotes,
   }) async {
     final db = await database;
-    
+
     // Use a transaction to ensure all or nothing
     return await db.transaction<Map<String, String>>((txn) async {
       // Check for an existing unpaid bill for this patient that was created recently.
@@ -2046,7 +2175,7 @@ To view live changes in DB Browser:
         final existingBill = existingUnpaidBills.first;
         billDbId = existingBill['id'] as String;
         invoiceNumber = existingBill['invoiceNumber'] as String;
-        
+
         // Update the bill status to 'Paid'
         await txn.update(
           tablePatientBills,
@@ -2054,12 +2183,13 @@ To view live changes in DB Browser:
           where: 'id = ?',
           whereArgs: [billDbId],
         );
-        debugPrint('DATABASE_HELPER: Found existing unpaid bill $invoiceNumber. Updating status to Paid.');
-
+        debugPrint(
+            'DATABASE_HELPER: Found existing unpaid bill $invoiceNumber. Updating status to Paid.');
       } else {
         // No unpaid bill found, create a new one.
         billDbId = 'BILL-${const Uuid().v4()}';
-        invoiceNumber = displayInvoiceNumber ?? 'INV-${const Uuid().v4().substring(0, 6).toUpperCase()}';
+        invoiceNumber = displayInvoiceNumber ??
+            'INV-${const Uuid().v4().substring(0, 6).toUpperCase()}';
 
         Map<String, dynamic> billData = {
           'id': billDbId,
@@ -2073,18 +2203,20 @@ To view live changes in DB Browser:
           'totalAmount': totalAmount,
           'status': 'Paid',
           'createdByUserId': currentUserId,
-          'notes': 'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
+          'notes':
+              'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
         };
         await txn.insert(tablePatientBills, billData);
 
         // Insert bill items
         for (var itemJson in billItemsJson) {
-           final unitPrice = (itemJson['price'] as num?)?.toDouble() ?? 0.0;
-           final quantity = itemJson['quantity'] as int? ?? 1;
-           final itemDescription = itemJson['name'] as String? ?? 'Unknown Service';
-           final serviceId = itemJson['id'] as String?;
+          final unitPrice = (itemJson['price'] as num?)?.toDouble() ?? 0.0;
+          final quantity = itemJson['quantity'] as int? ?? 1;
+          final itemDescription =
+              itemJson['name'] as String? ?? 'Unknown Service';
+          final serviceId = itemJson['id'] as String?;
 
-           Map<String, dynamic> billItemData = {
+          Map<String, dynamic> billItemData = {
             'billId': billDbId,
             'serviceId': serviceId,
             'description': itemDescription,
@@ -2092,31 +2224,36 @@ To view live changes in DB Browser:
             'unitPrice': unitPrice,
             'itemTotal': unitPrice * quantity,
           };
-           await txn.insert(tableBillItems, billItemData);
+          await txn.insert(tableBillItems, billItemData);
         }
 
-        if (billItemsJson.isEmpty && patient.totalPrice != null && patient.totalPrice! > 0) {
-           Map<String, dynamic> generalBillItemData = {
+        if (billItemsJson.isEmpty &&
+            patient.totalPrice != null &&
+            patient.totalPrice! > 0) {
+          Map<String, dynamic> generalBillItemData = {
             'billId': billDbId,
-            'description': patient.conditionOrPurpose ?? 'General Clinic Services',
+            'description':
+                patient.conditionOrPurpose ?? 'General Clinic Services',
             'quantity': 1,
             'unitPrice': patient.totalPrice,
             'itemTotal': patient.totalPrice,
           };
-           await txn.insert(tableBillItems, generalBillItemData);
+          await txn.insert(tableBillItems, generalBillItemData);
         }
-        debugPrint('DATABASE_HELPER: No existing unpaid bill found. Created new bill $invoiceNumber.');
+        debugPrint(
+            'DATABASE_HELPER: No existing unpaid bill found. Created new bill $invoiceNumber.');
       }
 
       // Record the payment associated with the bill (either existing or new)
       final String uuidString = const Uuid().v4().replaceAll('-', '');
-      final String paymentReferenceNumber = 'PAY-${uuidString.substring(0, 8).toUpperCase()}';
+      final String paymentReferenceNumber =
+          'PAY-${uuidString.substring(0, 8).toUpperCase()}';
 
       Map<String, dynamic> paymentData = {
         'billId': billDbId,
         'patientId': patient.patientId!,
         'patientName': patient.patientName,
-        'invoiceNumber': invoiceNumber, 
+        'invoiceNumber': invoiceNumber,
         'referenceNumber': paymentReferenceNumber,
         'paymentDate': DateTime.now().toIso8601String(),
         'amountPaid': amountPaidByCustomer,
@@ -2127,8 +2264,9 @@ To view live changes in DB Browser:
       };
       await txn.insert(tablePayments, paymentData);
 
-      debugPrint('DATABASE_HELPER: Successfully recorded payment $paymentReferenceNumber for invoice $invoiceNumber.');
-      
+      debugPrint(
+          'DATABASE_HELPER: Successfully recorded payment $paymentReferenceNumber for invoice $invoiceNumber.');
+
       return {
         'invoiceNumber': invoiceNumber,
         'paymentReferenceNumber': paymentReferenceNumber,
@@ -2151,7 +2289,8 @@ To view live changes in DB Browser:
     String? notes,
   }) async {
     final db = await database;
-    final String billDbId = 'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
+    final String billDbId =
+        'BILL-${const Uuid().v4()}'; // Internal DB ID for the bill
 
     await db.transaction((txn) async {
       // 1. Insert into tablePatientBills
@@ -2174,13 +2313,17 @@ To view live changes in DB Browser:
 
       // 2. Insert into tableBillItems
       for (var itemJson in billItemsJson) {
-        final unitPrice = (itemJson['price'] as num?)?.toDouble() ?? 
-                            (itemJson['unitPrice'] as num?)?.toDouble() ?? 0.0;
+        final unitPrice = (itemJson['price'] as num?)?.toDouble() ??
+            (itemJson['unitPrice'] as num?)?.toDouble() ??
+            0.0;
         final quantity = itemJson['quantity'] as int? ?? 1;
-        final itemDescription = itemJson['name'] as String? ?? 
-                                itemJson['description'] as String? ?? 'Unknown Service';
-        final serviceId = itemJson['id'] as String? ?? itemJson['serviceId'] as String?;
-        final itemTotal = (itemJson['itemTotal'] as num?)?.toDouble() ?? (unitPrice * quantity);
+        final itemDescription = itemJson['name'] as String? ??
+            itemJson['description'] as String? ??
+            'Unknown Service';
+        final serviceId =
+            itemJson['id'] as String? ?? itemJson['serviceId'] as String?;
+        final itemTotal = (itemJson['itemTotal'] as num?)?.toDouble() ??
+            (unitPrice * quantity);
 
         Map<String, dynamic> billItemData = {
           'billId': billDbId,
@@ -2192,21 +2335,22 @@ To view live changes in DB Browser:
         };
         await txn.insert(tableBillItems, billItemData);
       }
-      
-      if (billItemsJson.isEmpty && totalAmount > 0 && subtotal == 0) { 
-         Map<String, dynamic> generalBillItemData = {
+
+      if (billItemsJson.isEmpty && totalAmount > 0 && subtotal == 0) {
+        Map<String, dynamic> generalBillItemData = {
           'billId': billDbId,
           'description': notes ?? 'General Clinic Services (Unpaid)',
           'quantity': 1,
-          'unitPrice': totalAmount, 
+          'unitPrice': totalAmount,
           'itemTotal': totalAmount,
         };
         await txn.insert(tableBillItems, generalBillItemData);
       }
     });
 
-    debugPrint('DATABASE_HELPER: Successfully recorded UNPAID invoice $displayInvoiceNumber.');
-    return displayInvoiceNumber; 
+    debugPrint(
+        'DATABASE_HELPER: Successfully recorded UNPAID invoice $displayInvoiceNumber.');
+    return displayInvoiceNumber;
   }
 
   Future<List<Map<String, dynamic>>> getBillItems(String billId) async {
@@ -2219,7 +2363,8 @@ To view live changes in DB Browser:
   }
 
   // New method to get bill, bill items, and patient details by invoice number
-  Future<Map<String, dynamic>?> getPatientBillByInvoiceNumber(String invoiceNumber) async {
+  Future<Map<String, dynamic>?> getPatientBillByInvoiceNumber(
+      String invoiceNumber) async {
     final db = await database;
     Map<String, dynamic>? result;
 
@@ -2235,7 +2380,7 @@ To view live changes in DB Browser:
       final billData = bills.first;
       final String billId = billData['id'] as String;
       final String? patientId = billData['patientId'] as String?;
-      
+
       List<Map<String, dynamic>> billItemsData = [];
       Map<String, dynamic>? patientData;
 
@@ -2258,11 +2403,12 @@ To view live changes in DB Browser:
           patientData = patients.first;
         }
       }
-      
+
       result = {
         'bill': billData,
         'items': billItemsData,
-        'patient': patientData, // This can be null if patientId was null or patient not found
+        'patient':
+            patientData, // This can be null if patientId was null or patient not found
       };
     }
     return result;
@@ -2306,7 +2452,8 @@ To view live changes in DB Browser:
       // Re-seed the initial clinic services to restore them if they were accidentally wiped.
       // This is safe to run multiple times as it checks for existence before inserting.
       await _seedInitialClinicServicesWithExecutor(txn);
-      debugPrint('DATABASE_HELPER: Ensured initial clinic services are present.');
+      debugPrint(
+          'DATABASE_HELPER: Ensured initial clinic services are present.');
     });
 
     debugPrint('DATABASE_HELPER: Database reset completed successfully.');
@@ -2315,11 +2462,22 @@ To view live changes in DB Browser:
   Future<Map<String, int>> getDashboardStatistics() async {
     final db = await database;
 
-    final totalPatients = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tablePatients')) ?? 0;
-    
-    final confirmedAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Confirmed'])) ?? 0;
-    final cancelledAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Cancelled'])) ?? 0;
-    final completedAppointments = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableAppointments WHERE status = ?', ['Completed'])) ?? 0;
+    final totalPatients = Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM $tablePatients')) ??
+        0;
+
+    final confirmedAppointments = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM $tableAppointments WHERE status = ?',
+            ['Confirmed'])) ??
+        0;
+    final cancelledAppointments = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM $tableAppointments WHERE status = ?',
+            ['Cancelled'])) ??
+        0;
+    final completedAppointments = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM $tableAppointments WHERE status = ?',
+            ['Completed'])) ??
+        0;
 
     return {
       'totalPatients': totalPatients,
@@ -2377,8 +2535,10 @@ To view live changes in DB Browser:
 
     query += ' ORDER BY pb.billDate DESC';
 
-    debugPrint('DATABASE_HELPER: Executing getUnpaidBills query: $query with args: $arguments');
-    final List<Map<String, dynamic>> results = await db.rawQuery(query, arguments);
+    debugPrint(
+        'DATABASE_HELPER: Executing getUnpaidBills query: $query with args: $arguments');
+    final List<Map<String, dynamic>> results =
+        await db.rawQuery(query, arguments);
     debugPrint('DATABASE_HELPER: Found ${results.length} unpaid bills');
     return results;
   }
@@ -2430,21 +2590,26 @@ To view live changes in DB Browser:
       arguments.add(DateFormat('yyyy-MM-dd').format(endDate));
     }
 
-    if (paymentMethod != null && paymentMethod != 'all' && paymentMethod.isNotEmpty) {
+    if (paymentMethod != null &&
+        paymentMethod != 'all' &&
+        paymentMethod.isNotEmpty) {
       query += ' AND p.paymentMethod = ?';
       arguments.add(paymentMethod);
     }
 
     query += ' ORDER BY p.paymentDate DESC';
 
-    debugPrint('DATABASE_HELPER: Executing getPaymentTransactions query: $query with args: $arguments');
-    final List<Map<String, dynamic>> results = await db.rawQuery(query, arguments);
+    debugPrint(
+        'DATABASE_HELPER: Executing getPaymentTransactions query: $query with args: $arguments');
+    final List<Map<String, dynamic>> results =
+        await db.rawQuery(query, arguments);
     debugPrint('DATABASE_HELPER: Found ${results.length} payment transactions');
     return results;
   }
 
   // Method to get all details for a specific receipt
-  Future<Map<String, dynamic>?> getReceiptDetails(String paymentReferenceNumber) async {
+  Future<Map<String, dynamic>?> getReceiptDetails(
+      String paymentReferenceNumber) async {
     final db = await database;
 
     // First, get the payment details
@@ -2547,7 +2712,8 @@ To view live changes in DB Browser:
       );
       if (result.isNotEmpty && result.first['count'] != null) {
         final count = result.first['count'] as int;
-        debugPrint('DatabaseHelper: Found $count unique patients for service $serviceId');
+        debugPrint(
+            'DatabaseHelper: Found $count unique patients for service $serviceId');
         return count;
       }
       debugPrint('DatabaseHelper: No patients found for service $serviceId');

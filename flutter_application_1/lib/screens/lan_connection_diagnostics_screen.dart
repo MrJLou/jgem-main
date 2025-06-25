@@ -16,7 +16,7 @@ class LanConnectionDiagnosticsScreen extends StatefulWidget {
 class _LanConnectionDiagnosticsScreenState
     extends State<LanConnectionDiagnosticsScreen> {
   bool _isRunning = false;
-  List<Map<String, dynamic>> _diagnostics = [];
+  final List<Map<String, dynamic>> _diagnostics = [];
   final _serverIpController = TextEditingController();
   final _portController = TextEditingController(text: '8080');
 
@@ -61,7 +61,8 @@ class _LanConnectionDiagnosticsScreenState
       if (serverIp.isNotEmpty) {
         await _testNetworkConnectivity(serverIp, port);
       } else {
-        await _addDiagnostic('No server IP provided, skipping connectivity test', 'warning');
+        await _addDiagnostic(
+            'No server IP provided, skipping connectivity test', 'warning');
       }
 
       // 4. Scan for available servers
@@ -133,34 +134,43 @@ class _LanConnectionDiagnosticsScreenState
       final connectionInfo = await LanSyncService.getConnectionInfo();
 
       if (connectionInfo.containsKey('error')) {
-        await _addDiagnostic('Error getting connection info: ${connectionInfo['error']}', 'error');
+        await _addDiagnostic(
+            'Error getting connection info: ${connectionInfo['error']}',
+            'error');
         return;
       }
 
       final lanServerEnabled = connectionInfo['lanServerEnabled'] ?? false;
       final port = connectionInfo['port'] ?? 8080;
-      final ipAddresses = List<String>.from(connectionInfo['ipAddresses'] ?? []);
+      final ipAddresses =
+          List<String>.from(connectionInfo['ipAddresses'] ?? []);
       final accessCode = connectionInfo['accessCode'];
 
       if (lanServerEnabled) {
-        await _addDiagnostic('Local LAN server is ENABLED on port $port', 'success');
+        await _addDiagnostic(
+            'Local LAN server is ENABLED on port $port', 'success');
         await _addDiagnostic('Access code: $accessCode', 'info');
 
         for (final ip in ipAddresses) {
-          await _addDiagnostic('Server available at: http://$ip:$port', 'success');
-          
+          await _addDiagnostic(
+              'Server available at: http://$ip:$port', 'success');
+
           // Test local server connectivity
           try {
-            final socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 2));
+            final socket = await Socket.connect(ip, port,
+                timeout: const Duration(seconds: 2));
             socket.destroy();
-            await _addDiagnostic('Local server socket test PASSED for $ip:$port', 'success');
+            await _addDiagnostic(
+                'Local server socket test PASSED for $ip:$port', 'success');
           } catch (e) {
-            await _addDiagnostic('Local server socket test FAILED for $ip:$port: $e', 'error');
+            await _addDiagnostic(
+                'Local server socket test FAILED for $ip:$port: $e', 'error');
           }
         }
 
         if (ipAddresses.isEmpty) {
-          await _addDiagnostic('No IP addresses found for local server', 'warning');
+          await _addDiagnostic(
+              'No IP addresses found for local server', 'warning');
         }
       } else {
         await _addDiagnostic('Local LAN server is DISABLED', 'warning');
@@ -172,7 +182,8 @@ class _LanConnectionDiagnosticsScreenState
 
   Future<void> _testNetworkConnectivity(String serverIp, int port) async {
     try {
-      await _addDiagnostic('Testing connectivity to $serverIp:$port...', 'info');
+      await _addDiagnostic(
+          'Testing connectivity to $serverIp:$port...', 'info');
 
       // Test basic socket connectivity
       try {
@@ -182,9 +193,11 @@ class _LanConnectionDiagnosticsScreenState
           timeout: const Duration(seconds: 5),
         );
         socket.destroy();
-        await _addDiagnostic('Socket connection to $serverIp:$port SUCCESSFUL', 'success');
+        await _addDiagnostic(
+            'Socket connection to $serverIp:$port SUCCESSFUL', 'success');
       } catch (e) {
-        await _addDiagnostic('Socket connection to $serverIp:$port FAILED: $e', 'error');
+        await _addDiagnostic(
+            'Socket connection to $serverIp:$port FAILED: $e', 'error');
         return; // No point testing HTTP if socket fails
       }
 
@@ -192,13 +205,17 @@ class _LanConnectionDiagnosticsScreenState
       try {
         final client = HttpClient();
         client.connectionTimeout = const Duration(seconds: 5);
-        
-        final request = await client.getUrl(Uri.parse('http://$serverIp:$port/status'));
+
+        final request =
+            await client.getUrl(Uri.parse('http://$serverIp:$port/status'));
         final response = await request.close();
-        
-        await _addDiagnostic('HTTP status check returned: ${response.statusCode}', 
-            response.statusCode == 200 || response.statusCode == 401 ? 'success' : 'warning');
-        
+
+        await _addDiagnostic(
+            'HTTP status check returned: ${response.statusCode}',
+            response.statusCode == 200 || response.statusCode == 401
+                ? 'success'
+                : 'warning');
+
         client.close();
       } catch (e) {
         await _addDiagnostic('HTTP connectivity test failed: $e', 'error');
@@ -221,7 +238,8 @@ class _LanConnectionDiagnosticsScreenState
           final ip = server['ip'];
           final port = server['port'];
           final status = server['status'] ?? 'unknown';
-          await _addDiagnostic('Found server at $ip:$port (status: $status)', 'success');
+          await _addDiagnostic(
+              'Found server at $ip:$port (status: $status)', 'success');
         }
       }
     } catch (e) {
@@ -240,7 +258,8 @@ class _LanConnectionDiagnosticsScreenState
         await _addDiagnostic('Port $port is available for binding', 'success');
       } catch (e) {
         if (e.toString().contains('Address already in use')) {
-          await _addDiagnostic('Port $port is already in use (server may be running)', 'info');
+          await _addDiagnostic(
+              'Port $port is already in use (server may be running)', 'info');
         } else {
           await _addDiagnostic('Port $port binding test failed: $e', 'error');
         }
@@ -280,7 +299,8 @@ class _LanConnectionDiagnosticsScreenState
 
   void _copyDiagnostics() {
     final diagnosticsText = _diagnostics
-        .map((d) => '${d['timestamp']}: [${d['type'].toUpperCase()}] ${d['message']}')
+        .map((d) =>
+            '${d['timestamp']}: [${d['type'].toUpperCase()}] ${d['message']}')
         .join('\n');
 
     Clipboard.setData(ClipboardData(text: diagnosticsText));
@@ -316,7 +336,8 @@ class _LanConnectionDiagnosticsScreenState
                   children: [
                     const Text(
                       'Test Configuration',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -346,7 +367,8 @@ class _LanConnectionDiagnosticsScreenState
                                 SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 ),
                                 SizedBox(width: 8),
                                 Text('Running Diagnostics...'),
@@ -368,7 +390,8 @@ class _LanConnectionDiagnosticsScreenState
                       padding: EdgeInsets.all(16.0),
                       child: Text(
                         'Diagnostic Results',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
                     Expanded(
@@ -394,8 +417,12 @@ class _LanConnectionDiagnosticsScreenState
                                   ),
                                   title: Text(message),
                                   subtitle: Text(
-                                    DateTime.parse(timestamp).toLocal().toString().substring(11, 19),
-                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    DateTime.parse(timestamp)
+                                        .toLocal()
+                                        .toString()
+                                        .substring(11, 19),
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.grey),
                                   ),
                                 );
                               },

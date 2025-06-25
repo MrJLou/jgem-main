@@ -124,18 +124,42 @@ class LanSyncService {
     _allowedIpRanges = [];
 
     try {
-      // Get device's own IP address
-      final info = NetworkInfo();
-      final wifiIP = await info.getWifiIP();
+      // Get all network interfaces (WiFi and Ethernet)
+      final interfaces = await NetworkInterface.list();
 
-      if (wifiIP != null) {
-        // Extract network prefix (e.g., 192.168.1)
-        final parts = wifiIP.split('.');
-        if (parts.length == 4) {
-          final prefix = "${parts[0]}.${parts[1]}.${parts[2]}";
-          _allowedIpRanges.add(prefix);
-          debugPrint('Configured LAN access for subnet: $prefix.*');
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            // Extract network prefix (e.g., 192.168.68)
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              final prefix = "${parts[0]}.${parts[1]}.${parts[2]}";
+              if (!_allowedIpRanges.contains(prefix)) {
+                _allowedIpRanges.add(prefix);
+                debugPrint(
+                    'Configured LAN access for subnet: $prefix.* (${interface.name})');
+              }
+            }
+          }
         }
+      }
+
+      // Also try WiFi IP for backwards compatibility
+      try {
+        final info = NetworkInfo();
+        final wifiIP = await info.getWifiIP();
+        if (wifiIP != null) {
+          final parts = wifiIP.split('.');
+          if (parts.length == 4) {
+            final prefix = "${parts[0]}.${parts[1]}.${parts[2]}";
+            if (!_allowedIpRanges.contains(prefix)) {
+              _allowedIpRanges.add(prefix);
+              debugPrint('Configured LAN access for WiFi subnet: $prefix.*');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('WiFi IP detection failed: $e');
       }
 
       // Add localhost
@@ -144,19 +168,31 @@ class LanSyncService {
       // If no valid IP was found, use common private network ranges
       if (_allowedIpRanges.length == 1) {
         // Only localhost was added
-        _allowedIpRanges
-            .addAll(['192.168.0', '192.168.1', '10.0.0', '172.16.0']);
+        _allowedIpRanges.addAll([
+          '192.168.0', '192.168.1', '192.168.2',
+          '192.168.68', // Common home networks
+          '10.0.0', '10.0.1', '10.1.0', // Corporate networks
+          '172.16.0', '172.17.0', '172.18.0' // Docker and other private ranges
+        ]);
         debugPrint('Using standard private network ranges');
       }
+
+      debugPrint('Final allowed IP ranges: $_allowedIpRanges');
     } catch (e) {
       debugPrint('Error configuring LAN ranges: $e');
-      // Fallback to common private network ranges
+      // Fallback to comprehensive private network ranges
       _allowedIpRanges = [
         '127.0.0',
         '192.168.0',
         '192.168.1',
+        '192.168.2',
+        '192.168.68',
         '10.0.0',
-        '172.16.0'
+        '10.0.1',
+        '10.1.0',
+        '172.16.0',
+        '172.17.0',
+        '172.18.0'
       ];
     }
   }
