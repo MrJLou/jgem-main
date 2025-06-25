@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:bcrypt/bcrypt.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_application_1/services/lan_session_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
@@ -15,12 +17,14 @@ class AuthService {
   static const _accessLevelKey = 'access_level';
   static const _deviceIdKey = 'device_id';
   static const _isLoggedInKey = 'is_logged_in'; // Key for logged in state
-
   // --- Additions for debounce ----
   static String? _lastLoggedInUser;
   static DateTime? _lastLoginLogTime;
   static const Duration _loginLogDebounceDuration = Duration(seconds: 5);
   // --- End additions ----
+
+  // Current user role for authorization
+  static String? _currentUserRole;
 
   // Token expiration duration (in minutes)
   static const int _tokenValidityMinutes = 60; // 1 hour
@@ -105,10 +109,11 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_authTokenKey);
       await prefs.remove(_usernameKey);
-      await prefs.remove(_accessLevelKey);
-
-      // Make sure to explicitly set the logged in state to false
+      await prefs.remove(_accessLevelKey);      // Make sure to explicitly set the logged in state to false
       await prefs.setBool(_isLoggedInKey, false);
+
+      // Clear current user role
+      _currentUserRole = null;
 
       // Log the logout activity if we have the username
       if (username != null) {
@@ -218,10 +223,11 @@ class AuthService {
     await _secureStorage.delete(key: _authTokenKey);
     await _secureStorage.delete(key: _tokenExpiryKey);
     await _secureStorage.delete(key: _usernameKey);
-    await _secureStorage.delete(key: _accessLevelKey);
-
-    final prefs = await SharedPreferences.getInstance();
+    await _secureStorage.delete(key: _accessLevelKey);    final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_isLoggedInKey, false);
+    
+    // Clear current user role
+    _currentUserRole = null;
   }
 
   // Check if user is logged in and token is valid
@@ -348,5 +354,100 @@ class AuthService {
       return savedCreds['accessLevel'];
     }
     return null;
+  }
+
+  // Get current user role (cached)
+  static String? getCurrentUserRole() {
+    return _currentUserRole;
+  }
+
+  // Clear current user role
+  static void clearCurrentUserRole() {
+    _currentUserRole = null;
+  }
+
+  // Enhanced login with session management
+  static Future<Map<String, dynamic>> loginWithSessionManagement(
+      String username, String password) async {
+    try {
+      // First check if user is already logged in elsewhere
+      if (LanSessionService.isUserLoggedIn(username)) {
+        throw Exception('User is already logged in on another device. Please logout from the other device first.');
+      }
+      
+      // Proceed with normal authentication
+      final auth = await DatabaseHelper().authenticateUser(username, password);
+      if (auth != null &&
+          auth['user'] != null &&
+          auth['user'].role != null) {
+        _currentUserRole = auth['user'].role;
+
+        // Save to SharedPreferences
+        await saveLoginCredentials(
+          token: auth['token'],
+          username: username,
+          accessLevel: auth['user'].role,
+        );
+
+        // Register session if session service is running
+        if (LanSessionService.isServerRunning) {
+          try {
+            final deviceId = await getDeviceId();
+            final deviceName = await _getDeviceName();
+            
+            await LanSessionService.registerUserSession(
+              username: username,
+              deviceId: deviceId,
+              deviceName: deviceName,
+              accessLevel: auth['user'].role,
+            );
+          } catch (e) {
+            debugPrint('Failed to register session: $e');
+            // Don't fail login if session registration fails
+          }
+        }
+
+        return auth;
+      } else {
+        throw Exception('Invalid credentials or user data missing');
+      }
+    } catch (e) {
+      throw Exception('Failed to login: $e');
+    }
+  }
+  
+  // Enhanced logout with session cleanup
+  static Future<void> logoutWithSessionCleanup() async {
+    try {
+      // End session if active
+      final deviceId = await getDeviceId();
+      final session = LanSessionService.getSessionByDevice(deviceId);
+      if (session != null) {
+        await LanSessionService.endUserSession(session.sessionId);
+      }
+      
+      // Clear all credentials
+      await logout();
+    } catch (e) {
+      debugPrint('Error during logout with session cleanup: $e');
+      // Still clear credentials even if session cleanup fails
+      await logout();
+    }
+  }
+  
+  // Get device name
+  static Future<String> _getDeviceName() async {
+    try {
+      if (Platform.isWindows) {
+        final result = await Process.run('hostname', []);
+        return result.stdout.toString().trim();
+      } else if (Platform.isLinux || Platform.isMacOS) {
+        final result = await Process.run('hostname', []);
+        return result.stdout.toString().trim();
+      }
+    } catch (e) {
+      debugPrint('Failed to get device name: $e');
+    }
+    return 'Unknown Device';
   }
 }
