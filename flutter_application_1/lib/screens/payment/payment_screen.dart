@@ -228,6 +228,7 @@ class PaymentScreenState extends State<PaymentScreen> {
       final paymentData = {
         'billId': billId, // Crucial for updating bill status
         'patientId': patientId, // patientId from the bill
+        'patientName': patientName,
         'referenceNumber': referenceNumber,
         'paymentDate': paymentDateTime.toIso8601String(),
         'amountPaid': amountPaid,

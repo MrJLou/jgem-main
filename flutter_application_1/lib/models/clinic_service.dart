@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class ClinicService {
   final String id;
   final String serviceName;
@@ -14,16 +16,25 @@ class ClinicService {
     this.defaultPrice,
     this.selectionCount = 0,
   });
-
   factory ClinicService.fromJson(Map<String, dynamic> json) {
-    return ClinicService(
-      id: json['id'] as String,
-      serviceName: json['serviceName'] as String,
-      description: json['description'] as String?,
-      category: json['category'] as String?,
-      defaultPrice: (json['defaultPrice'] as num?)?.toDouble(),
-      selectionCount: json['selectionCount'] as int? ?? 0,
-    );
+    try {
+      return ClinicService(
+        id: json['id']?.toString() ?? '',
+        serviceName: json['serviceName']?.toString() ?? 'Unknown Service',
+        description: json['description']?.toString(),
+        category: json['category']?.toString(),
+        defaultPrice: (json['defaultPrice'] as num?)?.toDouble(),
+        selectionCount: json['selectionCount'] as int? ?? 0,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error creating ClinicService from JSON: $e');
+      }
+      if (kDebugMode) {
+        print('JSON data: $json');
+      }
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {

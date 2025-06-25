@@ -34,7 +34,7 @@ class DatabaseHelper {
   String? _instanceDbPath;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 32;
+  static const int _databaseVersion = 34;
 
   // Tables
   static const String tableUsers = 'users';
@@ -403,7 +403,8 @@ class DatabaseHelper {
         id TEXT PRIMARY KEY,
         patientId TEXT NOT NULL,
         appointmentId TEXT,
-        serviceId TEXT,
+        serviceId TEXT, -- Will be deprecated
+        selectedServices TEXT, -- New field for multiple services
         recordType TEXT NOT NULL,
         recordDate TEXT NOT NULL,
         diagnosis TEXT,
@@ -489,6 +490,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         billId TEXT NOT NULL, 
         patientId TEXT NOT NULL,
+        patientName TEXT NOT NULL, 
         invoiceNumber TEXT, 
         referenceNumber TEXT UNIQUE NOT NULL, 
         paymentDate TEXT NOT NULL,
@@ -694,6 +696,14 @@ class DatabaseHelper {
         'idx_patient_history_patientId': 'patientId',
         'idx_patient_history_updatedAt': 'updatedAt',
       });
+    }
+    if (oldVersion < 33) {
+    debugPrint("DATABASE_HELPER: Upgrading to version 33: Adding patientName to payments table.");
+    await _addColumnIfNotExists(db, tablePayments, 'patientName', 'TEXT NOT NULL DEFAULT \'Unknown\'');
+    }
+    if (oldVersion < 34) {
+      debugPrint("DATABASE_HELPER: Upgrading to version 34: Adding selectedServices to medical_records table.");
+      await _addColumnIfNotExists(db, tableMedicalRecords, 'selectedServices', 'TEXT');
     }
 
     debugPrint("DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
@@ -931,12 +941,34 @@ class DatabaseHelper {
   }
 
   // Get all medical records
-  Future<List<Map<String, dynamic>>> getAllMedicalRecords() async {
+  Future<List<Map<String, dynamic>>> getAllMedicalRecords({int? limit}) async {
     final db = await database;
     return await db.query(
       DatabaseHelper.tableMedicalRecords,
       orderBy: 'recordDate DESC',
+      limit: limit,
     );
+  }
+
+  // Get medical records by service
+  Future<List<Map<String, dynamic>>> getMedicalRecordsByService(
+      String serviceId) async {
+    final db = await database;
+    // The selectedServices field stores a JSON list of maps.
+    // We use LIKE to find records where the serviceId is present as a key-value pair.
+    try {
+      final results = await db.query(
+        DatabaseHelper.tableMedicalRecords,
+        where: "selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ''",
+        whereArgs: ['%"id":"$serviceId"%'], // Search for the service ID within the JSON string
+        orderBy: 'recordDate DESC',
+      );
+      debugPrint('DatabaseHelper: Found ${results.length} records for service $serviceId');
+      return results;
+    } catch (e) {
+      debugPrint('DatabaseHelper: Error querying medical records by service: $e');
+      return [];
+    }
   }
 
   // DATABASE SYNCHRONIZATION METHODS
@@ -2045,6 +2077,7 @@ To view live changes in DB Browser:
       Map<String, dynamic> paymentData = {
         'billId': billDbId,
         'patientId': patient.patientId!,
+        'patientName': patient.patientName,
         'invoiceNumber': invoiceNumber, 
         'referenceNumber': paymentReferenceNumber,
         'paymentDate': DateTime.now().toIso8601String(),
@@ -2462,5 +2495,113 @@ To view live changes in DB Browser:
       whereArgs: [patientId],
       orderBy: 'updatedAt DESC',
     );
+  }
+
+  Future<int> getTotalPatientsForService(String serviceId) async {
+    final db = await database;
+    // We search the JSON string for the service ID.
+    // This is not perfectly efficient but works for SQLite.
+    // The 'id' in the JSON must be wrapped in quotes.
+    try {
+      final result = await db.rawQuery(
+        'SELECT COUNT(DISTINCT patientId) as count FROM $tableMedicalRecords WHERE selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ?',
+        ['%"id":"$serviceId"%', ''],
+      );
+      if (result.isNotEmpty && result.first['count'] != null) {
+        final count = result.first['count'] as int;
+        debugPrint('DatabaseHelper: Found $count unique patients for service $serviceId');
+        return count;
+      }
+      debugPrint('DatabaseHelper: No patients found for service $serviceId');
+      return 0;
+    } catch (e) {
+      debugPrint('DatabaseHelper: Error counting patients for service: $e');
+      return 0;
+    }
+  }
+
+  /// Fetches patient demographics (gender distribution) for a specific service.
+  Future<Map<String, int>> getPatientDemographicsForService(
+      String serviceId) async {
+    final db = await database;
+    const query = '''
+      SELECT p.gender, COUNT(DISTINCT p.id) as count
+      FROM $tableMedicalRecords mr
+      JOIN $tablePatients p ON mr.patientId = p.id
+      WHERE mr.selectedServices LIKE ?
+      GROUP BY p.gender
+    ''';
+    final result = await db.rawQuery(query, ['%"id":"$serviceId"%']);
+
+    final demographics = <String, int>{'Male': 0, 'Female': 0, 'Other': 0};
+    for (final row in result) {
+      final gender = row['gender'] as String? ?? 'Other';
+      final count = row['count'] as int;
+      if (demographics.containsKey(gender)) {
+        demographics[gender] = count;
+      } else {
+        demographics['Other'] = (demographics['Other'] ?? 0) + count;
+      }
+    }
+    return demographics;
+  }
+
+  /// Fetches financial data for a specific service, including total revenue
+  /// and the number of paid vs. unpaid bills.
+  Future<Map<String, dynamic>> getFinancialDataForService(
+      String serviceId) async {
+    final db = await database;
+    const query = '''
+      SELECT 
+        pb.status, 
+        COUNT(DISTINCT pb.id) as bill_count, 
+        SUM(bi.unitPrice) as total_revenue
+      FROM $tableMedicalRecords mr
+      JOIN $tablePatientBills pb ON mr.patientId = pb.patientId 
+      JOIN $tableBillItems bi ON pb.id = bi.billId
+      WHERE mr.selectedServices LIKE ? AND bi.serviceId = ?
+      GROUP BY pb.status
+    ''';
+
+    final result = await db.rawQuery(query, ['%"id":"$serviceId"%', serviceId]);
+
+    double totalRevenue = 0;
+    int paidBills = 0;
+    int unpaidBills = 0;
+
+    for (final row in result) {
+      final status = row['status'] as String?;
+      final revenue = (row['total_revenue'] as num?)?.toDouble() ?? 0.0;
+      final count = row['bill_count'] as int? ?? 0;
+
+      totalRevenue += revenue;
+      if (status == 'Paid') {
+        paidBills += count;
+      } else {
+        unpaidBills += count;
+      }
+    }
+
+    return {
+      'totalRevenue': totalRevenue,
+      'paidCount': paidBills,
+      'unpaidCount': unpaidBills,
+    };
+  }
+
+  /// Fetches the most recent patients who have availed a specific service.
+  Future<List<Map<String, dynamic>>> getRecentPatientRecordsForService(
+      String serviceId,
+      {int limit = 5}) async {
+    final db = await database;
+    const query = '''
+      SELECT p.fullName, p.id as patientId, mr.recordDate
+      FROM $tableMedicalRecords mr
+      JOIN $tablePatients p ON mr.patientId = p.id
+      WHERE mr.selectedServices LIKE ?
+      ORDER BY mr.recordDate DESC
+      LIMIT ?
+    ''';
+    return await db.rawQuery(query, ['%"id":"$serviceId"%', limit]);
   }
 }

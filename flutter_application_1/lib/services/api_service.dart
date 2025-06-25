@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/appointment.dart';
 import '../models/user.dart';
 import '../models/patient.dart';
+import '../models/patient_bill.dart';
 import '../models/medical_record.dart';
 import '../models/active_patient_queue_item.dart';
 import '../services/auth_service.dart';
@@ -14,6 +15,7 @@ import '../models/clinic_service.dart';
 import './queue_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/models/patient_report.dart';
 
 class ApiService {
   static final DatabaseHelper _dbHelper = DatabaseHelper();
@@ -268,6 +270,12 @@ class ApiService {
     }
   }
 
+  static Future<List<MedicalRecord>> getMedicalRecordsByService(
+      String serviceId) async {
+    final recordsData = await _dbHelper.getMedicalRecordsByService(serviceId);
+    return recordsData.map((data) => MedicalRecord.fromJson(data)).toList();
+  }
+
   static Future<String> createMedicalRecord(MedicalRecord record) async {
     try {
       return await _dbHelper.insertMedicalRecord(record.toJson());
@@ -282,6 +290,155 @@ class ApiService {
     } catch (e) {
       throw Exception('Failed to update medical record: $e');
     }
+  }
+
+  static Future<List<MedicalRecord>> getAllMedicalRecords({int? limit}) async {
+    final recordsData = await _dbHelper.getAllMedicalRecords(limit: limit);
+    return recordsData.map((data) => MedicalRecord.fromJson(data)).toList();
+  }
+
+  static Future<Map<String, int>> getPatientDemographicsForService(
+      String serviceId) async {
+    return await _dbHelper.getPatientDemographicsForService(serviceId);
+  }
+
+  static Future<Map<String, dynamic>> getFinancialDataForService(
+      String serviceId) async {
+    return await _dbHelper.getFinancialDataForService(serviceId);
+  }
+
+  static Future<List<Map<String, dynamic>>> getRecentPatientRecordsForService(
+      String serviceId,
+      {int limit = 5}) async {
+    return await _dbHelper.getRecentPatientRecordsForService(serviceId,
+        limit: limit);
+  }
+
+  static Future<Map<String, dynamic>> getPatientTrends() async {
+    final allAppointments = await _dbHelper.getAllAppointments();
+    final allQueueItems = await _dbHelper.getAllActiveQueueItems();
+    // Further processing from patient_trends_screen.dart would go here
+    // For now, returning raw data
+    return {
+      'appointments': allAppointments,
+      'queueItems': allQueueItems,
+    };
+  }
+
+  static Future<Map<String, dynamic>> getDemographicsAnalysis() async {
+    try {
+      final patients = await getPatients();
+      if (patients.isEmpty) {
+        return {
+          'totalPatients': 0,
+          'genderDistribution': {'Male': 0, 'Female': 0, 'Other': 0},
+          'ageDistribution': {
+            '0-18': 0,
+            '19-35': 0,
+            '36-50': 0,
+            '51-65': 0,
+            '65+': 0,
+          },
+        };
+      }
+
+      final totalPatients = patients.length;
+      final now = DateTime.now();
+
+      final genderDistribution = {'Male': 0, 'Female': 0, 'Other': 0};
+      final ageDistribution = {
+        '0-18': 0,
+        '19-35': 0,
+        '36-50': 0,
+        '51-65': 0,
+        '65+': 0,
+      };
+
+      for (final patient in patients) {
+        // Gender
+        final gender = patient.gender.toLowerCase();
+        if (gender == 'male') {
+          genderDistribution['Male'] = genderDistribution['Male']! + 1;
+        } else if (gender == 'female') {
+          genderDistribution['Female'] = genderDistribution['Female']! + 1;
+        } else {
+          genderDistribution['Other'] = genderDistribution['Other']! + 1;
+        }
+
+        // Age
+        final birthDate = patient.birthDate;
+        int age = now.year - birthDate.year;
+        if (now.month < birthDate.month ||
+            (now.month == birthDate.month && now.day < birthDate.day)) {
+          age--;
+        }
+
+        if (age <= 18) {
+          ageDistribution['0-18'] = ageDistribution['0-18']! + 1;
+        } else if (age <= 35) {
+          ageDistribution['19-35'] = ageDistribution['19-35']! + 1;
+        } else if (age <= 50) {
+          ageDistribution['36-50'] = ageDistribution['36-50']! + 1;
+        } else if (age <= 65) {
+          ageDistribution['51-65'] = ageDistribution['51-65']! + 1;
+        } else {
+          ageDistribution['65+'] = ageDistribution['65+']! + 1;
+        }
+      }
+
+      return {
+        'totalPatients': totalPatients,
+        'genderDistribution': genderDistribution,
+        'ageDistribution': ageDistribution,
+      };
+    } catch (e) {
+      debugPrint("Error fetching demographics analysis: $e");
+      rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>> getTreatmentAnalysis() async {
+    try {
+      final services = await getClinicServices();
+      services.sort((a, b) => b.selectionCount.compareTo(a.selectionCount));
+
+      final Map<String, int> categoryDistribution = {};
+      for (final service in services) {
+        final category = service.category ?? 'Uncategorized';
+        categoryDistribution[category] =
+            (categoryDistribution[category] ?? 0) + service.selectionCount;
+      }
+
+      return {
+        'topServices': services.take(5).toList(),
+        'categoryDistribution': categoryDistribution,
+        'totalSelections':
+            services.fold<int>(0, (sum, item) => sum + item.selectionCount),
+      };
+    } catch (e) {
+      debugPrint("Error fetching treatment analysis: $e");
+      rethrow;
+    }
+  }
+
+  static Future<List<PatientReport>> getRecentClinicVisits(
+      {int limit = 10}) async {
+    final records = await getAllMedicalRecords(limit: limit);
+    final List<PatientReport> reports = [];
+    for (final record in records) {
+      try {
+        final patient = await getPatientById(record.patientId);
+        reports.add(PatientReport(record: record, patient: patient));
+      } catch (e) {
+        // Handle error, e.g., patient not found
+        debugPrint('Could not fetch patient for recent visit report: $e');
+      }
+    }
+    return reports;
+  }
+
+  static Future<int> getTotalPatientsForService(String serviceId) async {
+    return await _dbHelper.getTotalPatientsForService(serviceId);
   }
 
   // Active Patient Queue Methods
@@ -780,20 +937,126 @@ class ApiService {
   }
 
   // Medical Record Methods
-  static Future<List<MedicalRecord>> getAllMedicalRecords() async {
-    try {
-      final recordsData = await _dbHelper.getAllMedicalRecords();
-      return recordsData.map((data) => MedicalRecord.fromJson(data)).toList();
-    } catch (e) {
-      throw Exception('Failed to load all medical records: $e');
-    }
-  }
-
   static Future<List<Map<String, dynamic>>> getPatientHistory(String patientId) async {
     try {
       return await _dbHelper.getPatientHistory(patientId);
     } catch (e) {
       throw Exception('Failed to load patient history: $e');
+    }
+  }
+
+  // Payment Transaction Methods
+  static Future<List<Map<String, dynamic>>> getPaymentTransactions() async {
+    try {
+      return await _dbHelper.getPaymentTransactions();
+    } catch (e) {
+      throw Exception('Failed to load payment transactions: $e');
+    }
+  }
+
+  // Patient Bills Methods
+  static Future<List<PatientBill>> getPatientBills(String patientId) async {
+    try {
+      // Get all bills and filter by patientId
+      final allBillsData = await _dbHelper.getPatientBills();
+      final patientBillsData = allBillsData.where((bill) => 
+        bill['patientId'] == patientId).toList();
+      
+      final bills = <PatientBill>[];
+      
+      for (final billData in patientBillsData) {
+        // Fetch patient data for the bill
+        Patient? patient;
+        try {
+          final patientData = await _dbHelper.getPatient(patientId);
+          if (patientData != null) {
+            patient = Patient.fromJson(patientData);
+          }
+        } catch (e) {
+          // Continue without patient data if fetch fails
+        }
+        
+        // Get bill items for this bill
+        final billItems = await _dbHelper.getBillItems(billData['id']);
+        
+        // Create a complete bill data map
+        final completeBillData = Map<String, dynamic>.from(billData);
+        completeBillData['billItems'] = billItems;
+        
+        bills.add(PatientBill.fromMap(completeBillData, patient));
+      }
+      
+      return bills;
+    } catch (e) {
+      throw Exception('Failed to load patient bills: $e');
+    }
+  }
+
+  static Future<List<PatientBill>> getAllPatientBills() async {
+    try {
+      final billsData = await _dbHelper.getPatientBills();
+      final bills = <PatientBill>[];
+      
+      for (final billData in billsData) {
+        // Fetch patient data for the bill
+        Patient? patient;
+        if (billData['patientId'] != null) {
+          try {
+            final patientData = await _dbHelper.getPatient(billData['patientId']);
+            if (patientData != null) {
+              patient = Patient.fromJson(patientData);
+            }
+          } catch (e) {
+            // Continue without patient data if fetch fails
+          }
+        }
+        
+        // Get bill items for this bill
+        final billItems = await _dbHelper.getBillItems(billData['id']);
+        
+        // Create a complete bill data map
+        final completeBillData = Map<String, dynamic>.from(billData);
+        completeBillData['billItems'] = billItems;
+        
+        bills.add(PatientBill.fromMap(completeBillData, patient));
+      }
+      
+      return bills;
+    } catch (e) {
+      throw Exception('Failed to load all patient bills: $e');
+    }
+  }
+
+  static Future<List<PatientReport>> getPatientReportsForService(String serviceId, {int limit = 10}) async {
+    try {
+      // Get all medical records and filter by service
+      final allRecords = await getAllMedicalRecords(limit: limit * 2); // Get more records to filter
+      final List<PatientReport> reports = [];
+      
+      for (final record in allRecords) {
+        // Check if this record includes the specific service
+        if (record.selectedServices != null) {
+          bool includesService = record.selectedServices!.any((service) => 
+            service['id']?.toString() == serviceId.toString());
+          
+          if (includesService) {
+            try {
+              final patient = await getPatientById(record.patientId);
+              reports.add(PatientReport(record: record, patient: patient));
+              
+              // Stop when we have enough reports
+              if (reports.length >= limit) break;
+            } catch (e) {
+              debugPrint('Could not fetch patient ${record.patientId} for service report: $e');
+            }
+          }
+        }
+      }
+      
+      return reports;
+    } catch (e) {
+      debugPrint('ApiService: Failed to get patient reports for service: $e');
+      return [];
     }
   }
 }

@@ -1,322 +1,290 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
+import 'package:flutter_application_1/models/patient_report.dart';
+import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/reports/medical_record_detail_dialog.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class MedicalRecordsScreen extends StatefulWidget {
   const MedicalRecordsScreen({super.key});
 
   @override
-  MedicalRecordsScreenState createState() => MedicalRecordsScreenState();
+  State<MedicalRecordsScreen> createState() => _MedicalRecordsScreenState();
 }
 
-class MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
-  final List<PatientRecord> _records = [
-    PatientRecord(
-      name: 'John Doe',
-      id: 'PT-1001',
-      age: '35',
-      diagnosis: 'Flu',
-    ),
-    PatientRecord(
-      name: 'Jane Smith',
-      id: 'PT-1002',
-      age: '42',
-      diagnosis: 'Diabetes',
-    ),
-    PatientRecord(
-      name: 'Robert Brown',
-      id: 'PT-1003',
-      age: '58',
-      diagnosis: 'Hypertension',
-    ),
-  ];
-
-  PatientRecord? _selectedRecord;
-  final Map<int, bool> _hoverStates = {};
-
-  void _handleDownload(PatientRecord record) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Downloading ${record.name}\'s report...')),
-    );
-  }
-
-  void _handlePDFConversion() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Generating PDF...')),
-    );
-  }
+class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
+  late Future<List<PatientReport>> _reportsFuture;
+  List<PatientReport> _reports = [];
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => setState(() => _selectedRecord = null),
-      child: Scaffold(
-        backgroundColor: Colors.teal[300],
-        appBar: AppBar(
-          title: const Text('Medical Records'),
-          backgroundColor: Colors.teal[600],
-          elevation: 0,
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
+  void initState() {
+    super.initState();
+    _reportsFuture = _fetchPatientReports();
+  }
+
+  Future<List<PatientReport>> _fetchPatientReports() async {
+    final records = await ApiService.getAllMedicalRecords();
+    final List<PatientReport> reports = [];
+    for (final record in records) {
+      try {
+        final patient = await ApiService.getPatientById(record.patientId);
+        reports.add(PatientReport(record: record, patient: patient));
+      } catch (e) {
+        debugPrint(
+            'Could not fetch patient ${record.patientId} for record ${record.id}: $e');
+      }
+    }
+    // Sort by date, most recent first
+    reports.sort((a, b) => b.record.recordDate.compareTo(a.record.recordDate));
+    _reports = reports;
+    return reports;
+  }
+
+  void _showPrintPreview(PatientReport report) {
+    Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async =>
+          _generateDetailPdf(format, report),
+    );
+  }
+
+  void _showSummaryPrintPreview() {
+    if (_reports.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No records to generate PDF.')),
+      );
+      return;
+    }
+    Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async =>
+          _generateSummaryPdf(format, _reports),
+    );
+  }
+
+  Future<Uint8List> _generateDetailPdf(
+      PdfPageFormat format, PatientReport report) async {
+    final pdf = pw.Document();
+    final record = report.record;
+    final patient = report.patient;
+    final services = record.selectedServices ?? [];
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              _buildLeftPanel(),
-              const SizedBox(width: 24),
-              _buildRightPanel(),
+              pw.Text(patient.fullName,
+                  style: pw.TextStyle(
+                      fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Patient ID: ${patient.id}'),
+              pw.Divider(height: 24),
+              _buildPdfDetailRow(label: 'Record ID', value: record.id),
+              _buildPdfDetailRow(
+                  label: 'Record Date',
+                  value: DateFormat('yyyy-MM-dd HH:mm')
+                      .format(record.recordDate.toLocal())),
+              _buildPdfDetailRow(
+                  label: 'Record Type', value: record.recordType),
+              _buildPdfDetailRow(label: 'Doctor ID', value: record.doctorId),
+              _buildPdfDetailRow(
+                  label: 'Diagnosis', value: record.diagnosis ?? 'N/A'),
+              _buildPdfDetailRow(
+                  label: 'Treatment', value: record.treatment ?? 'N/A'),
+              _buildPdfDetailRow(
+                  label: 'Prescription', value: record.prescription ?? 'N/A'),
+              _buildPdfDetailRow(
+                  label: 'Lab Results', value: record.labResults ?? 'N/A'),
+              _buildPdfDetailRow(label: 'Notes', value: record.notes ?? 'N/A'),
+              pw.SizedBox(height: 16),
+              if (services.isNotEmpty) ...[
+                pw.Text('Services Rendered:',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 8),
+                ...services.map((service) =>
+                    pw.Text('• ${service['name'] ?? 'Unknown Service'}')),
+              ],
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLeftPanel() {
-    return Expanded(
-      flex: 4,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSelectedReportSection(),
-            const SizedBox(height: 24),
-            _buildPatientList(),
-            const SizedBox(height: 24),
-            _buildActionButton('Convert to PDF', _handlePDFConversion),
-            const SizedBox(height: 12),
-            _buildActionButton('Download', () {
-              if (_selectedRecord != null) _handleDownload(_selectedRecord!);
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedReportSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 40),
-      alignment: Alignment.center,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Text(
-            'Selected Report',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.teal[800],
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (_selectedRecord != null)
-            Text(
-              _selectedRecord!.name,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            )
-          else
-            const Text('No report selected'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPatientList() {
-    return Flexible(
-      child: ListView.builder(
-        itemCount: _records.length,
-        itemBuilder: (context, index) {
-          final record = _records[index];
-          return MouseRegion(
-            onEnter: (_) => setState(() => _hoverStates[index] = true),
-            onExit: (_) => setState(() => _hoverStates[index] = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _hoverStates[index] ?? false
-                    ? Colors.teal[100]
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(26),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.teal[700],
-                  child: const Icon(Icons.person, color: Colors.white),
-                ),
-                title: Text(record.name),
-                subtitle: Text('ID: ${record.id}'),
-                onTap: () => setState(() => _selectedRecord = record),
-              ),
-            ),
           );
         },
       ),
     );
+    return pdf.save();
   }
 
-  Widget _buildActionButton(String label, VoidCallback? onPressed) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.teal[800],
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-      ),
-      child: Text(label),
-    );
-  }
-
-  Widget _buildRightPanel() {
-    return Expanded(
-      flex: 6,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Report View',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
-            const Divider(color: Colors.grey),
-            if (_selectedRecord != null)
-              Column(
-                children: [
-                  _buildKeyValueSection(),
-                  const SizedBox(height: 16),
-                  _buildDetailsSection(),
-                ],
-              )
-            else
-              const Center(child: Text('Select a report to view')),
+  pw.Widget _buildPdfDetailRow({required String label, required String value}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
+      child: pw.RichText(
+        text: pw.TextSpan(
+          style: const pw.TextStyle(fontSize: 12.0, color: PdfColors.black),
+          children: <pw.TextSpan>[
+            pw.TextSpan(
+                text: '$label: ',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.TextSpan(text: value),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildKeyValueSection() {
-    return Column(
-      children: [
-        _buildKeyValuePair('Name', _selectedRecord!.name),
-        _buildKeyValuePair('ID', _selectedRecord!.id),
-        _buildKeyValuePair('Age', _selectedRecord!.age),
-        _buildKeyValuePair('Diagnosis', _selectedRecord!.diagnosis),
-      ],
+  Future<Uint8List> _generateSummaryPdf(
+      PdfPageFormat format, List<PatientReport> reports) async {
+    final pdf = pw.Document();
+
+    final tableHeaders = ['Date', 'Patient Name', 'Record Type', 'Diagnosis'];
+    final tableData = reports.map((report) {
+      return [
+        DateFormat('yyyy-MM-dd').format(report.record.recordDate.toLocal()),
+        report.patient.fullName,
+        report.record.recordType,
+        report.record.diagnosis ?? 'N/A',
+      ];
+    }).toList();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: format,
+        build: (context) => [
+          pw.Header(
+            level: 0,
+            child: pw.Text('Patient Medical Records Summary',
+                style: pw.TextStyle(
+                    fontSize: 24, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headers: tableHeaders,
+            data: tableData,
+            headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.teal),
+            cellAlignment: pw.Alignment.centerLeft,
+          ),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      body: FutureBuilder<List<PatientReport>>(
+        future: _reportsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No medical records found.'));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _reports.length,
+            itemBuilder: (context, index) {
+              final report = _reports[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        report.patient.fullName,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Patient ID: ${report.patient.id}',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      const Divider(height: 24),
+                      _buildRecordDetail(
+                        icon: Icons.calendar_today,
+                        label: 'Date',
+                        value: report.record.recordDate
+                            .toLocal()
+                            .toString()
+                            .substring(0, 10),
+                      ),
+                      _buildRecordDetail(
+                        icon: Icons.medical_services_outlined,
+                        label: 'Record Type',
+                        value: report.record.recordType,
+                      ),
+                      _buildRecordDetail(
+                        icon: Icons.health_and_safety_outlined,
+                        label: 'Diagnosis',
+                        value: report.record.diagnosis ?? 'N/A',
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('Print'),
+                            onPressed: () => _showPrintPreview(report),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            icon: const Icon(Icons.visibility_outlined),
+                            label: const Text('View Details'),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) =>
+                                    MedicalRecordDetailDialog(report: report),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showSummaryPrintPreview,
+        backgroundColor: Colors.teal,
+        child: const Icon(Icons.picture_as_pdf),
+      ),
     );
   }
 
-  Widget _buildKeyValuePair(String label, String value) {
+  Widget _buildRecordDetail(
+      {required IconData icon, required String label, required String value}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(value),
+          Icon(icon, size: 16, color: Colors.teal),
+          const SizedBox(width: 8),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
   }
-
-  Widget _buildDetailsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildDataRow('Visit Date', 'March 23, 2025'),
-        _buildDataRow('Doctor', 'Dr. Emily Clark'),
-        _buildDataRow('Department', 'General Medicine'),
-        const SizedBox(height: 16),
-        _buildSectionTitle('Symptoms'),
-        const Divider(),
-        const Text('Fever, Cough, Body Ache'),
-        const SizedBox(height: 8),
-        _buildSectionTitle('Prescriptions'),
-        const Divider(),
-        const Text(
-          'Tamiflu 75mg – 2x daily\n'
-          'Paracetamol 500mg – as needed',
-        ),
-        const SizedBox(height: 8),
-        _buildSectionTitle('Vitals'),
-        const Divider(),
-        const Text(
-          'Temperature: 101°F\n'
-          'Blood Pressure: 120/80 mmHg\n'
-          'Heart Rate: 88 bpm',
-        ),
-        const SizedBox(height: 8),
-        _buildSectionTitle("Doctor's Notes"),
-        const Divider(),
-        const Text(
-          'Patient advised to rest for 5 days and increase fluid intake. Return if symptoms persist.',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDataRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Text(value),
-      ],
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        color: Colors.teal[600],
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-}
-
-class PatientRecord {
-  final String name;
-  final String id;
-  final String age;
-  final String diagnosis;
-
-  PatientRecord({
-    required this.name,
-    required this.id,
-    required this.age,
-    required this.diagnosis,
-  });
 }

@@ -4,6 +4,7 @@ class Payment {
   final int? id;
   final String? billId; // Nullable if payment is not tied to a specific bill
   final String patientId;
+  final String patientName;
   final String referenceNumber;
   final DateTime paymentDate;
   final double amountPaid;
@@ -15,6 +16,7 @@ class Payment {
     this.id,
     this.billId,
     required this.patientId,
+    required this.patientName,
     required this.referenceNumber,
     required this.paymentDate,
     required this.amountPaid,
@@ -28,6 +30,7 @@ class Payment {
       id: json['id'] as int?,
       billId: json['billId'] as String?,
       patientId: json['patientId'] as String,
+      patientName: json['patientName'] as String,
       referenceNumber: json['referenceNumber'] as String,
       paymentDate: DateTime.parse(json['paymentDate'] as String),
       amountPaid: (json['amountPaid'] as num).toDouble(),
@@ -42,6 +45,7 @@ class Payment {
       'id': id,
       'billId': billId,
       'patientId': patientId,
+      'patientName': patientName,
       'referenceNumber': referenceNumber,
       'paymentDate': paymentDate.toIso8601String(),
       'amountPaid': amountPaid,

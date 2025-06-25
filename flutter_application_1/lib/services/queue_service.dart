@@ -10,6 +10,7 @@ import 'auth_service.dart';
 import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -791,34 +792,35 @@ class QueueService {
 
         if (item.selectedServices != null &&
             item.selectedServices!.isNotEmpty) {
-          // Create a medical record for each service
-          for (var service in item.selectedServices!) {
-            final recordId = const Uuid().v4();
-            final serviceName = service['serviceName'] as String? ?? 'Service';
-            final serviceCategory =
-                (service['category'] as String? ?? '').toLowerCase();
+          final recordId = const Uuid().v4();
 
-            // Determine the recordType based on the user's constraint.
-            // All non-consultation services are treated as Laboratory.
-            final String recordType = serviceCategory == 'consultation'
-                ? 'Consultation'
-                : 'Laboratory';
+          // Determine consolidated record type
+          final bool isConsultation = item.selectedServices!.any((s) =>
+              (s['category'] as String? ?? '').toLowerCase() == 'consultation');
+          final String recordType =
+              isConsultation ? 'Consultation' : 'Laboratory';
 
-            final medicalRecordData = {
-              'id': recordId,
-              'patientId': item.patientId,
-              'appointmentId': item.originalAppointmentId,
-              'serviceId': service['id'] as String?,
-              'recordType': recordType, // Use the simplified category
-              'recordDate': now.toIso8601String(),
-              'diagnosis': 'See consultation details.',
-              'notes': 'Service performed: $serviceName',
-              'doctorId': doctorId,
-              'createdAt': now.toIso8601String(),
-              'updatedAt': now.toIso8601String(),
-            };
-            await _dbHelper.insertMedicalRecord(medicalRecordData);
-          }
+          // Consolidate notes from all services
+          final serviceNames = item.selectedServices!
+              .map((s) => s['serviceName'] as String? ?? 'Service')
+              .join(', ');
+          final notes = 'Services performed: $serviceNames';
+
+          // Create a single medical record with all services
+          final medicalRecordData = {
+            'id': recordId,
+            'patientId': item.patientId,
+            'appointmentId': item.originalAppointmentId,
+            'selectedServices': jsonEncode(item.selectedServices), // Store all services as a JSON string
+            'recordType': recordType,
+            'recordDate': now.toIso8601String(),
+            'diagnosis': 'See consultation details.',
+            'notes': notes,
+            'doctorId': doctorId,
+            'createdAt': now.toIso8601String(),
+            'updatedAt': now.toIso8601String(),
+          };
+          await _dbHelper.insertMedicalRecord(medicalRecordData);
         } else {
           // Fallback: if no services are listed, create a general consultation record
           final recordId = const Uuid().v4();

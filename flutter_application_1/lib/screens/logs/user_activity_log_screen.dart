@@ -138,4 +138,4 @@ class UserActivityLogScreenState extends State<UserActivityLogScreen> {
     }
     return Icons.history_toggle_off_outlined;
   }
-}
+} 

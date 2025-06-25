@@ -146,6 +146,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         final paymentData = {
           'billId': billId,
           'patientId': patientId,
+          'patientName': bill['patient_name'],
           'referenceNumber': referenceNumber,
           'paymentDate': paymentDateTime.toIso8601String(),
           'amountPaid': totalAmount, // Assuming full amount is paid

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/logs/user_activity_log_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -13,6 +14,19 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: ListView(
         children: <Widget>[
+          ListTile(
+            leading: const Icon(Icons.history, color: Colors.blueGrey),
+            title: const Text('User Activity Logs'),
+            subtitle: const Text('View system and user activity logs.'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const UserActivityLogScreen()),
+              );
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.warning, color: Colors.red),
             title: const Text('Reset Database'),

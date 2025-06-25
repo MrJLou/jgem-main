@@ -36,26 +36,29 @@ class Patient {
     required this.updatedAt,
     required this.registrationDate,
   });
-
   factory Patient.fromJson(Map<String, dynamic> json) {
-    return Patient(
-      id: json['id']?.toString() ?? '',
-      fullName: json['fullName']?.toString() ?? 'Unknown Patient',
-      birthDate: json['birthDate'] != null ? DateTime.parse(json['birthDate']) : DateTime.now(),
-      gender: json['gender']?.toString() ?? 'Unknown',
-      contactNumber: json['contactNumber']?.toString(),
-      email: json['email']?.toString(),
-      address: json['address']?.toString(),
-      bloodType: json['bloodType']?.toString(),
-      allergies: json['allergies']?.toString(),
-      currentMedications: json['currentMedications']?.toString(),
-      medicalHistory: json['medicalHistory']?.toString(),
-      emergencyContactName: json['emergencyContactName']?.toString(),
-      emergencyContactNumber: json['emergencyContactNumber']?.toString(),
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
-      registrationDate: json['registrationDate'] != null ? DateTime.parse(json['registrationDate']) : DateTime.now(),
-    );
+    try {
+      return Patient(
+        id: json['id']?.toString() ?? '',
+        fullName: json['fullName']?.toString() ?? 'Unknown Patient',
+        birthDate: json['birthDate'] != null ? DateTime.parse(json['birthDate']) : DateTime.now(),
+        gender: json['gender']?.toString() ?? 'Unknown',
+        contactNumber: json['contactNumber']?.toString(),
+        email: json['email']?.toString(),
+        address: json['address']?.toString(),
+        bloodType: json['bloodType']?.toString(),
+        allergies: json['allergies']?.toString(),
+        currentMedications: json['currentMedications']?.toString(),
+        medicalHistory: json['medicalHistory']?.toString(),
+        emergencyContactName: json['emergencyContactName']?.toString(),
+        emergencyContactNumber: json['emergencyContactNumber']?.toString(),
+        createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
+        updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
+        registrationDate: json['registrationDate'] != null ? DateTime.parse(json['registrationDate']) : DateTime.now(),
+      );
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
