@@ -9,10 +9,13 @@ class EnhancedLanConnectionScreen extends StatefulWidget {
   const EnhancedLanConnectionScreen({super.key});
 
   @override
-  State<EnhancedLanConnectionScreen> createState() => _EnhancedLanConnectionScreenState();
+  State<EnhancedLanConnectionScreen> createState() =>
+      _EnhancedLanConnectionScreenState();
 }
 
-class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScreen> {  bool _isLoading = true;
+class _EnhancedLanConnectionScreenState
+    extends State<EnhancedLanConnectionScreen> {
+  bool _isLoading = true;
   bool _serverEnabled = false;
   bool _sessionServerEnabled = false;
   String _accessCode = '';
@@ -23,7 +26,7 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
   int _syncInterval = 5;
   int _pendingChanges = 0;
   List<UserSession> _activeSessions = [];
-  
+
   late StreamSubscription _sessionUpdatesSubscription;
 
   final _syncIntervalController = TextEditingController();
@@ -47,7 +50,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
   }
 
   void _setupSessionUpdates() {
-    _sessionUpdatesSubscription = LanSessionService.sessionUpdates.listen((update) {
+    _sessionUpdatesSubscription =
+        LanSessionService.sessionUpdates.listen((update) {
       if (mounted) {
         _loadActiveSessions();
         setState(() {});
@@ -61,7 +65,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
     });
 
     try {
-      final info = await LanSyncService.getConnectionInfo();      setState(() {
+      final info = await LanSyncService.getConnectionInfo();
+      setState(() {
         _serverEnabled = info['lanServerEnabled'] ?? false;
         _accessCode = info['accessCode'] ?? '';
         _ipAddresses = List<String>.from(info['ipAddresses'] ?? []);
@@ -83,7 +88,7 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
       final prefs = await SharedPreferences.getInstance();
       _syncInterval = prefs.getInt('sync_interval_minutes') ?? 5;
       _syncIntervalController.text = _syncInterval.toString();
-      
+
       // Load active sessions
       await _loadActiveSessions();
     } catch (e) {
@@ -177,7 +182,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
           ),
         ],
       ),
-    );    if (confirmed == true) {
+    );
+    if (confirmed == true) {
       try {
         await LanSessionService.endUserSession(sessionId);
         if (mounted) {
@@ -251,7 +257,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
                           if (_serverEnabled) ...[
                             Row(
                               children: [
-                                const Icon(Icons.circle, color: Colors.green, size: 12),
+                                const Icon(Icons.circle,
+                                    color: Colors.green, size: 12),
                                 const SizedBox(width: 8),
                                 Text('Running on port $_port'),
                               ],
@@ -304,7 +311,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
                           if (_sessionServerEnabled) ...[
                             Row(
                               children: [
-                                const Icon(Icons.circle, color: Colors.green, size: 12),
+                                const Icon(Icons.circle,
+                                    color: Colors.green, size: 12),
                                 const SizedBox(width: 8),
                                 Text('Running on port $_sessionPort'),
                               ],
@@ -386,29 +394,37 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: _activeSessions.length,
-                              separatorBuilder: (context, index) => const Divider(),
+                              separatorBuilder: (context, index) =>
+                                  const Divider(),
                               itemBuilder: (context, index) {
                                 final session = _activeSessions[index];
-                                final duration = DateTime.now().difference(session.loginTime);
-                                
+                                final duration = DateTime.now()
+                                    .difference(session.loginTime);
+
                                 return ListTile(
                                   leading: CircleAvatar(
                                     backgroundColor: Colors.blue,
                                     child: Text(
-                                      session.username.substring(0, 1).toUpperCase(),
-                                      style: const TextStyle(color: Colors.white),
+                                      session.username
+                                          .substring(0, 1)
+                                          .toUpperCase(),
+                                      style:
+                                          const TextStyle(color: Colors.white),
                                     ),
                                   ),
                                   title: Text(
                                     session.username,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
                                   ),
                                   subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text('Device: ${session.deviceName}'),
                                       Text('Role: ${session.accessLevel}'),
-                                      Text('Duration: ${_formatDuration(duration)}'),
+                                      Text(
+                                          'Duration: ${_formatDuration(duration)}'),
                                       if (session.ipAddress != null)
                                         Text('IP: ${session.ipAddress}'),
                                     ],
@@ -419,7 +435,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
                                         value: 'logout',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.logout, color: Colors.red),
+                                            Icon(Icons.logout,
+                                                color: Colors.red),
                                             SizedBox(width: 8),
                                             Text('Force Logout'),
                                           ],
@@ -474,7 +491,8 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
                                   return ListTile(
                                     contentPadding: EdgeInsets.zero,
                                     dense: true,
-                                    title: Text('$ip:$_port (Data) | $ip:$_sessionPort (Session)'),
+                                    title: Text(
+                                        '$ip:$_port (Data) | $ip:$_sessionPort (Session)'),
                                     trailing: IconButton(
                                       icon: const Icon(Icons.copy),
                                       onPressed: () => _copyToClipboard(
@@ -501,7 +519,7 @@ class _EnhancedLanConnectionScreenState extends State<EnhancedLanConnectionScree
   String _formatDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes % 60;
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m';
     } else {

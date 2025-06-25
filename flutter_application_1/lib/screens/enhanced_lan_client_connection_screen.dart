@@ -9,22 +9,24 @@ class EnhancedLanClientConnectionScreen extends StatefulWidget {
   const EnhancedLanClientConnectionScreen({super.key});
 
   @override
-  State<EnhancedLanClientConnectionScreen> createState() => _EnhancedLanClientConnectionScreenState();
+  State<EnhancedLanClientConnectionScreen> createState() =>
+      _EnhancedLanClientConnectionScreenState();
 }
 
-class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientConnectionScreen> {
+class _EnhancedLanClientConnectionScreenState
+    extends State<EnhancedLanClientConnectionScreen> {
   final _serverIpController = TextEditingController();
   final _portController = TextEditingController(text: '8080');
   final _sessionPortController = TextEditingController(text: '8081');
   final _accessCodeController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _isConnected = false;
   String _connectionStatus = 'Not connected';
   Map<String, dynamic>? _serverStatus;
   List<Map<String, dynamic>> _activeSessions = [];
   UserSession? _currentSession;
-  
+
   late StreamSubscription _sessionUpdatesSubscription;
 
   @override
@@ -55,9 +57,10 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
     _portController.text = prefs.getString('lan_server_port') ?? '8080';
     _sessionPortController.text = prefs.getString('lan_session_port') ?? '8081';
     _accessCodeController.text = prefs.getString('lan_access_code') ?? '';
-    
+
     // Check if we were previously connected
-    if (_serverIpController.text.isNotEmpty && _accessCodeController.text.isNotEmpty) {
+    if (_serverIpController.text.isNotEmpty &&
+        _accessCodeController.text.isNotEmpty) {
       _checkConnection();
     }
   }
@@ -76,7 +79,10 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
     final sessionPortStr = _sessionPortController.text.trim();
     final accessCode = _accessCodeController.text.trim();
 
-    if (serverIp.isEmpty || portStr.isEmpty || sessionPortStr.isEmpty || accessCode.isEmpty) {
+    if (serverIp.isEmpty ||
+        portStr.isEmpty ||
+        sessionPortStr.isEmpty ||
+        accessCode.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill in all fields')),
@@ -86,8 +92,12 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
 
     final port = int.tryParse(portStr);
     final sessionPort = int.tryParse(sessionPortStr);
-    if (port == null || port < 1024 || port > 65535 || 
-        sessionPort == null || sessionPort < 1024 || sessionPort > 65535) {
+    if (port == null ||
+        port < 1024 ||
+        port > 65535 ||
+        sessionPort == null ||
+        sessionPort < 1024 ||
+        sessionPort > 65535) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter valid ports (1024-65535)')),
@@ -103,12 +113,12 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
     try {
       // Connect with session management
       final connected = await LanClientService.connectToServerWithSession(
-        serverIp, 
-        port, 
+        serverIp,
+        port,
         accessCode,
         sessionPort: sessionPort,
       );
-      
+
       if (!mounted) return;
       if (connected) {
         await _saveConnection();
@@ -118,7 +128,7 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
           _connectionStatus = 'Connected successfully';
           _currentSession = LanClientService.currentSession;
         });
-        
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -126,7 +136,7 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
             backgroundColor: Colors.green,
           ),
         );
-        
+
         // Get server status and active sessions
         await _getServerStatus();
         await _getActiveSessions();
@@ -136,11 +146,12 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
           _isConnected = false;
           _connectionStatus = 'Connection failed';
         });
-        
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to connect to server. Check connection details.'),
+            content:
+                Text('Failed to connect to server. Check connection details.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -151,7 +162,7 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
         _isConnected = false;
         _connectionStatus = 'Connection error: $e';
       });
-      
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -290,10 +301,12 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
           if (_isConnected)
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: _isLoading ? null : () {
-                _checkConnection();
-                _getActiveSessions();
-              },
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      _checkConnection();
+                      _getActiveSessions();
+                    },
               tooltip: 'Refresh',
             ),
         ],
@@ -383,7 +396,8 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                               Text(
                                 'Status: $_connectionStatus',
                                 style: TextStyle(
-                                  color: _isConnected ? Colors.green : Colors.red,
+                                  color:
+                                      _isConnected ? Colors.green : Colors.red,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -439,7 +453,6 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 16),
                     ],
 
@@ -460,11 +473,16 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                             ),
                             const SizedBox(height: 16),
                             if (_serverStatus != null) ...[
-                              _buildStatusRow('Status', _serverStatus!['status'] ?? 'Unknown'),
-                              _buildStatusRow('Database Path', _serverStatus!['dbPath'] ?? 'Unknown'),
-                              _buildStatusRow('Pending Changes', '${_serverStatus!['pendingChanges'] ?? 0}'),
-                              _buildStatusRow('Active Sessions', '${_serverStatus!['activeSessions'] ?? 0}'),
-                              _buildStatusRow('Last Updated', _serverStatus!['timestamp'] ?? 'Unknown'),
+                              _buildStatusRow('Status',
+                                  _serverStatus!['status'] ?? 'Unknown'),
+                              _buildStatusRow('Database Path',
+                                  _serverStatus!['dbPath'] ?? 'Unknown'),
+                              _buildStatusRow('Pending Changes',
+                                  '${_serverStatus!['pendingChanges'] ?? 0}'),
+                              _buildStatusRow('Active Sessions',
+                                  '${_serverStatus!['activeSessions'] ?? 0}'),
+                              _buildStatusRow('Last Updated',
+                                  _serverStatus!['timestamp'] ?? 'Unknown'),
                             ] else
                               const Text('No server status available'),
                             const SizedBox(height: 16),
@@ -552,24 +570,33 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: _activeSessions.length,
-                                separatorBuilder: (context, index) => const Divider(),
+                                separatorBuilder: (context, index) =>
+                                    const Divider(),
                                 itemBuilder: (context, index) {
                                   final session = _activeSessions[index];
-                                  final isCurrentUser = session['sessionId'] == _currentSession?.sessionId;
-                                  
+                                  final isCurrentUser = session['sessionId'] ==
+                                      _currentSession?.sessionId;
+
                                   return ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: isCurrentUser ? Colors.green : Colors.blue,
+                                      backgroundColor: isCurrentUser
+                                          ? Colors.green
+                                          : Colors.blue,
                                       child: Text(
-                                        (session['username'] ?? 'U').toString().substring(0, 1).toUpperCase(),
-                                        style: const TextStyle(color: Colors.white),
+                                        (session['username'] ?? 'U')
+                                            .toString()
+                                            .substring(0, 1)
+                                            .toUpperCase(),
+                                        style: const TextStyle(
+                                            color: Colors.white),
                                       ),
                                     ),
                                     title: Row(
                                       children: [
                                         Text(
                                           session['username'] ?? 'Unknown',
-                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold),
                                         ),
                                         if (isCurrentUser) ...[
                                           const SizedBox(width: 8),
@@ -580,7 +607,8 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                                             ),
                                             decoration: BoxDecoration(
                                               color: Colors.green,
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: const Text(
                                               'YOU',
@@ -595,11 +623,15 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                                       ],
                                     ),
                                     subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text('Device: ${session['deviceName'] ?? 'Unknown'}'),
-                                        Text('Role: ${session['accessLevel'] ?? 'Unknown'}'),
-                                        Text('Duration: ${session['duration'] ?? 0}m'),
+                                        Text(
+                                            'Device: ${session['deviceName'] ?? 'Unknown'}'),
+                                        Text(
+                                            'Role: ${session['accessLevel'] ?? 'Unknown'}'),
+                                        Text(
+                                            'Duration: ${session['duration'] ?? 0}m'),
                                         if (session['ipAddress'] != null)
                                           Text('IP: ${session['ipAddress']}'),
                                       ],
@@ -666,7 +698,8 @@ class _EnhancedLanClientConnectionScreenState extends State<EnhancedLanClientCon
                             SizedBox(height: 8),
                             Text(
                               '5. Only one session per user is allowed at a time',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),

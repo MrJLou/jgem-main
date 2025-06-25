@@ -109,7 +109,8 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_authTokenKey);
       await prefs.remove(_usernameKey);
-      await prefs.remove(_accessLevelKey);      // Make sure to explicitly set the logged in state to false
+      await prefs.remove(
+          _accessLevelKey); // Make sure to explicitly set the logged in state to false
       await prefs.setBool(_isLoggedInKey, false);
 
       // Clear current user role
@@ -223,9 +224,10 @@ class AuthService {
     await _secureStorage.delete(key: _authTokenKey);
     await _secureStorage.delete(key: _tokenExpiryKey);
     await _secureStorage.delete(key: _usernameKey);
-    await _secureStorage.delete(key: _accessLevelKey);    final prefs = await SharedPreferences.getInstance();
+    await _secureStorage.delete(key: _accessLevelKey);
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_isLoggedInKey, false);
-    
+
     // Clear current user role
     _currentUserRole = null;
   }
@@ -372,14 +374,13 @@ class AuthService {
     try {
       // First check if user is already logged in elsewhere
       if (LanSessionService.isUserLoggedIn(username)) {
-        throw Exception('User is already logged in on another device. Please logout from the other device first.');
+        throw Exception(
+            'User is already logged in on another device. Please logout from the other device first.');
       }
-      
+
       // Proceed with normal authentication
       final auth = await DatabaseHelper().authenticateUser(username, password);
-      if (auth != null &&
-          auth['user'] != null &&
-          auth['user'].role != null) {
+      if (auth != null && auth['user'] != null && auth['user'].role != null) {
         _currentUserRole = auth['user'].role;
 
         // Save to SharedPreferences
@@ -394,7 +395,7 @@ class AuthService {
           try {
             final deviceId = await getDeviceId();
             final deviceName = await _getDeviceName();
-            
+
             await LanSessionService.registerUserSession(
               username: username,
               deviceId: deviceId,
@@ -415,7 +416,7 @@ class AuthService {
       throw Exception('Failed to login: $e');
     }
   }
-  
+
   // Enhanced logout with session cleanup
   static Future<void> logoutWithSessionCleanup() async {
     try {
@@ -425,7 +426,7 @@ class AuthService {
       if (session != null) {
         await LanSessionService.endUserSession(session.sessionId);
       }
-      
+
       // Clear all credentials
       await logout();
     } catch (e) {
@@ -434,7 +435,7 @@ class AuthService {
       await logout();
     }
   }
-  
+
   // Get device name
   static Future<String> _getDeviceName() async {
     try {

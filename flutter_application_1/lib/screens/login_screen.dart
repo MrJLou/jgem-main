@@ -25,7 +25,8 @@ class LoginScreenState extends State<LoginScreen>
   late Animation<double> _fadeAnimation;
 
   // State for interactive image rotation
-  double _interactiveRotationAngle = 0.0; // Renamed from _rotationAngle and initialized
+  double _interactiveRotationAngle =
+      0.0; // Renamed from _rotationAngle and initialized
   double _interactiveRotationAngleStartSnap = 0.0; // For snap-back logic
   AnimationController? _imageRotationController; // Make nullable
   // late Animation<double> _imageRotationAnimation; // REMOVED - replaced by direct controller listener
@@ -53,12 +54,15 @@ class LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     )..addListener(() {
-      if (mounted) {
-        setState(() {
-          _interactiveRotationAngle = lerpDouble(_interactiveRotationAngleStartSnap, 0.0, _imageRotationController!.value)!;
-        });
-      }
-    });
+        if (mounted) {
+          setState(() {
+            _interactiveRotationAngle = lerpDouble(
+                _interactiveRotationAngleStartSnap,
+                0.0,
+                _imageRotationController!.value)!;
+          });
+        }
+      });
     _logoFloatController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
@@ -78,10 +82,10 @@ class LoginScreenState extends State<LoginScreen>
     _logoFloatAnimation = Tween<double>(begin: -10.0, end: 10.0).animate(
       CurvedAnimation(parent: _logoFloatController, curve: Curves.easeInOut),
     )..addListener(() {
-      if (mounted) {
-         setState(() {});
-      }
-    });
+        if (mounted) {
+          setState(() {});
+        }
+      });
     _continuousRotationAnimation = Tween<double>(begin: 0, end: 2 * math.pi)
         .animate(_continuousRotationController)
       ..addListener(() {
@@ -164,9 +168,7 @@ class LoginScreenState extends State<LoginScreen>
 
         // Use enhanced session management login
         final response = await AuthService.loginWithSessionManagement(
-          username, 
-          _passwordController.text
-        );
+            username, _passwordController.text);
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -241,7 +243,8 @@ class LoginScreenState extends State<LoginScreen>
 
     if (attempts >= _maxLoginAttempts) {
       // Show alert dialog
-      if (mounted) { // Ensure widget is still in the tree
+      if (mounted) {
+        // Ensure widget is still in the tree
         showDialog(
           context: context,
           barrierDismissible: false, // User must tap button!
@@ -371,41 +374,66 @@ class LoginScreenState extends State<LoginScreen>
 
                               // Static image with circular white background, now with FadeTransition
                               FadeTransition(
-                                opacity: _fadeAnimation, // Using the existing fade animation
-                                child: _imageRotationController == null // Guard condition
+                                opacity:
+                                    _fadeAnimation, // Using the existing fade animation
+                                child: _imageRotationController ==
+                                        null // Guard condition
                                     ? const SizedBox(
                                         width: 220,
-                                        height: 220) // Placeholder if not initialized
+                                        height:
+                                            220) // Placeholder if not initialized
                                     : AnimatedBuilder(
                                         animation: _logoFloatController,
-                                        builder: (BuildContext context, Widget? staticRotatingChild) {
-                                          double floatValue = _logoFloatAnimation.value;
-                                          double normalizedFloatAbs = floatValue.abs() / 10.0; // 0 at center, 1 at extremes
+                                        builder: (BuildContext context,
+                                            Widget? staticRotatingChild) {
+                                          double floatValue =
+                                              _logoFloatAnimation.value;
+                                          double normalizedFloatAbs = floatValue
+                                                  .abs() /
+                                              10.0; // 0 at center, 1 at extremes
 
-                                          double shadowOpacity = 0.15 + (0.1 * (1 - normalizedFloatAbs));
-                                          double shadowBlur = 8 + (12 * normalizedFloatAbs);
-                                          double shadowSpread = 1 + (4 * normalizedFloatAbs);
-                                          double shadowWidth = 180 - (30 * normalizedFloatAbs);
-                                          double shadowHeight = 15 - (7 * normalizedFloatAbs);
+                                          double shadowOpacity = 0.15 +
+                                              (0.1 * (1 - normalizedFloatAbs));
+                                          double shadowBlur =
+                                              8 + (12 * normalizedFloatAbs);
+                                          double shadowSpread =
+                                              1 + (4 * normalizedFloatAbs);
+                                          double shadowWidth =
+                                              180 - (30 * normalizedFloatAbs);
+                                          double shadowHeight =
+                                              15 - (7 * normalizedFloatAbs);
 
                                           return Stack(
                                             alignment: Alignment.center,
                                             children: [
                                               // Shadow Element
-                                              if (_logoFloatController.isAnimating)
+                                              if (_logoFloatController
+                                                  .isAnimating)
                                                 Transform.translate(
-                                                  offset: const Offset(0, 125.0), // Changed: Fixed Y offset for shadow to be at the bottom
+                                                  offset: const Offset(0,
+                                                      125.0), // Changed: Fixed Y offset for shadow to be at the bottom
                                                   child: Container(
                                                     width: shadowWidth,
                                                     height: shadowHeight,
                                                     decoration: BoxDecoration(
                                                       shape: BoxShape.rectangle,
-                                                      borderRadius: BorderRadius.all(Radius.elliptical(shadowWidth / 2, shadowHeight / 2)),
+                                                      borderRadius:
+                                                          BorderRadius.all(
+                                                              Radius.elliptical(
+                                                                  shadowWidth /
+                                                                      2,
+                                                                  shadowHeight /
+                                                                      2)),
                                                       boxShadow: [
                                                         BoxShadow(
-                                                          color: Colors.black.withAlpha((255 * shadowOpacity).round()),
-                                                          blurRadius: shadowBlur,
-                                                          spreadRadius: shadowSpread,
+                                                          color: Colors.black
+                                                              .withAlpha((255 *
+                                                                      shadowOpacity)
+                                                                  .round()),
+                                                          blurRadius:
+                                                              shadowBlur,
+                                                          spreadRadius:
+                                                              shadowSpread,
                                                         ),
                                                       ],
                                                     ),
@@ -422,42 +450,64 @@ class LoginScreenState extends State<LoginScreen>
                                         },
                                         child: GestureDetector(
                                           onPanUpdate: (details) {
-                                            if (mounted) { // Add mounted check
+                                            if (mounted) {
+                                              // Add mounted check
                                               setState(() {
-                                                _interactiveRotationAngle += details.delta.dx * 0.01;
+                                                _interactiveRotationAngle +=
+                                                    details.delta.dx * 0.01;
                                               });
                                             }
                                           },
                                           onPanEnd: (details) {
-                                            if (mounted && _imageRotationController != null && !_imageRotationController!.isAnimating) { // Add mounted & null checks
-                                              _interactiveRotationAngleStartSnap = _interactiveRotationAngle;
-                                              _imageRotationController!.forward(from: 0.0);
+                                            if (mounted &&
+                                                _imageRotationController !=
+                                                    null &&
+                                                !_imageRotationController!
+                                                    .isAnimating) {
+                                              // Add mounted & null checks
+                                              _interactiveRotationAngleStartSnap =
+                                                  _interactiveRotationAngle;
+                                              _imageRotationController!
+                                                  .forward(from: 0.0);
                                             }
                                           },
                                           child: Transform(
                                             alignment: Alignment.center,
                                             transform: Matrix4.identity()
                                               ..setEntry(3, 2, 0.001)
-                                              ..rotateY(_continuousRotationAnimation.value + _interactiveRotationAngle),
+                                              ..rotateY(
+                                                  _continuousRotationAnimation
+                                                          .value +
+                                                      _interactiveRotationAngle),
                                             child: Container(
-                                              width: 200, // Slightly smaller to give shadow space
+                                              width:
+                                                  200, // Slightly smaller to give shadow space
                                               height: 200,
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color: Colors.white.withAlpha(242),
+                                                color:
+                                                    Colors.white.withAlpha(242),
                                               ),
                                               child: ClipOval(
                                                 child: Padding(
-                                                  padding: const EdgeInsets.all(15.0),
+                                                  padding: const EdgeInsets.all(
+                                                      15.0),
                                                   child: Image.asset(
                                                     'assets/images/slide1.png',
                                                     fit: BoxFit.contain,
-                                                    errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
+                                                    errorBuilder:
+                                                        (BuildContext context,
+                                                            Object exception,
+                                                            StackTrace?
+                                                                stackTrace) {
                                                       return Center(
                                                         child: Icon(
-                                                          Icons.broken_image_outlined,
-                                                          color: Colors.teal[700],
-                                                          size: 50, // Adjusted size
+                                                          Icons
+                                                              .broken_image_outlined,
+                                                          color:
+                                                              Colors.teal[700],
+                                                          size:
+                                                              50, // Adjusted size
                                                         ),
                                                       );
                                                     },

@@ -41,7 +41,8 @@ class LanSyncService {
         throw Exception('Failed to access app settings: $e');
       }
 
-      final syncInterval = prefs.getInt(_syncIntervalKey) ?? 5; // Default 5 minutes
+      final syncInterval =
+          prefs.getInt(_syncIntervalKey) ?? 5; // Default 5 minutes
       final lanServerEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
       final serverPort = prefs.getInt(_serverPortKey) ?? _defaultPort;
 
@@ -63,7 +64,13 @@ class LanSyncService {
       } catch (e) {
         debugPrint('Failed to configure LAN IP ranges: $e');
         // Use fallback IP ranges
-        _allowedIpRanges = ['127.0.0', '192.168.0', '192.168.1', '10.0.0', '172.16.0'];
+        _allowedIpRanges = [
+          '127.0.0',
+          '192.168.0',
+          '192.168.1',
+          '10.0.0',
+          '172.16.0'
+        ];
       }
 
       // Export DB to accessible location with error handling
@@ -163,6 +170,7 @@ class LanSyncService {
     }
     return false;
   }
+
   // Set up database for sharing
   static Future<void> _setupDbForSharing() async {
     try {
@@ -179,7 +187,8 @@ class LanSyncService {
             final externalDir = await getExternalStorageDirectory();
             targetDir = externalDir ?? await getApplicationDocumentsDirectory();
           } catch (e) {
-            debugPrint('External storage not available, using documents directory: $e');
+            debugPrint(
+                'External storage not available, using documents directory: $e');
             targetDir = await getApplicationDocumentsDirectory();
           }
         } else {
@@ -219,6 +228,7 @@ class LanSyncService {
       rethrow;
     }
   }
+
   // Copy database to shared location
   static Future<void> _copyDatabaseToSharedLocation() async {
     if (_dbHelper == null) {
@@ -232,7 +242,7 @@ class LanSyncService {
         debugPrint('Current database path is null, cannot copy database');
         return;
       }
-      
+
       if (_dbPath == null) {
         debugPrint('Target database path is null, cannot copy database');
         return;
@@ -245,7 +255,7 @@ class LanSyncService {
       }
 
       final targetFile = File(_dbPath!);
-      
+
       try {
         await sourceFile.copy(targetFile.path);
         debugPrint('Database copied to shared location: $_dbPath');
@@ -264,7 +274,7 @@ class LanSyncService {
       debugPrint('Error copying database to shared location: $e');
       throw Exception('Failed to setup database sharing: $e');
     }
-  }// Start periodic synchronization
+  } // Start periodic synchronization
 
   static void _startPeriodicSync(int intervalMinutes) {
     // Cancel existing timer if any
@@ -457,7 +467,8 @@ class LanSyncService {
             // Return server status (no auth required for status check)
             request.response.headers.contentType =
                 ContentType('application', 'json');
-            final pendingChanges = await _dbHelper!.getPendingChanges();            final status = {
+            final pendingChanges = await _dbHelper!.getPendingChanges();
+            final status = {
               'status': 'online',
               'dbPath': _dbPath,
               'pendingChanges': pendingChanges.length,

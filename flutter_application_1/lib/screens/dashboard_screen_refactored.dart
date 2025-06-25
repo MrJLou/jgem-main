@@ -93,7 +93,8 @@ class DashboardScreenState extends State<DashboardScreen> {
           ],
         );
       },
-    );    if (shouldLogout == true) {
+    );
+    if (shouldLogout == true) {
       await AuthService.logoutWithSessionCleanup();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
