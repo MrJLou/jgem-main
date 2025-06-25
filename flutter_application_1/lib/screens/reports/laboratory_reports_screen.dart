@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/models/clinic_service.dart';
 import 'package:flutter_application_1/models/patient_report.dart';
-import 'package:flutter_application_1/models/patient_bill.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/service_analytics_pdf_service.dart';
 import 'package:intl/intl.dart';
@@ -148,7 +147,6 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
       );
     }
   }
-
   Future<ServiceAnalyticsReportData> _fetchAnalytics() async {
     try {
       List<PatientReport> serviceReports = [];
@@ -172,34 +170,83 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
         serviceReports = await ApiService.getRecentClinicVisits(limit: 100);
       }
       
+      // Remove duplicate reports based on patient ID and record date
+      final Map<String, PatientReport> uniqueReports = {};
+      for (final report in serviceReports) {
+        final key = '${report.patient.id}_${report.record.recordDate.millisecondsSinceEpoch}';
+        if (!uniqueReports.containsKey(key)) {
+          uniqueReports[key] = report;
+        }
+      }
+      serviceReports = uniqueReports.values.toList();
+      
       // Get unique patient IDs
       final patientIds = serviceReports.map((r) => r.patient.id).toSet();
-      
-      // Fetch all bills to analyze financial data
+        // Fetch all bills to analyze financial data
       final allBills = await ApiService.getAllPatientBills();
       
-      // Filter bills for patients who used services
+      // Filter bills for patients who used services - improved filtering
       final serviceBills = allBills.where((bill) => 
         patientIds.contains(bill.patientId)).toList();
 
       final paidBills = serviceBills.where((bill) => 
         bill.status.toLowerCase() == 'paid').toList();
       final unpaidBills = serviceBills.where((bill) => 
-        bill.status.toLowerCase() != 'paid').toList();
-
-      // Calculate metrics
-      final totalRevenue = paidBills.fold<double>(0.0, (sum, bill) => 
-        sum + (bill.totalAmount));
+        bill.status.toLowerCase() != 'paid').toList();      // Calculate revenue from actual payments rather than bills
+      double totalRevenue = 0.0;
+      double avgPayment = 0.0;
+      List<Map<String, dynamic>> servicePayments = [];
+      Map<String, double> patientPaymentMap = {}; // Track payment amounts per patient
       
-      final avgPayment = paidBills.isNotEmpty 
-        ? totalRevenue / paidBills.length 
-        : 0.0;
+      try {
+        // Get all payment transactions
+        final allPayments = await ApiService.getPaymentTransactions();
+        debugPrint('All payments fetched: ${allPayments.length}');
+        
+        // Filter payments for patients who used services
+        servicePayments = allPayments.where((payment) {
+          final patientId = payment['patientId'] as String?;
+          return patientId != null && patientIds.contains(patientId);
+        }).toList();
+        
+        debugPrint('Service payments after filtering: ${servicePayments.length}');
+        
+        // Create a map of patient ID to their latest/total payment amount
+        for (final payment in servicePayments) {
+          final patientId = payment['patientId'] as String?;
+          final amountPaid = (payment['amountPaid'] as num?)?.toDouble() ?? 0.0;
+          
+          if (patientId != null && amountPaid > 0) {
+            // For each patient, accumulate their total payments
+            patientPaymentMap[patientId] = (patientPaymentMap[patientId] ?? 0.0) + amountPaid;
+          }
+        }
+        
+        // Calculate total revenue from all payments for service patients
+        totalRevenue = patientPaymentMap.values.fold<double>(0.0, (sum, amount) => sum + amount);
+        
+        // Calculate average payment amount per patient (not per transaction)
+        avgPayment = patientPaymentMap.isNotEmpty 
+          ? totalRevenue / patientPaymentMap.length 
+          : 0.0;
+          
+        debugPrint('Laboratory Reports: ${patientPaymentMap.length} patients with payments totaling PHP ${totalRevenue.toStringAsFixed(2)}');
+        debugPrint('Average payment per patient: PHP ${avgPayment.toStringAsFixed(2)}');
+        
+      } catch (e) {
+        debugPrint('Error calculating total revenue from payments: $e');
+        totalRevenue = 0.0;
+        avgPayment = 0.0;
+        servicePayments = [];
+      }
 
       // Calculate gender distribution
       final maleCount = serviceReports.where((r) => 
         r.patient.gender.toLowerCase() == 'male').length;
       final femaleCount = serviceReports.where((r) => 
-        r.patient.gender.toLowerCase() == 'female').length;      // Calculate service usage
+        r.patient.gender.toLowerCase() == 'female').length;
+
+      // Calculate service usage
       final serviceUsageData = await _calculateServiceUsage();
 
       // Get monthly revenue data
@@ -217,9 +264,10 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
         unpaidBills: unpaidBills,
         serviceUsageData: serviceUsageData,
         monthlyRevenueData: monthlyRevenueData,
-      );    } catch (e) {
-      debugPrint('Error fetching analytics: $e');
-      return ServiceAnalyticsReportData(
+        payments: servicePayments, // Include payment data
+      );
+    } catch (e) {
+      debugPrint('Error fetching analytics: $e');      return ServiceAnalyticsReportData(
         totalRevenue: 0.0,
         totalPatients: 0,
         avgPayment: 0.0,
@@ -231,6 +279,7 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
         unpaidBills: [],
         serviceUsageData: [],
         monthlyRevenueData: [],
+        payments: [], // Include empty payments
       );
     }
   }
@@ -564,7 +613,7 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
           const SizedBox(height: 32),
           
           // Recent Patients Table
-          _buildRecentPatientsCard(reportData.recentPatients),
+          _buildRecentPatientsCard(reportData),
         ],
       ),
     );
@@ -1010,7 +1059,8 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
     );
   }
 
-  Widget _buildRecentPatientsCard(List<PatientReport> patients) {
+  Widget _buildRecentPatientsCard(ServiceAnalyticsReportData reportData) {
+    final patients = reportData.recentPatients;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1044,27 +1094,34 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
                 child: Text('No recent patients found'),
               ),
             )          else
-            FutureBuilder<List<PatientBill>>(
-              future: ApiService.getAllPatientBills(),
-              builder: (context, billSnapshot) {
-                final bills = billSnapshot.data ?? [];
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(Colors.grey[50]),
-                    columns: const [
-                      DataColumn(label: Text('PATIENT', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('SERVICE', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('GENDER', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('PAYMENT', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('DATE', style: TextStyle(fontWeight: FontWeight.bold))),
-                    ],
-                    rows: patients.take(8).map((patient) {
-                      // Find the most recent bill for this patient
-                      final patientBills = bills.where((bill) => bill.patientId == patient.patient.id).toList();
-                      final recentBill = patientBills.isNotEmpty 
-                          ? patientBills.reduce((a, b) => a.invoiceDate.isAfter(b.invoiceDate) ? a : b)
-                          : null;
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(Colors.grey[50]),
+                columns: const [
+                  DataColumn(label: Text('PATIENT', style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(label: Text('SERVICE', style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(label: Text('GENDER', style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(label: Text('PAYMENT', style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(label: Text('DATE', style: TextStyle(fontWeight: FontWeight.bold))),
+                ],                rows: patients.take(8).map((patient) {
+                  // Get actual payment amount for this patient using proper payment lookup
+                  double paymentAmount = 0.0;
+                  try {
+                    if (reportData.payments != null) {
+                      // Find all payments for this patient and sum their amounts
+                      final patientPayments = reportData.payments!.where((payment) => 
+                        payment['patientId'] == patient.patient.id);
+                      
+                      paymentAmount = patientPayments.fold<double>(0.0, (sum, payment) {
+                        final amount = (payment['amountPaid'] as num?)?.toDouble() ?? 0.0;
+                        return sum + amount;
+                      });
+                    }
+                  } catch (e) {
+                    debugPrint('Error calculating payment for patient ${patient.patient.id}: $e');
+                    paymentAmount = 0.0;
+                  }
                       
                       return DataRow(
                         cells: [
@@ -1090,17 +1147,12 @@ class _LaboratoryReportsScreenState extends State<LaboratoryReportsScreen> {
                               ),
                             ),
                           ),
-                          DataCell(Text(recentBill != null 
-                              ? 'PHP ${NumberFormat('#,##0.00').format(recentBill.totalAmount)}'
-                              : 'PHP 0.00')),
-                          DataCell(Text(DateFormat('dd/MM/yyyy').format(patient.record.recordDate))),
-                        ],
+                          DataCell(Text('PHP ${NumberFormat('#,##0.00').format(paymentAmount)}')),
+                          DataCell(Text(DateFormat('dd/MM/yyyy').format(patient.record.recordDate))),                        ],
                       );
                     }).toList(),
                   ),
-                );
-              },
-            ),
+                ),
         ],
       ),
     );

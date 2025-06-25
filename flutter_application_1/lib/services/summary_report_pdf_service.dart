@@ -34,13 +34,12 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
           theme: theme,
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(40),
-          build: (context) => [
-            _buildTextHeader(data.reportDate),
-            pw.SizedBox(height: 30),
+          build: (context) => [            _buildTextHeader(data.reportDate),
+            pw.SizedBox(height: 20),
             _buildTextDemographics(data.demographics),
-            pw.SizedBox(height: 30),
+            pw.SizedBox(height: 20),
             _buildTextTreatmentAnalytics(data.treatmentAnalytics),
-            pw.SizedBox(height: 30),
+            pw.SizedBox(height: 20),
             _buildTextRecentVisits(data.recentVisits),
           ],
         ),
@@ -62,16 +61,15 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
   /// Text-based header
   pw.Widget _buildTextHeader(String reportDate) {
     return pw.Column(
-      children: [
-        pw.Text(
+      children: [        pw.Text(
           'CLINIC SUMMARY REPORT',
-          style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
           textAlign: pw.TextAlign.center,
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 8),
         pw.Text(
           'Report Date: $reportDate',
-          style: const pw.TextStyle(fontSize: 14),
+          style: const pw.TextStyle(fontSize: 12),
           textAlign: pw.TextAlign.center,
         ),
       ],
@@ -82,17 +80,16 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
   pw.Widget _buildTextDemographics(Map<String, int> demographics) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
+      children: [        pw.Text(
           'PATIENT DEMOGRAPHICS',
-          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 8),
         if (demographics.isEmpty)
-          pw.Text('No demographic data available.')
+          pw.Text('No demographic data available.', style: const pw.TextStyle(fontSize: 10))
         else
           ...demographics.entries.map((entry) => 
-            pw.Text('${entry.key}: ${entry.value}')
+            pw.Text('${entry.key}: ${entry.value}', style: const pw.TextStyle(fontSize: 10))
           ),
       ],
     );
@@ -102,17 +99,16 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
   pw.Widget _buildTextTreatmentAnalytics(Map<String, int> treatmentAnalytics) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
+      children: [        pw.Text(
           'TREATMENT & SERVICE ANALYTICS',
-          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 8),
         if (treatmentAnalytics.isEmpty)
-          pw.Text('No treatment analytics available.')
+          pw.Text('No treatment analytics available.', style: const pw.TextStyle(fontSize: 10))
         else
           ...treatmentAnalytics.entries.map((entry) => 
-            pw.Text('${entry.key}: ${entry.value} times')
+            pw.Text('${entry.key}: ${entry.value} times', style: const pw.TextStyle(fontSize: 10))
           ),
       ],
     );

@@ -50,15 +50,12 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
 
   bool _isLoading = false;
   String? _errorMessage;
-
   // Available services list
   List<ClinicService> _availableServices = [];
   List<ClinicService> _selectedServices = [];
   Map<String, bool> _serviceSelectionState = {};
-
   double _totalPrice = 0.0;
-  final TextEditingController _otherPurposeController = TextEditingController();
-  bool _showOtherPurposeFieldInDialog = false;
+  bool _isLaboratoryOnly = false; // NEW: For laboratory appointments without doctor
 
   final List<String> _dialogBloodTypes = [
     'A+',
@@ -295,14 +292,12 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _patientSearchController.clear();
       _patientSearchResults = [];
       _errorMessage = null;
-      _formKey.currentState?.reset();
-
-      _selectedServices.clear();
+      _formKey.currentState?.reset();      _selectedServices.clear();
       _serviceSelectionState = {
         for (var service in _availableServices) service.id: false
       };
       _totalPrice = 0.0;
-      _otherPurposeController.clear();
+      _isLaboratoryOnly = false; // Reset laboratory checkbox
     });
   }
 
@@ -368,20 +363,22 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       });
     }
   }
-
   Future<void> _showTimePicker() async {
-    if (_selectedDoctor == null) {
+    if (_selectedDoctor == null && !_isLaboratoryOnly) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content:
-              Text('Please select a doctor first to see their availability.'),
+              Text('Please select a doctor first or check "Laboratory Tests Only" to see available time slots.'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
       return;
     }
 
-    final List<TimeOfDay> timeSlots = _generateSelectableTimeSlots();
+    final List<TimeOfDay> timeSlots = _isLaboratoryOnly 
+        ? _generateWorkingTimeSlots() // For lab-only, show all working hours
+        : _generateSelectableTimeSlots(); // For doctor appointments, check conflicts
+        
     if (timeSlots.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -491,12 +488,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       });
     }
   }
-
   Future<void> _openServiceSelectionDialog() async {
     final tempSelections = Map<String, bool>.from(_serviceSelectionState);
-    bool tempShowOtherField = _showOtherPurposeFieldInDialog;
-    final tempOtherPurposeController =
-        TextEditingController(text: _otherPurposeController.text);
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -513,18 +506,49 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
               (groupedServices[service.category ?? 'Uncategorized'] ??= [])
                   .add(service);
             }
-            // Ensure 'Consultation' and 'Laboratory' appear first if they exist, then others.
-            List<String> categoryOrder = ['Consultation', 'Laboratory'];
+            
+            // Ensure 'Laboratory' appears first if _isLaboratoryOnly is checked, otherwise 'Consultation' first
+            List<String> categoryOrder = _isLaboratoryOnly 
+                ? ['Laboratory', 'Consultation'] 
+                : ['Consultation', 'Laboratory'];
             List<String> allCategories = groupedServices.keys.toList();
             categoryOrder.addAll(
                 allCategories.where((cat) => !categoryOrder.contains(cat)));
 
             return AlertDialog(
-              title: const Text('Select Services / Purpose of Visit'),
+              title: Text(_isLaboratoryOnly 
+                  ? 'Select Laboratory Tests' 
+                  : 'Select Services / Purpose of Visit'),
               contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
               content: SingleChildScrollView(
                 child: ListBody(
                   children: <Widget>[
+                    if (_isLaboratoryOnly)
+                      Container(
+                        padding: const EdgeInsets.all(12.0),
+                        margin: const EdgeInsets.only(bottom: 16.0),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8.0),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Laboratory Tests Only mode - No doctor consultation required',
+                                style: TextStyle(
+                                  color: Colors.blue[700],
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     if (_availableServices.isEmpty)
                       const Center(
                           child: Padding(
@@ -570,36 +594,6 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                                   )),
                               const Divider(),
                             ]),
-                    CheckboxListTile(
-                      title: const Text("Other Purpose (Specify below)",
-                          style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.normal)),
-                      value: tempShowOtherField,
-                      onChanged: (bool? value) {
-                        setDialogState(() {
-                          tempShowOtherField = value!;
-                        });
-                      },
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      activeColor: Colors.teal,
-                    ),
-                    if (tempShowOtherField)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                            left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
-                        child: TextFormField(
-                          controller: tempOtherPurposeController,
-                          decoration: const InputDecoration(
-                              labelText: 'Specify other purpose or details',
-                              border: OutlineInputBorder(),
-                              hintText:
-                                  'e.g., Medical Certificate, Fit to Work',
-                              isDense: true),
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
                     const SizedBox(height: 20),
                     Align(
                       alignment: Alignment.centerRight,
@@ -638,8 +632,6 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   onPressed: () {
                     Navigator.of(context).pop({
                       'selections': tempSelections,
-                      'showOther': tempShowOtherField,
-                      'otherPurpose': tempOtherPurposeController.text,
                     });
                   },
                   child: const Text('Confirm'),
@@ -658,13 +650,6 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         _selectedServices = _availableServices
             .where((service) => _serviceSelectionState[service.id] == true)
             .toList();
-
-        _showOtherPurposeFieldInDialog = result['showOther'];
-        if (_showOtherPurposeFieldInDialog) {
-          _otherPurposeController.text = result['otherPurpose'];
-        } else {
-          _otherPurposeController.clear();
-        }
 
         _recalculateTotalPrice();
       });
@@ -871,41 +856,40 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please select a patient.')));
         return;
-      }
-      if (_selectedDoctor == null) {
+      }      if (_selectedDoctor == null && !_isLaboratoryOnly) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select a doctor.')));
+            const SnackBar(content: Text('Please select a doctor or check "Laboratory Tests Only".')));
         return;
       }
 
       setState(() {
         _isLoading = true;
         _errorMessage = null;
-      });
+      });      // Check for scheduling conflicts before submission (only if doctor is selected)
+      if (!_isLaboratoryOnly) {
+        bool hasConflict = (widget.existingAppointments ?? []).any((appt) {
+          if (appt.status == 'Cancelled' ||
+              appt.doctorId != _selectedDoctor!.id) {
+            return false;
+          }
+          return DateUtils.isSameDay(appt.date, _selectedDate) &&
+              appt.time.hour == _selectedTime.hour &&
+              appt.time.minute == _selectedTime.minute;
+        });
 
-      // Check for scheduling conflicts before submission
-      bool hasConflict = (widget.existingAppointments ?? []).any((appt) {
-        if (appt.status == 'Cancelled' ||
-            appt.doctorId != _selectedDoctor!.id) {
-          return false;
+        if (hasConflict) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'This time slot is already booked with the selected doctor.'),
+              backgroundColor: Colors.orangeAccent,
+            ),
+          );
+          return;
         }
-        return DateUtils.isSameDay(appt.date, _selectedDate) &&
-            appt.time.hour == _selectedTime.hour &&
-            appt.time.minute == _selectedTime.minute;
-      });
-
-      if (hasConflict) {
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'This time slot is already booked with the selected doctor.'),
-            backgroundColor: Colors.orangeAccent,
-          ),
-        );
-        return;
       }
 
       try {
@@ -916,18 +900,18 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   'category': s.category,
                   'price': s.defaultPrice
                 })
-            .toList();
-
-        final appointmentToSave = Appointment(
+            .toList();        final appointmentToSave = Appointment(
           id: '', // Empty string to let the database generate the ID
           patientId: _selectedPatient!.id,
-          doctorId: _selectedDoctor!.id,
+          doctorId: _isLaboratoryOnly ? 'LAB-ONLY' : _selectedDoctor!.id,
           date: _selectedDate,
           time: _selectedTime,
           status: 'Scheduled',
-          consultationType: _selectedServices.isNotEmpty
-              ? _selectedServices.map((s) => s.category).toSet().join('/')
-              : 'General Consultation',
+          consultationType: _isLaboratoryOnly 
+            ? 'Laboratory Tests Only'
+            : (_selectedServices.isNotEmpty
+                ? _selectedServices.map((s) => s.category).toSet().join('/')
+                : 'General Consultation'),
           selectedServices: servicesForDb,
           totalPrice: _totalPrice,
           createdAt: DateTime.now(),
@@ -978,13 +962,11 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _totalPrice = total;
     });
   }
-
   @override
   void dispose() {
     _notesController.dispose();
     _patientSearchController.dispose();
     _patientSearchDebounce?.cancel();
-    _otherPurposeController.dispose();
     super.dispose();
   }
 
@@ -1024,12 +1006,13 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                             tooltip: 'Close',
                           ),
                       ],
-                    ),
-                    const SizedBox(height: 24),
+                    ),                    const SizedBox(height: 24),
                     _buildPatientSelector(),
                     const SizedBox(height: 16),
-                    _buildDoctorSelector(),
+                    _buildLaboratoryCheckbox(),
                     const SizedBox(height: 16),
+                    if (!_isLaboratoryOnly) _buildDoctorSelector(),
+                    if (!_isLaboratoryOnly) const SizedBox(height: 16),
                     _buildDateTimePicker(),
                     const SizedBox(height: 16),
                     _buildServiceSelector(),
@@ -1201,18 +1184,17 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   Widget _buildServiceSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Services / Purpose of Visit',
+      children: [        Text(_isLaboratoryOnly ? 'Laboratory Tests' : 'Services / Purpose of Visit',
             style: TextStyle(
                 fontWeight: FontWeight.w500, color: Colors.grey[700])),
         const SizedBox(height: 8),
         ElevatedButton.icon(
-          icon: const Icon(Icons.medical_services_outlined),
-          label: const Text('Select Services / Purpose'),
+          icon: Icon(_isLaboratoryOnly ? Icons.science_outlined : Icons.medical_services_outlined),
+          label: Text(_isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose'),
           onPressed: _openServiceSelectionDialog,
           style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.teal[50],
-              foregroundColor: Colors.teal[700],
+              backgroundColor: _isLaboratoryOnly ? Colors.blue[50] : Colors.teal[50],
+              foregroundColor: _isLaboratoryOnly ? Colors.blue[700] : Colors.teal[700],
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               textStyle: const TextStyle(fontSize: 15)),
         ),
@@ -1220,26 +1202,15 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         if (_selectedServices.isNotEmpty)
           Wrap(
             spacing: 8.0,
-            runSpacing: 4.0,
-            children: _selectedServices
+            runSpacing: 4.0,            children: _selectedServices
                 .map((service) => Chip(
                       label: Text(
                           '${service.serviceName} (₱${(service.defaultPrice ?? 0.0).toStringAsFixed(2)})'),
-                      backgroundColor: Colors.teal[100],
-                      labelStyle: TextStyle(color: Colors.teal[800]),
+                      backgroundColor: _isLaboratoryOnly ? Colors.blue[100] : Colors.teal[100],
+                      labelStyle: TextStyle(color: _isLaboratoryOnly ? Colors.blue[800] : Colors.teal[800]),
                     ))
-                .toList(),
-          ),
-        if (_showOtherPurposeFieldInDialog &&
-            _otherPurposeController.text.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text("Other: ${_otherPurposeController.text}",
-                style: const TextStyle(fontStyle: FontStyle.italic)),
-          ),
-        if (_selectedServices.isNotEmpty ||
-            (_showOtherPurposeFieldInDialog &&
-                _otherPurposeController.text.isNotEmpty))
+                .toList(),          ),
+        if (_selectedServices.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 12.0),
             child: Text(
@@ -1283,6 +1254,56 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLaboratoryCheckbox() {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Checkbox(
+              value: _isLaboratoryOnly,
+              onChanged: (bool? value) {
+                setState(() {
+                  _isLaboratoryOnly = value ?? false;
+                  if (_isLaboratoryOnly) {
+                    // Clear doctor selection when switching to laboratory only
+                    _selectedDoctor = null;
+                  }
+                });
+              },
+              activeColor: Colors.teal[700],
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Laboratory Tests Only',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.teal[800],
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Check this if the patient only needs laboratory tests without doctor consultation',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

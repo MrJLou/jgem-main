@@ -61,10 +61,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   // ADDED - Doctor selection state
   List<User> _doctors = [];
-  User? _selectedDoctor;
-
-  double _totalPrice = 0.0;
-  bool _showOtherConditionField = false;
+  User? _selectedDoctor;  double _totalPrice = 0.0;
+  bool _isLaboratoryOnly = false; // NEW: For laboratory queue entries without doctor
 
   List<Patient>? _searchResults;
   bool _isLoading = false;
@@ -220,26 +218,22 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Future<void> _addPatientToQueue() async {
-    if (_formKey.currentState!.validate()) {
-      if (_selectedServices.isEmpty &&
-          _otherConditionController.text.trim().isEmpty) {
+    if (_formKey.currentState!.validate()) {      if (_selectedServices.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-                'Please select at least one service or specify a purpose.'),
+                'Please select at least one service.'),
             backgroundColor: Colors.red[700],
           ),
         );
         return;
-      }
-
-      // ADDED - Doctor validation
-      if (_selectedDoctor == null) {
+      }// ADDED - Doctor validation (unless laboratory only)
+      if (_selectedDoctor == null && !_isLaboratoryOnly) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Please select a doctor.'),
+            content: const Text('Please select a doctor or check "Laboratory Tests Only".'),
             backgroundColor: Colors.red[700],
           ),
         );
@@ -427,19 +421,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           }
 
           // Proceed to add to queue with final chosen/confirmed details
-          final now = DateTime.now();
-
-          String conditionSummary =
+          final now = DateTime.now();          String conditionSummary =
               _selectedServices.map((s) => s.serviceName).join(', ');
-          if (_showOtherConditionField &&
-              _otherConditionController.text.trim().isNotEmpty) {
-            if (conditionSummary.isNotEmpty) {
-              conditionSummary +=
-                  "; Other: ${_otherConditionController.text.trim()}";
-            } else {
-              conditionSummary = _otherConditionController.text.trim();
-            }
-          }
           if (conditionSummary.isEmpty) {
             conditionSummary = "General Consultation";
           }
@@ -451,9 +434,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     'category': service.category ?? 'Uncategorized',
                     'price': service.defaultPrice ?? 0.0,
                   })
-              .toList();
-
-          // Walk-in patients are added directly to the queue and do not create a separate appointment record.
+              .toList();          // Walk-in patients are added directly to the queue and do not create a separate appointment record.
           // This keeps walk-ins distinct from scheduled appointments.
           await widget.queueService.addPatientDataToQueue({
             'patientName': finalPatientNameToUse,
@@ -468,8 +449,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             'totalPrice': _totalPrice,
             'isWalkIn': true,
             'originalAppointmentId': null, // Explicitly null for walk-ins
-            'doctorId': _selectedDoctor?.id,
-            'doctorName': _selectedDoctor?.fullName,
+            'doctorId': _isLaboratoryOnly ? null : _selectedDoctor?.id,
+            'doctorName': _isLaboratoryOnly ? 'Laboratory Only' : _selectedDoctor?.fullName,
+            'isLaboratoryOnly': _isLaboratoryOnly, // NEW: Flag for laboratory-only entries
           });
 
           // ---- Increment service usage count ----
@@ -505,8 +487,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           _ageController.clear();
           _genderController.clear();
           // _conditionController.clear(); // Removed
-          _otherConditionController.clear();
-          setState(() {
+          _otherConditionController.clear();          setState(() {
             _selectedDoctor = null; // ADDED
             // _selectedServices // Reset selection states - handled by _serviceSelectionState
             //     .forEach((s) => s.isSelected = false);
@@ -514,12 +495,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             _serviceSelectionState = {
               // Reset selection states
               for (var service in _availableServices)
-                service.id: _selectedServices.any((s) => s.id == service.id)
-            };
+                service.id: _selectedServices.any((s) => s.id == service.id)            };
             _totalPrice = 0.0;
-            _showOtherConditionField = false;
+            _isLaboratoryOnly = false; // Reset laboratory checkbox
             _searchResults = null;
-          }); // Trigger rebuild to update queue list display
+          });// Trigger rebuild to update queue list display
         } else {
           // Patient not found in the database
           if (!mounted) return;
@@ -554,18 +534,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
     }
   }
-
   // Method to open the service selection dialog
   void _openServiceSelectionDialog() {
     // Reset isSelected state for all available services before opening dialog
     // Use a temporary map to manage selections within the dialog
     Map<String, bool> currentDialogSelectionState =
         Map.from(_serviceSelectionState);
-
-    // Preserve the current "Other" text and selection state for the dialog
-    TextEditingController dialogOtherController =
-        TextEditingController(text: _otherConditionController.text);
-    bool currentShowOtherField = _showOtherConditionField;
 
     showDialog(
       context: context,
@@ -586,10 +560,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             List<String> categoryOrder = ['Consultation', 'Laboratory'];
             List<String> allCategories = groupedServices.keys.toList();
             categoryOrder.addAll(
-                allCategories.where((cat) => !categoryOrder.contains(cat)));
-
-            return AlertDialog(
-              title: const Text('Select Services / Purpose of Visit'),
+                allCategories.where((cat) => !categoryOrder.contains(cat)));            return AlertDialog(
+              title: Text(_isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose of Visit'),
               contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
               content: SingleChildScrollView(
                 child: ListBody(
@@ -641,40 +613,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     controlAffinity:
                                         ListTileControlAffinity.leading,
                                     activeColor: Colors.teal,
-                                  )),
-                              const Divider(),
+                                  )),                              const Divider(),
                             ]),
-                    CheckboxListTile(
-                      title: const Text("Other Purpose (Specify below)",
-                          style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.normal)),
-                      value: currentShowOtherField,
-                      onChanged: (bool? value) {
-                        setDialogState(() {
-                          currentShowOtherField = value!;
-                        });
-                      },
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      activeColor: Colors.teal,
-                    ),
-                    if (currentShowOtherField)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                            left: 16.0, right: 16.0, bottom: 8.0, top: 4.0),
-                        child: TextFormField(
-                          controller:
-                              dialogOtherController, // Use dialogOtherController here
-                          decoration: const InputDecoration(
-                              labelText: 'Specify other purpose or details',
-                              border: OutlineInputBorder(),
-                              hintText:
-                                  'e.g., Medical Certificate, Fit to Work',
-                              isDense: true),
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
                     const SizedBox(height: 20),
                     Align(
                       alignment: Alignment.centerRight,
@@ -709,23 +649,15 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 10),
                       textStyle: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold)),
-                  onPressed: () {
+                          fontSize: 14, fontWeight: FontWeight.bold)),                  onPressed: () {
                     setState(() {
                       _serviceSelectionState =
                           Map.from(currentDialogSelectionState);
                       _selectedServices = _availableServices
                           .where((s) => _serviceSelectionState[s.id] == true)
-                          .toList();
-                      _totalPrice = _selectedServices.fold(
+                          .toList();                      _totalPrice = _selectedServices.fold(
                           0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
-                      _showOtherConditionField = currentShowOtherField;
-                      if (currentShowOtherField) {
-                        _otherConditionController.text =
-                            dialogOtherController.text.trim();
-                      } else {
-                        _otherConditionController.clear();
-                      }
+                      _otherConditionController.clear(); // Clear the controller
                     });
                     Navigator.of(dialogContext).pop();
                   },
@@ -865,8 +797,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                   prefixIcon: Icon(Icons.badge),
                                   hintText: 'Enter patient ID if known'),
                             ),
-                            const SizedBox(height: 16),
-                            DropdownButtonFormField<User>(
+                            const SizedBox(height: 16),                            DropdownButtonFormField<User>(
                               decoration: const InputDecoration(
                                 labelText: 'Assign Doctor *',
                                 border: OutlineInputBorder(),
@@ -885,14 +816,68 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                   ),
                                 );
                               }).toList(),
-                              onChanged: (User? newValue) {
+                              onChanged: _isLaboratoryOnly ? null : (User? newValue) {
                                 setState(() {
                                   _selectedDoctor = newValue;
                                 });
                               },
-                              validator: (value) => value == null
-                                  ? 'Please select a doctor'
+                              validator: (value) => (!_isLaboratoryOnly && value == null)
+                                  ? 'Please select a doctor or check "Laboratory Tests Only"'
                                   : null,
+                            ),
+                            const SizedBox(height: 16),
+                            // Laboratory Only Checkbox
+                            Card(
+                              elevation: 1,
+                              color: Colors.blue[50],
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: _isLaboratoryOnly,
+                                      onChanged: (bool? value) {
+                                        setState(() {
+                                          _isLaboratoryOnly = value ?? false;
+                                          if (_isLaboratoryOnly) {
+                                            _selectedDoctor = null; // Clear doctor selection
+                                          }
+                                        });
+                                      },
+                                      activeColor: Colors.blue[600],
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Laboratory Tests Only',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.blue[800],
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Check this for laboratory tests without doctor consultation',
+                                            style: TextStyle(
+                                              color: Colors.blue[600],
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.biotech,
+                                      color: Colors.blue[600],
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -923,17 +908,14 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-
-                            // New Service Selection UI
-                            Text('Services / Purpose of Visit',
+                            const SizedBox(height: 16),                            // New Service Selection UI
+                            Text(_isLaboratoryOnly ? 'Laboratory Tests' : 'Services / Purpose of Visit',
                                 style: TextStyle(
                                     fontWeight: FontWeight.w500,
                                     color: Colors.grey[700])),
-                            const SizedBox(height: 8),
-                            ElevatedButton.icon(
+                            const SizedBox(height: 8),                            ElevatedButton.icon(
                               icon: const Icon(Icons.medical_services_outlined),
-                              label: const Text('Select Services / Purpose'),
+                              label: Text(_isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose'),
                               onPressed: _openServiceSelectionDialog,
                               style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.teal[50],
@@ -942,8 +924,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                       horizontal: 16, vertical: 12),
                                   textStyle: const TextStyle(fontSize: 15)),
                             ),
-                            const SizedBox(height: 10),
-                            if (_selectedServices.isNotEmpty)
+                            const SizedBox(height: 10),                            if (_selectedServices.isNotEmpty)
                               Wrap(
                                 spacing: 8.0,
                                 runSpacing: 4.0,
@@ -957,18 +938,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                         ))
                                     .toList(),
                               ),
-                            if (_showOtherConditionField &&
-                                _otherConditionController.text.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text(
-                                    "Other: ${_otherConditionController.text}",
-                                    style: const TextStyle(
-                                        fontStyle: FontStyle.italic)),
-                              ),
-                            if (_selectedServices.isNotEmpty ||
-                                (_showOtherConditionField &&
-                                    _otherConditionController.text.isNotEmpty))
+                            if (_selectedServices.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 12.0),
                                 child: Text(
