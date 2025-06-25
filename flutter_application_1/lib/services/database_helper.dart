@@ -10,6 +10,7 @@ import 'package:flutter_application_1/services/clinic_service_database_service.d
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../models/appointment.dart';
 import '../models/active_patient_queue_item.dart';
@@ -1016,9 +1017,46 @@ class DatabaseHelper {
 
   // Sync with server
   Future<bool> syncWithServer() async {
-    // Temporarily disable sync to prevent timeout errors
-    debugPrint('Sync disabled - no server configured');
-    return true; // Return true to avoid error handling
+    try {
+      // Check if sync is enabled
+      final prefs = await SharedPreferences.getInstance();
+      final syncEnabled = prefs.getBool('sync_enabled') ?? false;
+      
+      if (!syncEnabled) {
+        debugPrint('Sync disabled in settings');
+        return true;
+      }
+
+      // Check if we have server connection info
+      final serverIp = prefs.getString('lan_server_ip');
+      final serverPort = prefs.getString('lan_server_port');
+      final accessCode = prefs.getString('lan_access_code');
+
+      if (serverIp == null || serverPort == null || accessCode == null) {
+        debugPrint('Sync disabled - no server configured');
+        return true;
+      }
+
+      // Try to sync with the configured server
+      final port = int.tryParse(serverPort) ?? 8080;
+      return await _performServerSync(serverIp, port, accessCode);
+    } catch (e) {
+      debugPrint('Sync error: $e');
+      return false;
+    }
+  }
+
+  // Perform actual server sync
+  Future<bool> _performServerSync(String serverIp, int port, String accessCode) async {
+    try {
+      // This is a placeholder for actual sync implementation
+      // You can implement the actual sync logic here
+      debugPrint('Syncing with server at $serverIp:$port');
+      return true;
+    } catch (e) {
+      debugPrint('Server sync failed: $e');
+      return false;
+    }
   }
 
   // Apply changes from server

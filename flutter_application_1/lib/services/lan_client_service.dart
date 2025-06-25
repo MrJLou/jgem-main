@@ -184,9 +184,26 @@ class LanClientService {
   static Future<bool> connectToServerWithSession(
       String serverIp, int port, String accessCode) async {
     try {
+      debugPrint('Attempting to connect to $serverIp:$port with session management...');
+      
+      // First, enable sync features if not already enabled
+      await enableSyncFeatures();
+      
+      // Test basic network connectivity first
+      final networkReachable = await testConnection(serverIp, port);
+      if (!networkReachable) {
+        debugPrint('Network connectivity test failed to $serverIp:$port');
+        return false;
+      }
+      
+      debugPrint('Network connectivity test passed');
+
       // Connect to the server (now with integrated session management)
       final connected = await connectToServer(serverIp, port, accessCode);
-      if (!connected) return false;
+      if (!connected) {
+        debugPrint('Failed to connect to server during basic connection test');
+        return false;
+      }
 
       // Use the same server URL for session management
       _sessionServerUrl = 'http://$serverIp:$port';
@@ -218,7 +235,8 @@ class LanClientService {
       _isConnected = true;
       _reconnectionAttempts = 0;
 
-      debugPrint('Connected to server with integrated session management');
+      debugPrint('Successfully connected to server with integrated session management');
+      debugPrint('Session ID: ${_currentSession?.sessionId}');
       return true;
     } catch (e) {
       debugPrint('Failed to connect with session: $e');
@@ -397,10 +415,13 @@ class LanClientService {
   static Future<bool> connectToServer(
       String serverIp, int port, String accessCode) async {
     try {
+      debugPrint('Connecting to LAN server at $serverIp:$port...');
+      
       _serverUrl = 'http://$serverIp:$port';
       _accessCode = accessCode;
 
       // Test connection by checking server status
+      debugPrint('Testing server status...');
       final response = await http.get(
         Uri.parse('$_serverUrl/status'),
         headers: {
@@ -408,21 +429,37 @@ class LanClientService {
         },
       ).timeout(const Duration(seconds: 10));
 
+      debugPrint('Server response status: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         _isConnected = true;
-        debugPrint('Connected to LAN server: ${data['status']}');
+        debugPrint('Connected to LAN server successfully');
+        debugPrint('Server status: ${data['status']}');
 
         // Save connection state for auto-reconnection
         await _saveConnectionState(serverIp, port, accessCode);
 
         return true;
+      } else if (response.statusCode == 401) {
+        debugPrint('Authentication failed - invalid access code');
+        return false;
       } else {
-        debugPrint('Failed to connect: ${response.statusCode}');
+        debugPrint('Server returned error status: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
         return false;
       }
     } catch (e) {
-      debugPrint('Connection error: $e');
+      debugPrint('Connection error details: $e');
+      
+      if (e.toString().contains('SocketException')) {
+        debugPrint('Network error - server may not be running or unreachable');
+      } else if (e.toString().contains('TimeoutException')) {
+        debugPrint('Connection timeout - server is not responding');
+      } else if (e.toString().contains('FormatException')) {
+        debugPrint('Server response format error - may not be our server');
+      }
+      
       _isConnected = false;
       return false;
     }
@@ -558,5 +595,359 @@ class LanClientService {
     _currentSession = null;
     _isConnected = false;
     debugPrint('Disconnected from LAN server');
+  }
+
+  /// Test network connectivity to a specific IP and port
+  static Future<bool> testConnection(String serverIp, int port) async {
+    try {
+      debugPrint('Testing connection to $serverIp:$port...');
+
+      // Try to establish a socket connection
+      final socket = await Socket.connect(
+        serverIp,
+        port,
+        timeout: const Duration(seconds: 5),
+      );
+
+      socket.destroy();
+      debugPrint('Socket connection successful to $serverIp:$port');
+      return true;
+    } catch (e) {
+      debugPrint('Socket connection failed to $serverIp:$port: $e');
+      return false;
+    }
+  }
+
+  /// Scan for available LAN servers on common ports
+  static Future<List<Map<String, dynamic>>> scanForServers() async {
+    final List<Map<String, dynamic>> foundServers = [];
+
+    try {
+      // Get local network info
+      final interfaces = await NetworkInterface.list();
+      final localNetworks = <String>[];
+
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            // Extract network prefix (assuming /24 subnet)
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              final networkPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+              if (!localNetworks.contains(networkPrefix)) {
+                localNetworks.add(networkPrefix);
+                debugPrint('Scanning network: $networkPrefix.x');
+              }
+            }
+          }
+        }
+      }
+
+      // Common ports to check
+      final ports = [8080, 3000, 8000, 9000];
+
+      // Scan common IP ranges in each network
+      for (final network in localNetworks) {
+        final commonIps = [1, 2, 100, 101, 102, 254]; // Common router/server IPs
+
+        for (final ip in commonIps) {
+          final serverIp = '$network.$ip';
+
+          for (final port in ports) {
+            try {
+              if (await testConnection(serverIp, port)) {
+                // Try to get server status
+                final serverInfo = await _getServerInfo(serverIp, port);
+                if (serverInfo != null) {
+                  foundServers.add({
+                    'ip': serverIp,
+                    'port': port,
+                    'info': serverInfo,
+                  });
+                  debugPrint('Found server at $serverIp:$port');
+                }
+              }
+            } catch (e) {
+              // Ignore connection failures during scan
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error during server scan: $e');
+    }
+
+    return foundServers;
+  }
+
+  /// Get server information from a discovered server
+  static Future<Map<String, dynamic>?> _getServerInfo(String serverIp, int port) async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://$serverIp:$port/status'),
+      ).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      // Server might require authentication or not be our server
+    }
+    return null;
+  }
+
+  /// Get detailed connection diagnostics
+  static Future<Map<String, dynamic>> getConnectionDiagnostics() async {
+    final diagnostics = <String, dynamic>{};
+
+    try {
+      // Check saved connection info
+      final prefs = await SharedPreferences.getInstance();
+      final serverIp = prefs.getString('lan_server_ip');
+      final serverPort = prefs.getString('lan_server_port');
+      final accessCode = prefs.getString('lan_access_code');
+      final syncEnabled = prefs.getBool('sync_enabled') ?? false;
+      final lanServerEnabled = prefs.getBool('lan_server_enabled') ?? false;
+
+      diagnostics['savedServerIp'] = serverIp;
+      diagnostics['savedServerPort'] = serverPort;
+      diagnostics['hasAccessCode'] = accessCode != null;
+      diagnostics['syncEnabled'] = syncEnabled;
+      diagnostics['lanServerEnabled'] = lanServerEnabled;
+      diagnostics['isConnected'] = _isConnected;
+      diagnostics['currentSession'] = _currentSession?.toMap();
+
+      // Test network connectivity
+      if (serverIp != null && serverPort != null) {
+        final port = int.tryParse(serverPort) ?? 8080;
+        diagnostics['networkReachable'] = await testConnection(serverIp, port);
+
+        // Test HTTP connectivity
+        try {
+          final response = await http.get(
+            Uri.parse('http://$serverIp:$port/status'),
+            headers: accessCode != null ? {'Authorization': 'Bearer $accessCode'} : {},
+          ).timeout(const Duration(seconds: 5));
+
+          diagnostics['httpReachable'] = true;
+          diagnostics['httpStatusCode'] = response.statusCode;
+
+          if (response.statusCode == 200) {
+            try {
+              diagnostics['serverResponse'] = jsonDecode(response.body);
+            } catch (e) {
+              diagnostics['serverResponse'] = response.body;
+            }
+          }
+        } catch (e) {
+          diagnostics['httpReachable'] = false;
+          diagnostics['httpError'] = e.toString();
+        }
+      }
+
+      // Get network interfaces
+      final interfaces = await NetworkInterface.list();
+      final networkInfo = <Map<String, dynamic>>[];
+
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4) {
+            networkInfo.add({
+              'interface': interface.name,
+              'address': addr.address,
+              'isLoopback': addr.isLoopback,
+            });
+          }
+        }
+      }
+
+      diagnostics['networkInterfaces'] = networkInfo;
+    } catch (e) {
+      diagnostics['error'] = e.toString();
+    }
+
+    return diagnostics;
+  }
+
+  /// Enable sync and LAN features
+  static Future<void> enableSyncFeatures() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sync_enabled', true);
+      await prefs.setBool('lan_server_enabled', true);
+      debugPrint('Sync and LAN features enabled');
+    } catch (e) {
+      debugPrint('Failed to enable sync features: $e');
+    }
+  }
+
+  /// Comprehensive connection troubleshooting method
+  static Future<Map<String, dynamic>> troubleshootConnection() async {
+    final report = <String, dynamic>{};
+    report['timestamp'] = DateTime.now().toIso8601String();
+    report['issues'] = <String>[];
+    report['recommendations'] = <String>[];
+    
+    try {
+      debugPrint('Starting connection troubleshooting...');
+      
+      // Get current diagnostics
+      final diagnostics = await getConnectionDiagnostics();
+      report['diagnostics'] = diagnostics;
+      
+      // Check sync settings
+      if (!diagnostics['syncEnabled']) {
+        report['issues'].add('Sync is disabled in settings');
+        report['recommendations'].add('Enable sync in app settings');
+      }
+      
+      if (!diagnostics['lanServerEnabled']) {
+        report['issues'].add('LAN server is disabled in settings');
+        report['recommendations'].add('Enable LAN server in app settings');
+      }
+      
+      // Check if we have server configuration
+      if (diagnostics['savedServerIp'] == null) {
+        report['issues'].add('No server IP configured');
+        report['recommendations'].add('Configure server IP in LAN connection settings');
+      }
+      
+      if (diagnostics['savedServerPort'] == null) {
+        report['issues'].add('No server port configured');
+        report['recommendations'].add('Configure server port in LAN connection settings');
+      }
+      
+      if (!diagnostics['hasAccessCode']) {
+        report['issues'].add('No access code configured');
+        report['recommendations'].add('Enter the correct access code provided by the server');
+      }
+      
+      // Test network connectivity if we have server info
+      if (diagnostics['savedServerIp'] != null && diagnostics['savedServerPort'] != null) {
+        final serverIp = diagnostics['savedServerIp'];
+        final port = int.tryParse(diagnostics['savedServerPort']) ?? 8080;
+        
+        if (diagnostics['networkReachable'] == false) {
+          report['issues'].add('Server is not reachable on network');
+          report['recommendations'].addAll([
+            'Check if server device is on the same network',
+            'Verify server IP address: $serverIp',
+            'Verify server port: $port',
+            'Check firewall settings on both devices',
+            'Try pinging the server: ping $serverIp'
+          ]);
+        }
+        
+        if (diagnostics['httpReachable'] == false) {
+          report['issues'].add('HTTP connection to server failed');
+          report['recommendations'].addAll([
+            'Server application may not be running',
+            'Check if LAN server is started on host device',
+            'Verify port $port is not blocked by firewall',
+            'Try accessing http://$serverIp:$port/status in a web browser'
+          ]);
+        }
+        
+        if (diagnostics['httpStatusCode'] == 401) {
+          report['issues'].add('Authentication failed - invalid access code');
+          report['recommendations'].add('Check and re-enter the access code from the server');
+        }
+      }
+      
+      // Check network interfaces
+      final interfaces = diagnostics['networkInterfaces'] as List<dynamic>? ?? [];
+      final localIps = interfaces
+          .where((i) => !i['isLoopback'])
+          .map((i) => i['address'])
+          .toList();
+          
+      if (localIps.isEmpty) {
+        report['issues'].add('No network connections found');
+        report['recommendations'].add('Check network connection (WiFi/Ethernet)');
+      } else {
+        report['localIpAddresses'] = localIps;
+      }
+      
+      // Suggest server scanning
+      if (diagnostics['savedServerIp'] == null) {
+        report['recommendations'].add('Use the "Scan for Servers" feature to automatically discover servers');
+      }
+      
+      // Auto-fix simple issues
+      int autoFixCount = 0;
+      if (!diagnostics['syncEnabled'] || !diagnostics['lanServerEnabled']) {
+        await enableSyncFeatures();
+        autoFixCount++;
+      }
+      
+      if (autoFixCount > 0) {
+        report['autoFixesApplied'] = autoFixCount;
+        report['message'] = 'Applied $autoFixCount automatic fixes. Please try connecting again.';
+      }
+      
+    } catch (e) {
+      report['error'] = 'Troubleshooting failed: $e';
+    }
+    
+    return report;
+  }
+
+  /// Quick connection test with a specific server
+  static Future<Map<String, dynamic>> quickConnectionTest(
+      String serverIp, int port, String accessCode) async {
+    final testResult = <String, dynamic>{};
+    testResult['timestamp'] = DateTime.now().toIso8601String();
+    testResult['serverIp'] = serverIp;
+    testResult['port'] = port;
+    
+    try {
+      debugPrint('Quick connection test to $serverIp:$port');
+      
+      // Step 1: Network connectivity
+      testResult['networkTest'] = await testConnection(serverIp, port);
+      if (!testResult['networkTest']) {
+        testResult['result'] = 'FAILED';
+        testResult['reason'] = 'Network connectivity failed';
+        return testResult;
+      }
+      
+      // Step 2: HTTP connectivity
+      try {
+        final response = await http.get(
+          Uri.parse('http://$serverIp:$port/status'),
+          headers: {'Authorization': 'Bearer $accessCode'},
+        ).timeout(const Duration(seconds: 5));
+        
+        testResult['httpStatusCode'] = response.statusCode;
+        testResult['httpTest'] = response.statusCode == 200;
+        
+        if (response.statusCode == 200) {
+          try {
+            final data = jsonDecode(response.body);
+            testResult['serverInfo'] = data;
+            testResult['result'] = 'SUCCESS';
+          } catch (e) {
+            testResult['result'] = 'PARTIAL';
+            testResult['reason'] = 'Server responded but with invalid JSON';
+          }
+        } else if (response.statusCode == 401) {
+          testResult['result'] = 'FAILED';
+          testResult['reason'] = 'Authentication failed - invalid access code';
+        } else {
+          testResult['result'] = 'FAILED';
+          testResult['reason'] = 'Server returned error: ${response.statusCode}';
+        }
+      } catch (e) {
+        testResult['httpTest'] = false;
+        testResult['result'] = 'FAILED';
+        testResult['reason'] = 'HTTP request failed: $e';
+      }
+      
+    } catch (e) {
+      testResult['result'] = 'ERROR';
+      testResult['reason'] = 'Test failed: $e';
+    }
+    
+    return testResult;
   }
 }
