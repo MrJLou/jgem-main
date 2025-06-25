@@ -390,6 +390,20 @@ class LanSyncService {
       // Configure server to handle requests
       _server!.listen((request) async {
         try {
+          // Add CORS headers for web access
+          request.response.headers.add('Access-Control-Allow-Origin', '*');
+          request.response.headers.add(
+              'Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+          request.response.headers.add(
+              'Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+          // Handle OPTIONS request for CORS
+          if (request.method == 'OPTIONS') {
+            request.response.statusCode = HttpStatus.ok;
+            await request.response.close();
+            return;
+          }
+
           // Only accept requests from LAN IPs
           if (!_isLanRequest(request)) {
             request.response.statusCode = HttpStatus.forbidden;
@@ -398,93 +412,28 @@ class LanSyncService {
             debugPrint(
                 'Blocked non-LAN request from: ${request.connectionInfo?.remoteAddress.address}');
             return;
-          } // API endpoints
-          if (request.method == 'GET' && request.uri.path == '/db') {
-            // Require authentication for database access
-            if (!_validateAuth(request)) {
-              request.response.statusCode = HttpStatus.unauthorized;
-              request.response.headers.add('WWW-Authenticate', 'Bearer');
-              request.response.write('Authentication required');
-              await request.response.close();
-              return;
-            }
+          }
 
-            // Serve the database file for direct access
-            final dbFile = File(_dbPath!);
-            if (await dbFile.exists()) {
-              request.response.headers.contentType =
-                  ContentType('application', 'octet-stream');
-              request.response.headers.add('Content-Disposition',
-                  'attachment; filename="patient_management.db"');
-              await dbFile.openRead().pipe(request.response);
-            } else {
-              request.response.statusCode = HttpStatus.notFound;
-              request.response.write('Database file not found');
-              await request.response.close();
-            }
-          } else if (request.method == 'POST' && request.uri.path == '/sync') {
-            // Handle sync requests from other devices
-            if (!_validateAuth(request)) {
-              request.response.statusCode = HttpStatus.unauthorized;
-              request.response.headers.add('WWW-Authenticate', 'Bearer');
-              request.response.write('Authentication required');
-              await request.response.close();
-              return;
-            } // Handle sync data
-            final content = await utf8.decoder.bind(request).join();
-            final syncData = jsonDecode(content);
+          final path = request.uri.path;
+          final method = request.method;
 
-            // Process sync request - for now, just acknowledge
-            request.response.headers.contentType =
-                ContentType('application', 'json');
-            request.response.write(jsonEncode({
-              'status': 'success',
-              'message': 'Sync request received',
-              'dataReceived': syncData.keys.toList(),
-              'timestamp': DateTime.now().toIso8601String(),
-            }));
-            await request.response.close();
-          } else if (request.method == 'GET' &&
-              request.uri.path == '/changes') {
-            // Get pending changes for sync
-            if (!_validateAuth(request)) {
-              request.response.statusCode = HttpStatus.unauthorized;
-              request.response.headers.add('WWW-Authenticate', 'Bearer');
-              request.response.write('Authentication required');
-              await request.response.close();
-              return;
-            }
-
-            final pendingChanges = await _dbHelper!.getPendingChanges();
-            request.response.headers.contentType =
-                ContentType('application', 'json');
-            request.response.write(jsonEncode({
-              'changes': pendingChanges,
-              'timestamp': DateTime.now().toIso8601String(),
-            }));
-            await request.response.close();
-          } else if (request.method == 'GET' && request.uri.path == '/status') {
-            // Return server status (no auth required for status check)
-            request.response.headers.contentType =
-                ContentType('application', 'json');
-            final pendingChanges = await _dbHelper!.getPendingChanges();
-            final status = {
-              'status': 'online',
-              'dbPath': _dbPath,
-              'pendingChanges': pendingChanges.length,
-              'allowedNetworks':
-                  _allowedIpRanges.map((prefix) => '$prefix.*').toList(),
-              'timestamp': DateTime.now().toIso8601String(),
-              'sessionToken': LanSessionService.getServerToken(),
-              'sessionServerPort': 8081,
-              'activeSessions': LanSessionService.activeSessions.length,
-            };
-
-            request.response.write(jsonEncode(status));
-            await request.response.close();
+          // Route requests to appropriate handlers
+          if (path.startsWith('/session/')) {
+            await _handleSessionRequest(request);
+          } else if (path == '/ws' && method == 'GET') {
+            await _handleWebSocketUpgrade(request);
+          } else if (method == 'GET' && path == '/db') {
+            await _handleDatabaseRequest(request);
+          } else if (method == 'POST' && path == '/sync') {
+            await _handleSyncRequest(request);
+          } else if (method == 'GET' && path == '/changes') {
+            await _handleChangesRequest(request);
+          } else if (method == 'GET' && path == '/status') {
+            await _handleStatusRequest(request);
           } else {
+            // Unknown endpoint
             request.response.statusCode = HttpStatus.notFound;
-            request.response.write('Not found');
+            request.response.write('Endpoint not found');
             await request.response.close();
           }
         } catch (e) {
@@ -497,10 +446,264 @@ class LanSyncService {
 
       // Start watchdog timer to ensure server stays alive
       _startWatchdog();
+
+      // Start session management on the same server
+      await _initializeSessionManagement();
     } catch (e) {
       debugPrint('Failed to start LAN server: $e');
       rethrow;
     }
+  }
+
+  /// Initialize session management within the LAN server
+  static Future<void> _initializeSessionManagement() async {
+    try {
+      debugPrint('Session management integrated into LAN server');
+      // Session management is now handled by the main server endpoints
+    } catch (e) {
+      debugPrint('Error initializing session management: $e');
+    }
+  }
+
+  /// Handle session-related requests
+  static Future<void> _handleSessionRequest(HttpRequest request) async {
+    final path = request.uri.path;
+    final method = request.method;
+
+    // Require authentication for all session endpoints
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
+    }
+
+    try {
+      if (path == '/session/create' && method == 'POST') {
+        await _handleCreateSession(request);
+      } else if (path == '/session/validate' && method == 'POST') {
+        await _handleValidateSession(request);
+      } else if (path == '/session/list' && method == 'GET') {
+        await _handleGetSessions(request);
+      } else if (path == '/session/update' && method == 'POST') {
+        await _handleUpdateActivity(request);
+      } else if (path.startsWith('/session/') && method == 'DELETE') {
+        final sessionId = path.split('/').last;
+        await _handleEndSession(request, sessionId);
+      } else {
+        request.response.statusCode = HttpStatus.notFound;
+        request.response.write('Session endpoint not found');
+        await request.response.close();
+      }
+    } catch (e) {
+      debugPrint('Error handling session request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Session error: $e');
+      await request.response.close();
+    }
+  }
+
+  /// Handle WebSocket upgrade for real-time session updates
+  static Future<void> _handleWebSocketUpgrade(HttpRequest request) async {
+    final deviceId = request.uri.queryParameters['deviceId'];
+    if (deviceId == null) {
+      request.response.statusCode = HttpStatus.badRequest;
+      request.response.write('Device ID required');
+      await request.response.close();
+      return;
+    }
+
+    try {
+      final socket = await WebSocketTransformer.upgrade(request);
+      debugPrint('WebSocket connection established for device: $deviceId');
+
+      // Handle WebSocket messages for real-time updates
+      socket.listen(
+        (message) {
+          debugPrint('WebSocket message from $deviceId: $message');
+        },
+        onDone: () {
+          debugPrint('WebSocket connection closed for device: $deviceId');
+        },
+        onError: (error) {
+          debugPrint('WebSocket error for device $deviceId: $error');
+        },
+      );
+    } catch (e) {
+      debugPrint('Error upgrading to WebSocket: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('WebSocket upgrade failed');
+      await request.response.close();
+    }
+  }
+
+  /// Handle database access request
+  static Future<void> _handleDatabaseRequest(HttpRequest request) async {
+    // Require authentication for database access
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
+    }
+
+    // Serve the database file for direct access
+    final dbFile = File(_dbPath!);
+    if (await dbFile.exists()) {
+      request.response.headers.contentType =
+          ContentType('application', 'octet-stream');
+      request.response.headers.add('Content-Disposition',
+          'attachment; filename="patient_management.db"');
+      await dbFile.openRead().pipe(request.response);
+    } else {
+      request.response.statusCode = HttpStatus.notFound;
+      request.response.write('Database file not found');
+      await request.response.close();
+    }
+  }
+
+  /// Handle sync request
+  static Future<void> _handleSyncRequest(HttpRequest request) async {
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
+    }
+
+    final content = await utf8.decoder.bind(request).join();
+    final syncData = jsonDecode(content);
+
+    request.response.headers.contentType = ContentType('application', 'json');
+    request.response.write(jsonEncode({
+      'status': 'success',
+      'message': 'Sync request received',
+      'dataReceived': syncData.keys.toList(),
+      'timestamp': DateTime.now().toIso8601String(),
+    }));
+    await request.response.close();
+  }
+
+  /// Handle changes request
+  static Future<void> _handleChangesRequest(HttpRequest request) async {
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
+    }
+
+    final pendingChanges = await _dbHelper!.getPendingChanges();
+    request.response.headers.contentType = ContentType('application', 'json');
+    request.response.write(jsonEncode({
+      'changes': pendingChanges,
+      'timestamp': DateTime.now().toIso8601String(),
+    }));
+    await request.response.close();
+  }
+
+  /// Handle status request
+  static Future<void> _handleStatusRequest(HttpRequest request) async {
+    request.response.headers.contentType = ContentType('application', 'json');
+    final pendingChanges = await _dbHelper!.getPendingChanges();
+    final activeSessions = LanSessionService.activeSessions;
+
+    final status = {
+      'status': 'online',
+      'dbPath': _dbPath,
+      'pendingChanges': pendingChanges.length,
+      'allowedNetworks': _allowedIpRanges.map((prefix) => '$prefix.*').toList(),
+      'timestamp': DateTime.now().toIso8601String(),
+      'sessionToken': LanSessionService.getServerToken(),
+      'activeSessions': activeSessions.length,
+      'sessionUsers': activeSessions.values.map((s) => s.username).toList(),
+      'integratedSessionManagement': true, // Indicate sessions are integrated
+    };
+
+    request.response.write(jsonEncode(status));
+    await request.response.close();
+  }
+
+  // Session management endpoint handlers
+  static Future<void> _handleCreateSession(HttpRequest request) async {
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+
+    try {
+      final session = await LanSessionService.registerUserSession(
+        username: data['username'],
+        deviceId: data['deviceId'],
+        deviceName: data['deviceName'],
+        accessLevel: data['accessLevel'],
+        ipAddress: request.connectionInfo?.remoteAddress.address,
+      );
+
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({
+        'success': true,
+        'session': session?.toMap(),
+      }));
+    } catch (e) {
+      request.response.statusCode = HttpStatus.conflict;
+      request.response.write(jsonEncode({
+        'success': false,
+        'error': e.toString(),
+      }));
+    }
+
+    await request.response.close();
+  }
+
+  static Future<void> _handleValidateSession(HttpRequest request) async {
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+
+    final session =
+        LanSessionService.validateSession(data['sessionId'], data['token']);
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({
+      'valid': session != null,
+      'session': session?.toMap(),
+    }));
+    await request.response.close();
+  }
+
+  static Future<void> _handleGetSessions(HttpRequest request) async {
+    final sessions =
+        LanSessionService.activeSessions.values.map((s) => s.toMap()).toList();
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({
+      'sessions': sessions,
+      'count': sessions.length,
+      'timestamp': DateTime.now().toIso8601String(),
+    }));
+    await request.response.close();
+  }
+
+  static Future<void> _handleUpdateActivity(HttpRequest request) async {
+    final body = await utf8.decoder.bind(request).join();
+    final data = jsonDecode(body) as Map<String, dynamic>;
+
+    await LanSessionService.updateSessionActivity(data['sessionId']);
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({'success': true}));
+    await request.response.close();
+  }
+
+  static Future<void> _handleEndSession(
+      HttpRequest request, String sessionId) async {
+    final success = await LanSessionService.endUserSession(sessionId);
+
+    request.response.headers.contentType = ContentType.json;
+    request.response.write(jsonEncode({'success': success}));
+    await request.response.close();
   }
 
   // Regenerate access code
@@ -578,14 +781,35 @@ class LanSyncService {
     try {
       final interfaces = await NetworkInterface.list();
       final ipAddresses = <String>[];
+      final allIpAddresses = <String>[]; // For debugging
 
       for (var interface in interfaces) {
         for (var addr in interface.addresses) {
-          if (addr.type == InternetAddressType.IPv4 && _isLanIp(addr.address)) {
-            ipAddresses.add(addr.address);
+          if (addr.type == InternetAddressType.IPv4) {
+            allIpAddresses.add('${addr.address} (${interface.name})');
+            // More inclusive LAN IP detection
+            if (_isValidLanIp(addr.address)) {
+              ipAddresses.add(addr.address);
+            }
           }
         }
       }
+
+      // If no LAN IPs found, add all non-loopback IPv4 addresses
+      if (ipAddresses.isEmpty) {
+        for (var interface in interfaces) {
+          for (var addr in interface.addresses) {
+            if (addr.type == InternetAddressType.IPv4 &&
+                !addr.isLoopback &&
+                addr.address != '0.0.0.0') {
+              ipAddresses.add(addr.address);
+            }
+          }
+        }
+      }
+
+      debugPrint('All network interfaces: $allIpAddresses');
+      debugPrint('Selected LAN IPs: $ipAddresses');
 
       final prefs = await SharedPreferences.getInstance();
       final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
@@ -611,6 +835,30 @@ class LanSyncService {
         'error': e.toString(),
       };
     }
+  }
+
+  // More comprehensive LAN IP validation
+  static bool _isValidLanIp(String ip) {
+    // Check for private network ranges
+    if (ip.startsWith('192.168.') ||
+        ip.startsWith('10.') ||
+        ip.startsWith('127.0.0.1')) {
+      return true;
+    }
+
+    // Check for 172.16.0.0 to 172.31.255.255 range
+    if (ip.startsWith('172.')) {
+      final parts = ip.split('.');
+      if (parts.length >= 2) {
+        final secondOctet = int.tryParse(parts[1]);
+        if (secondOctet != null && secondOctet >= 16 && secondOctet <= 31) {
+          return true;
+        }
+      }
+    }
+
+    // Check against configured ranges if available
+    return _isLanIp(ip);
   }
 
   static Future<int> getPendingChanges() async {

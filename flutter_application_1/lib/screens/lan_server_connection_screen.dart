@@ -5,21 +5,21 @@ import '../services/lan_session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
-class LanConnectionScreen extends StatefulWidget {
-  const LanConnectionScreen({super.key});
+class LanServerConnectionScreen extends StatefulWidget {
+  const LanServerConnectionScreen({super.key});
 
   @override
-  State<LanConnectionScreen> createState() => _LanConnectionScreenState();
+  State<LanServerConnectionScreen> createState() =>
+      _LanServerConnectionScreenState();
 }
 
-class _LanConnectionScreenState extends State<LanConnectionScreen> {
+class _LanServerConnectionScreenState extends State<LanServerConnectionScreen> {
   bool _isLoading = true;
   bool _serverEnabled = false;
   bool _sessionServerEnabled = false;
   String _accessCode = '';
   List<String> _ipAddresses = [];
   int _port = 8080;
-  final int _sessionPort = 8081;
   int _syncInterval = 5;
   int _pendingChanges = 0;
   List<String> _allowedNetworks = [];
@@ -30,7 +30,6 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
 
   final _syncIntervalController = TextEditingController();
   final _portController = TextEditingController();
-  final _sessionPortController = TextEditingController();
   @override
   void initState() {
     super.initState();
@@ -54,7 +53,6 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
   void dispose() {
     _syncIntervalController.dispose();
     _portController.dispose();
-    _sessionPortController.dispose();
     _refreshTimer?.cancel();
     _sessionUpdateSubscription?.cancel();
     super.dispose();
@@ -76,7 +74,6 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
         _allowedNetworks = List<String>.from(info['allowedNetworks'] ?? []);
 
         _portController.text = _port.toString();
-        _sessionPortController.text = _sessionPort.toString();
       });
 
       // Get pending changes count
@@ -109,8 +106,21 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
     try {
       if (_serverEnabled) {
         await LanSyncService.stopLanServer();
+        // Session management is automatically stopped with the main server
+        setState(() {
+          _sessionServerEnabled = false;
+          _activeSessions = [];
+        });
       } else {
         await LanSyncService.startLanServer(port: _port);
+        // Session management is automatically started with the main server
+        setState(() {
+          _sessionServerEnabled = true;
+        });
+        // Start monitoring sessions
+        await _startSessionManagement();
+        // Notify that server is now available for reconnection
+        await _notifyClientsServerAvailable();
       }
 
       await _loadConnectionInfo();
@@ -123,6 +133,22 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  /// Notify clients that server is available
+  Future<void> _notifyClientsServerAvailable() async {
+    try {
+      // Get connection info to broadcast availability
+      final info = await LanSyncService.getConnectionInfo();
+      final ipAddresses = List<String>.from(info['ipAddresses'] ?? []);
+
+      if (ipAddresses.isNotEmpty) {
+        debugPrint('Server started and available at IPs: $ipAddresses');
+        // This could be enhanced with UDP broadcast or other discovery mechanisms
+      }
+    } catch (e) {
+      debugPrint('Error notifying clients of server availability: $e');
     }
   }
 
@@ -155,20 +181,10 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
 
   // Session Management Methods
   Future<void> _startSessionManagement() async {
-    // Start session server if not running
-    if (!LanSessionService.isServerRunning) {
-      final started =
-          await LanSessionService.startSessionServer(port: _sessionPort);
-      if (started) {
-        setState(() {
-          _sessionServerEnabled = true;
-        });
-      }
-    } else {
-      setState(() {
-        _sessionServerEnabled = true;
-      });
-    }
+    // Session management is now integrated into the main LAN server
+    setState(() {
+      _sessionServerEnabled = true;
+    });
 
     // Load active sessions
     await _loadActiveSessions();
@@ -210,35 +226,6 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
       case 'session_expired':
         _loadActiveSessions();
         break;
-    }
-  }
-
-  Future<void> _toggleSessionServer() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      if (_sessionServerEnabled) {
-        await LanSessionService.stopSessionServer();
-        _refreshTimer?.cancel();
-        _sessionUpdateSubscription?.cancel();
-        setState(() {
-          _sessionServerEnabled = false;
-          _activeSessions = [];
-        });
-      } else {
-        await _startSessionManagement();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error toggling session server: $e')),
-      );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -654,7 +641,7 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LAN Connection'),
+        title: const Text('LAN Server Management'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -753,36 +740,145 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            const Text(
-                              'Server IP Addresses:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Server IP Addresses:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh, size: 20),
+                                  onPressed: _loadConnectionInfo,
+                                  tooltip: 'Refresh IP addresses',
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             if (_ipAddresses.isEmpty)
-                              const Text('No IP addresses available')
-                            else
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: _ipAddresses.length,
-                                itemBuilder: (context, index) {
-                                  final ip = _ipAddresses[index];
-                                  final url = 'http://$ip:$_port/db';
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    dense: true,
-                                    title: Text('$ip:$_port'),
-                                    subtitle: Text(url),
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.copy),
-                                      onPressed: () => _copyToClipboard(
-                                        url,
-                                        'URL copied to clipboard',
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[50],
+                                  border:
+                                      Border.all(color: Colors.orange[300]!),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.warning,
+                                        color: Colors.orange[700]),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'No IP addresses detected. Check network connection.',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w500),
                                       ),
-                                      tooltip: 'Copy URL',
                                     ),
-                                  );
-                                },
+                                  ],
+                                ),
+                              )
+                            else
+                              Column(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[50],
+                                      border:
+                                          Border.all(color: Colors.green[300]!),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.info,
+                                                color: Colors.green[700],
+                                                size: 20),
+                                            const SizedBox(width: 8),
+                                            const Text(
+                                              'Share these details with other devices:',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.w600),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          '• Use any IP address below with port $_port\n• Access code: $_accessCode',
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: _ipAddresses.length,
+                                    itemBuilder: (context, index) {
+                                      final ip = _ipAddresses[index];
+                                      final connectionInfo = '$ip:$_port';
+                                      return Card(
+                                        elevation: 1,
+                                        margin:
+                                            const EdgeInsets.only(bottom: 8),
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 4,
+                                          ),
+                                          leading: Icon(
+                                            Icons.computer,
+                                            color: Colors.teal[600],
+                                          ),
+                                          title: Text(
+                                            connectionInfo,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                              'Server URL: http://$ip:$_port/db'),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              IconButton(
+                                                icon: const Icon(Icons.copy),
+                                                onPressed: () =>
+                                                    _copyToClipboard(
+                                                  connectionInfo,
+                                                  'Connection info copied to clipboard',
+                                                ),
+                                                tooltip: 'Copy connection info',
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.link),
+                                                onPressed: () =>
+                                                    _copyToClipboard(
+                                                  'http://$ip:$_port/db',
+                                                  'Server URL copied to clipboard',
+                                                ),
+                                                tooltip: 'Copy server URL',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
                           ],
                         ],
@@ -943,50 +1039,89 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
+                              Icon(
+                                Icons.group,
+                                color: Colors.blue[700],
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
                               const Text(
-                                'Session Management',
+                                'Integrated Session Management',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              Switch(
-                                value: _sessionServerEnabled,
-                                onChanged: (value) => _toggleSessionServer(),
-                                activeColor: Colors.green,
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _serverEnabled
+                                      ? Colors.green[100]
+                                      : Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: _serverEnabled
+                                        ? Colors.green[400]!
+                                        : Colors.grey[400]!,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _serverEnabled
+                                          ? Icons.check_circle
+                                          : Icons.radio_button_unchecked,
+                                      color: _serverEnabled
+                                          ? Colors.green[700]
+                                          : Colors.grey[600],
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _serverEnabled ? 'Active' : 'Inactive',
+                                      style: TextStyle(
+                                        color: _serverEnabled
+                                            ? Colors.green[700]
+                                            : Colors.grey[600],
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
-                          if (_sessionServerEnabled) ...[
-                            Row(
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              border: Border.all(color: Colors.blue[200]!),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
                               children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _sessionPortController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Session Server Port',
-                                      border: OutlineInputBorder(),
-                                      hintText: '8081',
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    enabled: false, // Always disabled for now
-                                  ),
-                                ),
+                                Icon(Icons.info,
+                                    color: Colors.blue[700], size: 20),
                                 const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.refresh),
-                                  onPressed: _loadActiveSessions,
-                                  tooltip: 'Refresh Sessions',
+                                const Expanded(
+                                  child: Text(
+                                    'Session management is integrated into the main LAN server (port 8080). Users can connect and manage sessions using the same connection details above.',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                          ),
+                          const SizedBox(height: 16),
+                          if (_sessionServerEnabled) ...[
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -997,12 +1132,22 @@ class _LanConnectionScreenState extends State<LanConnectionScreen> {
                                     fontSize: 16,
                                   ),
                                 ),
-                                Text(
-                                  'Auto-refresh: 5s',
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 12,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Auto-refresh: 5s',
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh),
+                                      onPressed: _loadActiveSessions,
+                                      tooltip: 'Refresh Sessions',
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

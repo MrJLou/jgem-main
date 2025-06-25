@@ -15,6 +15,7 @@ import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
 import '../../screens/help/help_screen.dart';
 import '../../screens/about_screen.dart';
+import '../../screens/lan_server_connection_screen.dart';
 import '../../services/queue_service.dart';
 import '../dashboard/live_queue_dashboard_view.dart';
 
@@ -28,7 +29,8 @@ class DashboardMenuConfig {
     'Registration': {
       'screen': (String accessLevel) {
         if (kDebugMode) {
-          print('DEBUG: Registration screen factory called with accessLevel: "$accessLevel"');
+          print(
+              'DEBUG: Registration screen factory called with accessLevel: "$accessLevel"');
         }
         if (accessLevel.trim().toLowerCase() == 'medtech') {
           if (kDebugMode) {
@@ -93,6 +95,10 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
     },
+    'LAN Server': {
+      'screen': (String accessLevel) => const LanServerConnectionScreen(),
+      'icon': Icons.wifi_tethering
+    },
     '---': {
       'screen': (String accessLevel) =>
           const SizedBox.shrink(), // No screen for a divider
@@ -116,6 +122,8 @@ class DashboardMenuConfig {
       'Payment',
       'Billing',
       '---',
+      'LAN Server',
+      '---',
       'Help',
       'About'
     ],
@@ -125,7 +133,7 @@ class DashboardMenuConfig {
       'Registration',
       'Search',
       'Patient Laboratory Histories',
-       '---',
+      '---',
       'Patient Queue',
       'Appointment Schedule',
       '---',
@@ -157,10 +165,10 @@ class DashboardMenuConfig {
   };
   static MenuConfiguration configureMenuForRole(String accessLevel) {
     if (kDebugMode) {
-      print('DEBUG: configureMenuForRole called with accessLevel: "$accessLevel"');
+      print(
+          'DEBUG: configureMenuForRole called with accessLevel: "$accessLevel"');
     }
-    List<String> allowedMenuKeys =
-        rolePermissions[accessLevel] ?? [];
+    List<String> allowedMenuKeys = rolePermissions[accessLevel] ?? [];
     if (kDebugMode) {
       print('DEBUG: allowedMenuKeys for $accessLevel: $allowedMenuKeys');
     }
@@ -172,9 +180,8 @@ class DashboardMenuConfig {
     String dashboardKey = 'Dashboard';
     if (allMenuItems.containsKey(dashboardKey) &&
         allowedMenuKeys.contains(dashboardKey)) {
-      bool prioritize =
-          (accessLevel == 'medtech' || accessLevel == 'doctor');
-      
+      bool prioritize = (accessLevel == 'medtech' || accessLevel == 'doctor');
+
       if (prioritize && !tempTitles.contains(dashboardKey)) {
         tempTitles.add(dashboardKey);
         tempScreens.add(allMenuItems[dashboardKey]!['screen'](accessLevel));

@@ -90,10 +90,9 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
     });
 
     try {
-      // Use enhanced connection with session management
+      // Use enhanced connection with integrated session management
       final connected = await LanClientService.connectToServerWithSession(
-          serverIp, port, accessCode,
-          sessionPort: 8081);
+          serverIp, port, accessCode);
 
       if (!mounted) return;
       if (connected) {

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'lan_session_service.dart';
 import 'auth_service.dart';
 
@@ -16,21 +17,179 @@ class LanClientService {
   static bool _isConnected = false;
   static UserSession? _currentSession;
 
+  // Auto-reconnection variables
+  static Timer? _reconnectionTimer;
+  static bool _autoReconnectEnabled = true;
+  static const Duration _reconnectionInterval =
+      Duration(seconds: 10); // More frequent attempts
+  static int _reconnectionAttempts = 0;
+  static const int _maxReconnectionAttempts = 30; // More attempts
+
   // Connection to session server
   static const Duration _heartbeatInterval = Duration(minutes: 1);
   static Timer? _heartbeatTimer;
 
-  /// Connect to a LAN server with session management
-  static Future<bool> connectToServerWithSession(
-      String serverIp, int port, String accessCode,
-      {int sessionPort = 8081}) async {
+  /// Initialize the service with auto-reconnection
+  static Future<void> initialize() async {
     try {
-      // First connect to the regular data server
+      await _loadSavedConnectionInfo();
+      _startAutoReconnection();
+      debugPrint('LAN Client Service initialized with auto-reconnection');
+    } catch (e) {
+      debugPrint('Failed to initialize LAN Client Service: $e');
+    }
+  }
+
+  /// Load previously saved connection information
+  static Future<void> _loadSavedConnectionInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final serverIp = prefs.getString('lan_server_ip');
+      final serverPort = prefs.getString('lan_server_port');
+      final accessCode = prefs.getString('lan_access_code');
+      final wasConnected = prefs.getBool('was_connected') ?? false;
+
+      if (serverIp != null && serverPort != null && accessCode != null) {
+        final port = int.tryParse(serverPort) ?? 8080;
+        debugPrint(
+            'Found saved connection info: $serverIp:$port (wasConnected: $wasConnected)');
+
+        // Store connection info for auto-reconnection
+        _serverUrl = 'http://$serverIp:$port';
+        _accessCode = accessCode;
+
+        // Try to reconnect automatically if was previously connected
+        if (wasConnected) {
+          debugPrint('Attempting immediate reconnection...');
+          await _attemptReconnection(serverIp, port, accessCode);
+        }
+      } else {
+        debugPrint('No saved connection info found');
+      }
+    } catch (e) {
+      debugPrint('Error loading saved connection info: $e');
+    }
+  }
+
+  /// Start auto-reconnection timer
+  static void _startAutoReconnection() {
+    _reconnectionTimer?.cancel();
+
+    if (!_autoReconnectEnabled) return;
+
+    _reconnectionTimer = Timer.periodic(_reconnectionInterval, (timer) async {
+      if (!_isConnected && _reconnectionAttempts < _maxReconnectionAttempts) {
+        await _checkAndReconnect();
+      }
+    });
+  }
+
+  /// Check if server is available and reconnect if possible
+  static Future<void> _checkAndReconnect() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final serverIp = prefs.getString('lan_server_ip');
+      final serverPort = prefs.getString('lan_server_port');
+      final accessCode = prefs.getString('lan_access_code');
+
+      if (serverIp != null && serverPort != null && accessCode != null) {
+        final port = int.tryParse(serverPort) ?? 8080;
+
+        // Check if server is reachable
+        if (await _isServerReachable(serverIp, port)) {
+          debugPrint('Server is back online, attempting reconnection...');
+          await _attemptReconnection(serverIp, port, accessCode);
+        }
+      }
+    } catch (e) {
+      debugPrint('Auto-reconnection check failed: $e');
+    }
+  }
+
+  /// Check if server is reachable
+  static Future<bool> _isServerReachable(String serverIp, int port) async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://$serverIp:$port/status'),
+        headers: {'Authorization': 'Bearer ${_accessCode ?? ''}'},
+      ).timeout(const Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Attempt to reconnect with session management
+  static Future<void> _attemptReconnection(
+      String serverIp, int port, String accessCode) async {
+    try {
+      _reconnectionAttempts++;
+      debugPrint(
+          'Reconnection attempt $_reconnectionAttempts/$_maxReconnectionAttempts');
+
+      final connected =
+          await connectToServerWithSession(serverIp, port, accessCode);
+
+      if (connected) {
+        debugPrint('Successfully reconnected to server');
+        _reconnectionAttempts = 0;
+
+        // Save successful connection state
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('was_connected', true);
+      } else {
+        debugPrint('Reconnection attempt failed');
+      }
+    } catch (e) {
+      debugPrint('Reconnection attempt error: $e');
+    }
+  }
+
+  /// Save connection state when connected
+  static Future<void> _saveConnectionState(
+      String serverIp, int port, String accessCode) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('lan_server_ip', serverIp);
+      await prefs.setString('lan_server_port', port.toString());
+      await prefs.setString('lan_access_code', accessCode);
+      await prefs.setBool('was_connected', true);
+    } catch (e) {
+      debugPrint('Error saving connection state: $e');
+    }
+  }
+
+  /// Clear connection state when disconnected
+  static Future<void> _clearConnectionState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('was_connected', false);
+    } catch (e) {
+      debugPrint('Error clearing connection state: $e');
+    }
+  }
+
+  /// Enable or disable auto-reconnection
+  static void setAutoReconnection(bool enabled) {
+    _autoReconnectEnabled = enabled;
+    if (enabled) {
+      _startAutoReconnection();
+    } else {
+      _reconnectionTimer?.cancel();
+    }
+  }
+
+  /// Connect to a LAN server with integrated session management
+  static Future<bool> connectToServerWithSession(
+      String serverIp, int port, String accessCode) async {
+    try {
+      // Connect to the server (now with integrated session management)
       final connected = await connectToServer(serverIp, port, accessCode);
       if (!connected) return false;
 
-      // Then connect to session server
-      _sessionServerUrl = 'http://$serverIp:$sessionPort';
+      // Use the same server URL for session management
+      _sessionServerUrl = 'http://$serverIp:$port';
 
       // Get current user info
       final currentUser = await AuthService.getCurrentUser();
@@ -42,8 +201,8 @@ class LanClientService {
       final deviceId = await AuthService.getDeviceId();
       final deviceName = await _getDeviceName();
 
-      // Register session with server
-      await _registerSessionWithServer(
+      // Register session with integrated server
+      await _registerSessionWithIntegratedServer(
         currentUser.username,
         deviceId,
         deviceName,
@@ -53,6 +212,13 @@ class LanClientService {
       // Start heartbeat
       _startHeartbeat();
 
+      // Save connection state for auto-reconnection
+      await _saveConnectionState(serverIp, port, accessCode);
+
+      _isConnected = true;
+      _reconnectionAttempts = 0;
+
+      debugPrint('Connected to server with integrated session management');
       return true;
     } catch (e) {
       debugPrint('Failed to connect with session: $e');
@@ -60,30 +226,57 @@ class LanClientService {
     }
   }
 
-  /// Register session with remote server
-  static Future<void> _registerSessionWithServer(
+  /// Disconnect from server and clear session
+  static Future<void> disconnect() async {
+    try {
+      _isConnected = false;
+      _heartbeatTimer?.cancel();
+
+      // End session if active
+      if (_currentSession != null &&
+          _sessionServerUrl != null &&
+          _sessionToken != null) {
+        try {
+          await http.delete(
+            Uri.parse(
+                '$_sessionServerUrl/sessions/${_currentSession!.sessionId}'),
+            headers: {
+              'Authorization': 'Bearer $_sessionToken',
+            },
+          ).timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('Error ending session: $e');
+        }
+      }
+
+      // Clear connection state
+      await _clearConnectionState();
+
+      _currentSession = null;
+      _sessionToken = null;
+      _serverUrl = null;
+      _sessionServerUrl = null;
+
+      debugPrint('Disconnected from LAN server');
+    } catch (e) {
+      debugPrint('Error during disconnect: $e');
+    }
+  }
+
+  /// Register session with integrated server (using same port)
+  static Future<void> _registerSessionWithIntegratedServer(
     String username,
     String deviceId,
     String deviceName,
     String accessLevel,
   ) async {
-    if (_sessionServerUrl == null) return;
-
     try {
-      // Get session server token
-      final serverStatus = await getServerStatus();
-      _sessionToken = serverStatus?['sessionToken'];
-
-      if (_sessionToken == null) {
-        throw Exception('No session token from server');
-      }
-
       final response = await http
           .post(
-            Uri.parse('$_sessionServerUrl/sessions'),
+            Uri.parse('$_sessionServerUrl/session/create'),
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_sessionToken',
+              'Authorization': 'Bearer $_accessCode',
             },
             body: jsonEncode({
               'username': username,
@@ -97,19 +290,17 @@ class LanClientService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['session'] != null) {
+          _sessionToken = data['session']['token'];
           _currentSession = UserSession.fromMap(data['session']);
-          debugPrint('Session registered: ${_currentSession!.sessionId}');
+          debugPrint('Session registered successfully with integrated server');
         } else {
-          throw Exception(data['error'] ?? 'Failed to register session');
+          throw Exception('Session registration failed: ${data['error']}');
         }
-      } else if (response.statusCode == 409) {
-        final data = jsonDecode(response.body);
-        throw Exception(data['error'] ?? 'Session conflict');
       } else {
-        throw Exception('Session server returned ${response.statusCode}');
+        throw Exception('Session registration failed: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Failed to register session: $e');
+      debugPrint('Failed to register session with integrated server: $e');
       rethrow;
     }
   }
@@ -221,6 +412,10 @@ class LanClientService {
         final data = jsonDecode(response.body);
         _isConnected = true;
         debugPrint('Connected to LAN server: ${data['status']}');
+
+        // Save connection state for auto-reconnection
+        await _saveConnectionState(serverIp, port, accessCode);
+
         return true;
       } else {
         debugPrint('Failed to connect: ${response.statusCode}');
@@ -347,7 +542,7 @@ class LanClientService {
   }
 
   // Disconnect from server
-  static void disconnect() {
+  static Future<void> disconnectOld() async {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
 
@@ -364,16 +559,4 @@ class LanClientService {
     _isConnected = false;
     debugPrint('Disconnected from LAN server');
   }
-
-  // Check if connected
-  static bool get isConnected => _isConnected;
-
-  // Get server URL
-  static String? get serverUrl => _serverUrl;
-
-  // Get current session
-  static UserSession? get currentSession => _currentSession;
-
-  // Check if session is active
-  static bool get hasActiveSession => _currentSession != null;
 }

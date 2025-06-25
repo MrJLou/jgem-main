@@ -3,11 +3,12 @@ import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
+import 'services/lan_client_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'screens/lan_client_connection_screen.dart';
-import 'services/lan_connection_screen.dart';
+import 'screens/lan_server_connection_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
@@ -29,6 +30,9 @@ void main() async {
 
   // Initialize real-time sync service for persistent connection
   await RealTimeSyncService.initialize();
+
+  // Initialize LAN client service with auto-reconnection
+  await LanClientService.initialize();
 
   runApp(const PatientRecordManagementApp());
 }
@@ -54,7 +58,7 @@ class PatientRecordManagementApp extends StatelessWidget {
         '/analytics-hub': (context) => const AnalyticsHubScreen(),
         '/laboratory-hub': (context) =>
             const LaboratoryHubScreen(), // Provide default accessLevel
-        '/lan-connection': (context) => const LanConnectionScreen(),
+        '/lan-connection': (context) => const LanServerConnectionScreen(),
         '/lan-client': (context) => const LanClientConnectionScreen(),
       },
       debugShowCheckedModeBanner: false,
