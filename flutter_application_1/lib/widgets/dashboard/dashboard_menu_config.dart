@@ -15,7 +15,7 @@ import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
 import '../../screens/help/help_screen.dart';
 import '../../screens/about_screen.dart';
-import '../../screens/lan_server_connection_screen.dart';
+import '../../screens/enhanced_lan_server_connection_screen.dart';
 import '../../services/queue_service.dart';
 import '../dashboard/live_queue_dashboard_view.dart';
 
@@ -96,7 +96,7 @@ class DashboardMenuConfig {
       'icon': Icons.info_outline
     },
     'LAN Server': {
-      'screen': (String accessLevel) => const LanServerConnectionScreen(),
+      'screen': (String accessLevel) => const EnhancedLanServerConnectionScreen(),
       'icon': Icons.wifi_tethering
     },
     '---': {

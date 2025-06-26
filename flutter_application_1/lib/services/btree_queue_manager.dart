@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/active_patient_queue_item.dart';
 import '../models/btree_patient_queue.dart';
 import '../services/queue_service.dart';
-import '../services/real_time_sync_service.dart';
+// Enhanced real-time sync service import removed - using ShelfLanServer integration
 
 class BTreeQueueManager {
   static final BTreeQueueManager _instance = BTreeQueueManager._internal();
@@ -26,7 +26,8 @@ class BTreeQueueManager {
       await _loadExistingQueueItems();
 
       // Register with real-time sync service for queue updates
-      RealTimeSyncService.registerQueueUpdateCallback(handleSyncUpdate);
+      // RealTimeSyncService callback registration deprecated - using ShelfLanServer now
+      // EnhancedRealTimeSyncService.registerQueueUpdateCallback(handleSyncUpdate);
 
       _isInitialized = true;
       debugPrint(

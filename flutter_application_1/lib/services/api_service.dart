@@ -10,7 +10,7 @@ import '../models/patient_bill.dart';
 import '../models/medical_record.dart';
 import '../models/active_patient_queue_item.dart';
 import '../services/auth_service.dart';
-import '../services/lan_sync_service.dart';
+import '../services/shelf_lan_server.dart';
 import '../models/clinic_service.dart';
 import './queue_service.dart';
 import 'dart:convert';
@@ -693,12 +693,12 @@ class ApiService {
 
   static Future<void> initializeDatabaseForLan() async {
     try {
-      await _dbHelper.database; // Ensure database is initialized      // Initialize LAN sync service
+      await _dbHelper.database; // Ensure database is initialized      // Initialize Shelf LAN server for database access
       try {
-        await LanSyncService.initialize(_dbHelper);
-        debugPrint('LAN sync service initialized successfully');
+        await ShelfLanServer.initialize(_dbHelper);
+        debugPrint('Shelf LAN server initialized successfully');
       } catch (e) {
-        debugPrint('LAN sync service initialization failed: $e');
+        debugPrint('Shelf LAN server initialization failed: $e');
         // Continue execution even if this fails
       }
 

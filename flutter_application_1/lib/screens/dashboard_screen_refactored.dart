@@ -5,8 +5,8 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/services/session_monitor_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
-import '../screens/lan_client_connection_screen.dart';
-import '../screens/lan_server_connection_screen.dart';
+import '../screens/enhanced_lan_client_connection_screen.dart';
+import '../screens/enhanced_lan_server_connection_screen.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -188,7 +188,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const LanClientConnectionScreen(),
+                      builder: (context) => const EnhancedLanClientConnectionScreen(),
                     ),
                   );
                 },
@@ -205,7 +205,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const LanServerConnectionScreen(),
+                      builder: (context) => const EnhancedLanServerConnectionScreen(),
                     ),
                   );
                 },
@@ -225,7 +225,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const LanClientConnectionScreen(),
+          builder: (context) => const EnhancedLanClientConnectionScreen(),
         ),
       );
     }

@@ -130,7 +130,9 @@ Future<void> main() async {
         print('');
         print('Server Information:');
         serverInfo.forEach((key, value) {
-          print('  $key: $value');
+          if (kDebugMode) {
+            print('  $key: $value');
+          }
         });
       }
       

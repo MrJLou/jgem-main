@@ -389,17 +389,24 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     final TimeOfDay? picked = await showDialog<TimeOfDay>(
       context: context,
       builder: (context) {
-        final relevantAppointments = (widget.existingAppointments ?? [])
-            .where((appt) =>
-                appt.doctorId == _selectedDoctor!.id &&
-                DateUtils.isSameDay(appt.date, _selectedDate))
-            .toList();
+        final relevantAppointments = _isLaboratoryOnly 
+            ? <Appointment>[] // No conflicts for lab-only appointments
+            : (widget.existingAppointments ?? [])
+                .where((appt) =>
+                    appt.doctorId == _selectedDoctor!.id &&
+                    DateUtils.isSameDay(appt.date, _selectedDate))
+                .toList();
 
-        debugPrint(
-            'AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
-        for (final appt in relevantAppointments) {
+        if (_selectedDoctor != null) {
           debugPrint(
-              '  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
+              'AddAppointmentScreen: Found ${relevantAppointments.length} existing appointments for doctor ${_selectedDoctor!.id} on ${_selectedDate.toString().split(' ')[0]}');
+          for (final appt in relevantAppointments) {
+            debugPrint(
+                '  - Appointment ${appt.id}: ${appt.time.format(context)} - Status: "${appt.status}" (${appt.status.toLowerCase().trim() == 'cancelled' ? 'FILTERED OUT' : 'BLOCKING SLOT'})');
+          }
+        } else {
+          debugPrint(
+              'AddAppointmentScreen: Laboratory-only appointment - no doctor conflicts to check');
         }
 
         return AlertDialog(
@@ -413,7 +420,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                   runSpacing: 8.0,
                   alignment: WrapAlignment.center,
                   children: timeSlots.map((time) {
-                    final isBooked = (widget.existingAppointments ?? []).any(
+                    final isBooked = _selectedDoctor != null && (widget.existingAppointments ?? []).any(
                         (bookedTime) =>
                             bookedTime.doctorId == _selectedDoctor!.id &&
                             DateUtils.isSameDay(

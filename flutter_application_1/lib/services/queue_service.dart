@@ -11,7 +11,7 @@ import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
-import 'real_time_sync_service.dart';
+import 'enhanced_real_time_sync_service.dart';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -25,10 +25,7 @@ class QueueService {
       String operation, Map<String, dynamic> data) async {
     try {
       // Use static method to trigger queue updates
-      await RealTimeSyncService.sendPatientQueueUpdate({
-        'operation': operation,
-        'data': data,
-      });
+      EnhancedRealTimeSyncService.broadcastDatabaseChange('queue', operation, data);
     } catch (e) {
       debugPrint('Error notifying queue change: $e');
       // Don't fail the main operation if real-time sync fails
