@@ -11,6 +11,7 @@ import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
+import 'real_time_sync_service.dart';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -18,6 +19,21 @@ class QueueService {
   QueueService._internal();
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
+
+  // Helper method to notify real-time sync service of queue changes
+  Future<void> _notifyQueueChange(
+      String operation, Map<String, dynamic> data) async {
+    try {
+      // Use static method to trigger queue updates
+      await RealTimeSyncService.sendPatientQueueUpdate({
+        'operation': operation,
+        'data': data,
+      });
+    } catch (e) {
+      debugPrint('Error notifying queue change: $e');
+      // Don't fail the main operation if real-time sync fails
+    }
+  }
 
   /// Get current active queue items from the database.
   /// By default, fetches 'waiting' and 'in_consultation' statuses.
@@ -93,7 +109,11 @@ class QueueService {
     try {
       // The DatabaseHelper.addToActiveQueue method already handles the DB insertion.
       // It returns the item, so we assume success if no exception.
-      await _dbHelper.addToActiveQueue(queueItem);
+      final addedItem = await _dbHelper.addToActiveQueue(queueItem);
+
+      // Send real-time sync update
+      await _notifyQueueChange('queue_added', addedItem.toJson());
+
       if (kDebugMode) {
         print(
             'QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
@@ -137,20 +157,25 @@ class QueueService {
         item.copyWith(status: 'removed', removedAt: DateTime.now());
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
 
-    if (result > 0 && updatedItem.originalAppointmentId != null) {
-      try {
-        await ApiService.updateAppointmentStatus(
-            updatedItem.originalAppointmentId!, 'Cancelled');
-        if (kDebugMode) {
-          print(
-              'QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+    if (result > 0) {
+      // Send real-time sync update
+      await _notifyQueueChange('queue_removed', updatedItem.toJson());
+
+      if (updatedItem.originalAppointmentId != null) {
+        try {
+          await ApiService.updateAppointmentStatus(
+              updatedItem.originalAppointmentId!, 'Cancelled');
+          if (kDebugMode) {
+            print(
+                'QueueService: Original appointment ${updatedItem.originalAppointmentId} status updated to Cancelled due to queue removal.');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print(
+                'QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
+          }
+          // Decide if this error should affect the return value of removeFromQueue
         }
-      } catch (e) {
-        if (kDebugMode) {
-          print(
-              'QueueService: Error updating original appointment ${updatedItem.originalAppointmentId} to Cancelled: $e');
-        }
-        // Decide if this error should affect the return value of removeFromQueue
       }
     }
     return result > 0;
@@ -279,6 +304,9 @@ class QueueService {
           print(
               'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
         }
+
+        // Send real-time sync update
+        await _notifyQueueChange('queue_updated', updatedItem.toJson());
 
         // If the new status is 'served', create a medical record for history.
         if (newStatus.toLowerCase() == 'served') {
@@ -449,6 +477,39 @@ class QueueService {
     return await updatePatientStatusInQueue(queueEntryId, 'done');
   }
 
+  // Helper methods
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    if (duration.inHours > 0) {
+      return "${duration.inHours}h ${twoDigitMinutes}m";
+    } else {
+      return "${twoDigitMinutes}m";
+    }
+  }
+
+  String _findPeakHour(List<DateTime> arrivalTimes) {
+    if (arrivalTimes.isEmpty) return "N/A";
+    Map<int, int> hourCounts = {};
+    for (var time in arrivalTimes) {
+      hourCounts.update(time.hour, (value) => value + 1, ifAbsent: () => 1);
+    }
+    if (hourCounts.isEmpty) return "N/A";
+    int peakHour =
+        hourCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+    String amPmPeak = DateFormat('ha').format(DateTime(2000, 1, 1, peakHour));
+    String amPmNext =
+        DateFormat('ha').format(DateTime(2000, 1, 1, peakHour + 1));
+    return "$amPmPeak - $amPmNext";
+  }
+
+  // Helper function to check if two DateTime objects represent the same day.
+  bool isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
   /// Generate daily queue report from the active queue data for a specific date.
   /// The report will reflect the state of the queue *at the time of generation* for that day.
   /// Enhanced to include appointment data for more comprehensive reporting.
@@ -567,31 +628,6 @@ class QueueService {
           .toList(), // Full appointment data for the day
     };
     return report;
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
-    if (duration.inHours > 0) {
-      return "${duration.inHours}h ${twoDigitMinutes}m";
-    } else {
-      return "${twoDigitMinutes}m";
-    }
-  }
-
-  String _findPeakHour(List<DateTime> arrivalTimes) {
-    if (arrivalTimes.isEmpty) return "N/A";
-    Map<int, int> hourCounts = {};
-    for (var time in arrivalTimes) {
-      hourCounts.update(time.hour, (value) => value + 1, ifAbsent: () => 1);
-    }
-    if (hourCounts.isEmpty) return "N/A";
-    int peakHour =
-        hourCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key;
-    String amPmPeak = DateFormat('ha').format(DateTime(2000, 1, 1, peakHour));
-    String amPmNext =
-        DateFormat('ha').format(DateTime(2000, 1, 1, peakHour + 1));
-    return "$amPmPeak - $amPmNext";
   }
 
   /// Save daily report to database (this uses the patient_queue table for historical reports).
@@ -811,7 +847,8 @@ class QueueService {
             'id': recordId,
             'patientId': item.patientId,
             'appointmentId': item.originalAppointmentId,
-            'selectedServices': jsonEncode(item.selectedServices), // Store all services as a JSON string
+            'selectedServices': jsonEncode(
+                item.selectedServices), // Store all services as a JSON string
             'recordType': recordType,
             'recordDate': now.toIso8601String(),
             'diagnosis': 'See consultation details.',
@@ -861,13 +898,6 @@ class QueueService {
       return true;
     }
     return false;
-  }
-
-  // Helper function to check if two DateTime objects represent the same day.
-  bool isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
   }
 
   Future<void> _createMedicalRecordForServedPatient(

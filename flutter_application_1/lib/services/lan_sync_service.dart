@@ -23,14 +23,24 @@ class LanSyncService {
   static HttpServer? _server;
   static DatabaseHelper? _dbHelper;
   static String? _dbPath;
-  static Directory? _watchDir;
-  static StreamSubscription? _dirWatcher;
   static String? _accessCode; // For basic authentication
   static List<String> _allowedIpRanges = [];
+
+  // WebSocket connections for real-time sync
+  static final Map<String, WebSocket> _activeWebSockets = {};
+  static final StreamController<Map<String, dynamic>> _syncUpdates =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  // Stream for real-time updates
+  static Stream<Map<String, dynamic>> get syncUpdates => _syncUpdates.stream;
+
   // Initialize the service
   static Future<void> initialize(DatabaseHelper dbHelper) async {
     try {
       _dbHelper = dbHelper;
+
+      // Register database change callback for real-time sync
+      DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChangeCallback);
 
       // Get saved settings with error handling
       SharedPreferences? prefs;
@@ -248,7 +258,6 @@ class LanSyncService {
 
       // Path for the shared database
       _dbPath = join(targetDir.path, 'patient_management_shared.db');
-      _watchDir = targetDir;
 
       // Copy current database to shared location with error handling
       try {
@@ -461,9 +470,13 @@ class LanSyncService {
           } else if (method == 'GET' && path == '/db') {
             await _handleDatabaseRequest(request);
           } else if (method == 'POST' && path == '/sync') {
-            await _handleSyncRequest(request);
+            await _handleSyncRequestHTTP(request);
           } else if (method == 'GET' && path == '/changes') {
             await _handleChangesRequest(request);
+          } else if (method == 'GET' && path == '/documents') {
+            await _handleDocumentsRequest(request);
+          } else if (method == 'POST' && path == '/documents/sync') {
+            await _handleDocumentSyncRequest(request);
           } else if (method == 'GET' && path == '/status') {
             await _handleStatusRequest(request);
           } else {
@@ -543,9 +556,18 @@ class LanSyncService {
   /// Handle WebSocket upgrade for real-time session updates
   static Future<void> _handleWebSocketUpgrade(HttpRequest request) async {
     final deviceId = request.uri.queryParameters['deviceId'];
+    final accessCode = request.uri.queryParameters['access_code'];
+
     if (deviceId == null) {
       request.response.statusCode = HttpStatus.badRequest;
       request.response.write('Device ID required');
+      await request.response.close();
+      return;
+    }
+
+    if (accessCode != _accessCode) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.write('Invalid access code');
       await request.response.close();
       return;
     }
@@ -554,16 +576,25 @@ class LanSyncService {
       final socket = await WebSocketTransformer.upgrade(request);
       debugPrint('WebSocket connection established for device: $deviceId');
 
+      // Store the WebSocket connection for broadcasting
+      _activeWebSockets[deviceId] = socket;
+
+      // Send initial data to the newly connected device
+      _sendInitialSyncData(socket, deviceId);
+
       // Handle WebSocket messages for real-time updates
       socket.listen(
         (message) {
           debugPrint('WebSocket message from $deviceId: $message');
+          _handleWebSocketMessage(deviceId, message, socket);
         },
         onDone: () {
           debugPrint('WebSocket connection closed for device: $deviceId');
+          _activeWebSockets.remove(deviceId);
         },
         onError: (error) {
           debugPrint('WebSocket error for device $deviceId: $error');
+          _activeWebSockets.remove(deviceId);
         },
       );
     } catch (e) {
@@ -574,9 +605,500 @@ class LanSyncService {
     }
   }
 
-  /// Handle database access request
+  /// Send initial synchronization data to newly connected device
+  static void _sendInitialSyncData(WebSocket socket, String deviceId) {
+    try {
+      final initialData = {
+        'type': 'initial_sync',
+        'timestamp': DateTime.now().toIso8601String(),
+        'message': 'Connected to LAN sync server',
+        'server_info': {
+          'access_code': _accessCode,
+          'session_server_running': LanSessionService.isServerRunning,
+          'active_sessions': LanSessionService.activeSessions.length,
+        }
+      };
+
+      socket.add(jsonEncode(initialData));
+      debugPrint('Sent initial sync data to device: $deviceId');
+    } catch (e) {
+      debugPrint('Error sending initial sync data to $deviceId: $e');
+    }
+  }
+
+  /// Handle incoming WebSocket messages
+  static void _handleWebSocketMessage(
+      String deviceId, dynamic message, WebSocket socket) {
+    try {
+      final data = jsonDecode(message) as Map<String, dynamic>;
+      final type = data['type'] as String?;
+
+      switch (type) {
+        case 'sync_request':
+          _handleSyncRequest(deviceId, data, socket);
+          break;
+        case 'database_change':
+          _handleDatabaseChangeNotification(deviceId, data, socket);
+          break;
+        case 'document_change':
+          _handleDocumentChangeNotification(deviceId, data, socket);
+          break;
+        case 'session_update':
+          _handleSessionUpdateMessage(deviceId, data, socket);
+          break;
+        case 'heartbeat':
+          _handleHeartbeat(deviceId, socket);
+          break;
+        case 'queue_update':
+          _handleQueueUpdate(deviceId, data, socket);
+          break;
+        default:
+          debugPrint('Unknown WebSocket message type from $deviceId: $type');
+      }
+    } catch (e) {
+      debugPrint('Error handling WebSocket message from $deviceId: $e');
+    }
+  }
+
+  /// Handle sync request from client
+  static void _handleSyncRequest(
+      String deviceId, Map<String, dynamic> data, WebSocket socket) {
+    try {
+      // Broadcast to all connected devices that a sync was requested
+      _broadcastToClients({
+        'type': 'sync_requested',
+        'source_device': deviceId,
+        'timestamp': DateTime.now().toIso8601String(),
+      }, excludeDevice: deviceId);
+
+      // Send acknowledgment
+      socket.add(jsonEncode({
+        'type': 'sync_response',
+        'status': 'acknowledged',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+    } catch (e) {
+      debugPrint('Error handling sync request from $deviceId: $e');
+    }
+  }
+
+  /// Handle database change notifications
+  static void _handleDatabaseChangeNotification(
+      String deviceId, Map<String, dynamic> data, WebSocket socket) {
+    try {
+      // Add source device info
+      data['source_device'] = deviceId;
+      data['server_timestamp'] = DateTime.now().toIso8601String();
+
+      // Broadcast to all other connected devices
+      _broadcastToClients(data, excludeDevice: deviceId);
+
+      // Emit to local stream
+      _syncUpdates.add(data);
+
+      debugPrint(
+          'Handled database change notification from $deviceId: ${data['table']} - ${data['operation']}');
+    } catch (e) {
+      debugPrint('Error handling database change from $deviceId: $e');
+    }
+  }
+
+  /// Handle document change notifications
+  static void _handleDocumentChangeNotification(
+      String deviceId, Map<String, dynamic> data, WebSocket socket) {
+    try {
+      // Add source device info
+      data['source_device'] = deviceId;
+      data['server_timestamp'] = DateTime.now().toIso8601String();
+
+      // Broadcast to all other connected devices
+      _broadcastToClients(data, excludeDevice: deviceId);
+
+      // Emit to local stream
+      _syncUpdates.add(data);
+
+      final documentType = data['documentType'] ?? 'unknown';
+      final operation = data['operation'] ?? 'unknown';
+      debugPrint(
+          'Handled document change notification from $deviceId: $documentType - $operation');
+    } catch (e) {
+      debugPrint('Error handling document change from $deviceId: $e');
+    }
+  }
+
+  /// Handle session update messages
+  static void _handleSessionUpdateMessage(
+      String deviceId, Map<String, dynamic> data, WebSocket socket) {
+    try {
+      // Broadcast session updates to all devices
+      _broadcastToClients({
+        'type': 'session_update',
+        'source_device': deviceId,
+        'data': data,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+
+      debugPrint('Handled session update from $deviceId');
+    } catch (e) {
+      debugPrint('Error handling session update from $deviceId: $e');
+    }
+  }
+
+  /// Handle heartbeat messages
+  static void _handleHeartbeat(String deviceId, WebSocket socket) {
+    try {
+      socket.add(jsonEncode({
+        'type': 'heartbeat_response',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+    } catch (e) {
+      debugPrint('Error handling heartbeat from $deviceId: $e');
+    }
+  }
+
+  /// Handle queue update messages
+  static void _handleQueueUpdate(
+      String deviceId, Map<String, dynamic> data, WebSocket socket) {
+    try {
+      // Add source device info
+      data['source_device'] = deviceId;
+      data['server_timestamp'] = DateTime.now().toIso8601String();
+
+      // Broadcast to all other connected devices
+      _broadcastToClients({
+        'type': 'queue_update',
+        'data': data,
+        'timestamp': DateTime.now().toIso8601String(),
+      }, excludeDevice: deviceId);
+
+      // Emit to local stream
+      _syncUpdates.add({
+        'type': 'queue_update',
+        'data': data,
+      });
+
+      debugPrint('Handled queue update from $deviceId');
+    } catch (e) {
+      debugPrint('Error handling queue update from $deviceId: $e');
+    }
+  }
+
+  /// Broadcast message to all connected WebSocket clients
+  static void _broadcastToClients(Map<String, dynamic> message,
+      {String? excludeDevice}) {
+    final messageJson = jsonEncode(message);
+
+    for (final entry in _activeWebSockets.entries) {
+      if (excludeDevice != null && entry.key == excludeDevice) continue;
+
+      try {
+        entry.value.add(messageJson);
+      } catch (e) {
+        debugPrint('Error broadcasting to device ${entry.key}: $e');
+        // Remove dead connection
+        _activeWebSockets.remove(entry.key);
+      }
+    }
+  }
+
+  /// Notify clients of database changes
+  static Future<void> notifyDatabaseChange(
+      String table, String operation, String recordId,
+      {Map<String, dynamic>? data}) async {
+    if (_activeWebSockets.isEmpty) return;
+
+    final changeNotification = {
+      'type': 'database_change',
+      'table': table,
+      'operation': operation,
+      'record_id': recordId,
+      'data': data,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _broadcastToClients(changeNotification);
+    _syncUpdates.add(changeNotification);
+  }
+
+  /// Notify clients of session changes
+  static Future<void> notifySessionChange(
+      String type, Map<String, dynamic> sessionData) async {
+    if (_activeWebSockets.isEmpty && !LanSessionService.isServerRunning) return;
+
+    final sessionNotification = {
+      'type': 'session_change',
+      'session_type': type,
+      'data': sessionData,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _broadcastToClients(sessionNotification);
+    _syncUpdates.add(sessionNotification);
+  }
+
+  /// Stop the LAN server
+  static Future<void> stopLanServer() async {
+    try {
+      // Close all WebSocket connections
+      for (final socket in _activeWebSockets.values) {
+        try {
+          await socket.close();
+        } catch (e) {
+          debugPrint('Error closing WebSocket: $e');
+        }
+      }
+      _activeWebSockets.clear();
+
+      // Stop the server
+      if (_server != null) {
+        await _server!.close(force: true);
+        _server = null;
+      }
+
+      // Cancel the watchdog timer
+      _watchdogTimer?.cancel();
+      _watchdogTimer = null;
+
+      // Update settings
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_lanServerEnabledKey, false);
+
+      debugPrint('LAN server stopped');
+    } catch (e) {
+      debugPrint('Error stopping LAN server: $e');
+    }
+  }
+
+  /// Handle session creation requests
+  static Future<void> _handleCreateSession(HttpRequest request) async {
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+
+      final username = data['username'] as String?;
+      final deviceId = data['deviceId'] as String?;
+      final deviceName = data['deviceName'] as String?;
+      final accessLevel = data['accessLevel'] as String?;
+
+      if (username == null ||
+          deviceId == null ||
+          deviceName == null ||
+          accessLevel == null) {
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write('Missing required fields');
+        await request.response.close();
+        return;
+      }
+
+      // Use LanSessionService to create session
+      final session = await LanSessionService.registerUserSession(
+        username: username,
+        deviceId: deviceId,
+        deviceName: deviceName,
+        accessLevel: accessLevel,
+        ipAddress: request.connectionInfo?.remoteAddress.address,
+      );
+
+      if (session != null) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({
+          'success': true,
+          'session': session.toMap(),
+        }));
+      } else {
+        request.response.statusCode = HttpStatus.internalServerError;
+        request.response.write('Failed to create session');
+      }
+    } catch (e) {
+      debugPrint('Error handling create session: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Handle session validation requests
+  static Future<void> _handleValidateSession(HttpRequest request) async {
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+
+      final sessionId = data['sessionId'] as String?;
+      final token = data['token'] as String?;
+
+      if (sessionId == null || token == null) {
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write('Missing sessionId or token');
+        await request.response.close();
+        return;
+      }
+
+      final session = LanSessionService.validateSession(sessionId, token);
+
+      if (session != null) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({
+          'valid': true,
+          'session': session.toMap(),
+        }));
+      } else {
+        request.response.statusCode = HttpStatus.unauthorized;
+        request.response.write('Invalid session');
+      }
+    } catch (e) {
+      debugPrint('Error handling validate session: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Handle get sessions requests
+  static Future<void> _handleGetSessions(HttpRequest request) async {
+    try {
+      final sessions = LanSessionService.activeSessions.values
+          .map((session) => session.toMap())
+          .toList();
+
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({
+        'sessions': sessions,
+      }));
+    } catch (e) {
+      debugPrint('Error handling get sessions: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Handle session activity update requests
+  static Future<void> _handleUpdateActivity(HttpRequest request) async {
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+
+      final sessionId = data['sessionId'] as String?;
+
+      if (sessionId == null) {
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write('Missing sessionId');
+        await request.response.close();
+        return;
+      }
+
+      await LanSessionService.updateSessionActivity(sessionId);
+
+      request.response.statusCode = HttpStatus.ok;
+      request.response.write('Activity updated');
+    } catch (e) {
+      debugPrint('Error handling update activity: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Handle end session requests
+  static Future<void> _handleEndSession(
+      HttpRequest request, String sessionId) async {
+    try {
+      final success = await LanSessionService.endUserSession(sessionId);
+
+      if (success) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.write('Session ended');
+      } else {
+        request.response.statusCode = HttpStatus.notFound;
+        request.response.write('Session not found');
+      }
+    } catch (e) {
+      debugPrint('Error handling end session: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Database change callback - triggers real-time sync notifications
+  static Future<void> _onDatabaseChangeCallback(String table, String operation,
+      String recordId, Map<String, dynamic>? data) async {
+    try {
+      // Immediate notification for real-time sync (< 1 second delay)
+      await notifyDatabaseChange(table, operation, recordId, data: data);
+      
+      // Special handling for document changes with immediate broadcast
+      if (table == 'generated_documents' && data != null) {
+        await notifyDocumentChange(
+          data['documentType'] ?? 'unknown',
+          recordId,
+          operation,
+          documentData: data,
+        );
+        
+        // Additional immediate notification for critical document operations
+        if (operation == 'insert' && _activeWebSockets.isNotEmpty) {
+          final urgentNotification = {
+            'type': 'urgent_document_sync',
+            'documentType': data['documentType'],
+            'documentId': recordId,
+            'operation': operation,
+            'priority': 'high',
+            'timestamp': DateTime.now().toIso8601String(),
+          };
+          _broadcastToClients(urgentNotification);
+          debugPrint('Sent urgent document sync notification for $recordId');
+        }
+      }
+      
+      // Immediate broadcast for critical table changes
+      final criticalTables = [
+        'patient_bills',
+        'payments', 
+        'active_patient_queue',
+        'generated_documents'
+      ];
+      
+      if (criticalTables.contains(table) && _activeWebSockets.isNotEmpty) {
+        final urgentNotification = {
+          'type': 'urgent_sync',
+          'table': table,
+          'operation': operation,
+          'record_id': recordId,
+          'priority': 'high',
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+        _broadcastToClients(urgentNotification);
+        debugPrint('Sent urgent sync notification for $table:$recordId');
+      }
+      
+    } catch (e) {
+      debugPrint('Error in database change callback: $e');
+    }
+  }
+
+  /// Start file change monitoring (placeholder)
+  static Future<void> _startFileChangeMonitoring() async {
+    // File change monitoring implementation
+    debugPrint('File change monitoring started');
+  }
+
+  /// Start server watchdog
+  static void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      if (_server == null) {
+        debugPrint('Watchdog: Server not running, restarting...');
+        // Could restart server here if needed
+      }
+    });
+  }
+
+  /// Handle database access requests
   static Future<void> _handleDatabaseRequest(HttpRequest request) async {
-    // Require authentication for database access
     if (!_validateAuth(request)) {
       request.response.statusCode = HttpStatus.unauthorized;
       request.response.headers.add('WWW-Authenticate', 'Bearer');
@@ -585,23 +1107,31 @@ class LanSyncService {
       return;
     }
 
-    // Serve the database file for direct access
-    final dbFile = File(_dbPath!);
-    if (await dbFile.exists()) {
+    try {
+      if (_dbPath == null || !File(_dbPath!).existsSync()) {
+        request.response.statusCode = HttpStatus.notFound;
+        request.response.write('Database file not found');
+        await request.response.close();
+        return;
+      }
+
+      final dbFile = File(_dbPath!);
       request.response.headers.contentType =
           ContentType('application', 'octet-stream');
-      request.response.headers.add('Content-Disposition',
-          'attachment; filename="patient_management.db"');
+      request.response.headers
+          .add('Content-Disposition', 'attachment; filename="database.db"');
+
       await dbFile.openRead().pipe(request.response);
-    } else {
-      request.response.statusCode = HttpStatus.notFound;
-      request.response.write('Database file not found');
+    } catch (e) {
+      debugPrint('Error handling database request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error accessing database');
       await request.response.close();
     }
   }
 
-  /// Handle sync request
-  static Future<void> _handleSyncRequest(HttpRequest request) async {
+  /// Handle HTTP sync requests
+  static Future<void> _handleSyncRequestHTTP(HttpRequest request) async {
     if (!_validateAuth(request)) {
       request.response.statusCode = HttpStatus.unauthorized;
       request.response.headers.add('WWW-Authenticate', 'Bearer');
@@ -610,16 +1140,19 @@ class LanSyncService {
       return;
     }
 
-    final content = await utf8.decoder.bind(request).join();
-    final syncData = jsonDecode(content);
-
-    request.response.headers.contentType = ContentType('application', 'json');
-    request.response.write(jsonEncode({
-      'status': 'success',
-      'message': 'Sync request received',
-      'dataReceived': syncData.keys.toList(),
-      'timestamp': DateTime.now().toIso8601String(),
-    }));
+    try {
+      final success = await syncNow();
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({
+        'success': success,
+        'message': success ? 'Sync completed' : 'Sync failed',
+      }));
+    } catch (e) {
+      debugPrint('Error handling sync request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Sync error: $e');
+    }
     await request.response.close();
   }
 
@@ -633,275 +1166,157 @@ class LanSyncService {
       return;
     }
 
-    final pendingChanges = await _dbHelper!.getPendingChanges();
-    request.response.headers.contentType = ContentType('application', 'json');
-    request.response.write(jsonEncode({
-      'changes': pendingChanges,
-      'timestamp': DateTime.now().toIso8601String(),
-    }));
+    try {
+      final pendingChanges = await getPendingChanges();
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({
+        'pendingChanges': pendingChanges,
+      }));
+    } catch (e) {
+      debugPrint('Error handling changes request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Error: $e');
+    }
     await request.response.close();
   }
 
   /// Handle status request
   static Future<void> _handleStatusRequest(HttpRequest request) async {
-    request.response.headers.contentType = ContentType('application', 'json');
-    final pendingChanges = await _dbHelper!.getPendingChanges();
-    final activeSessions = LanSessionService.activeSessions;
-
-    final status = {
-      'status': 'online',
-      'dbPath': _dbPath,
-      'pendingChanges': pendingChanges.length,
-      'allowedNetworks': _allowedIpRanges.map((prefix) => '$prefix.*').toList(),
-      'timestamp': DateTime.now().toIso8601String(),
-      'sessionToken': LanSessionService.getServerToken(),
-      'activeSessions': activeSessions.length,
-      'sessionUsers': activeSessions.values.map((s) => s.username).toList(),
-      'integratedSessionManagement': true, // Indicate sessions are integrated
-    };
-
-    request.response.write(jsonEncode(status));
-    await request.response.close();
-  }
-
-  // Session management endpoint handlers
-  static Future<void> _handleCreateSession(HttpRequest request) async {
-    final body = await utf8.decoder.bind(request).join();
-    final data = jsonDecode(body) as Map<String, dynamic>;
-
     try {
-      final session = await LanSessionService.registerUserSession(
-        username: data['username'],
-        deviceId: data['deviceId'],
-        deviceName: data['deviceName'],
-        accessLevel: data['accessLevel'],
-        ipAddress: request.connectionInfo?.remoteAddress.address,
-      );
-
+      final info = await getConnectionInfo();
+      request.response.statusCode = HttpStatus.ok;
       request.response.headers.contentType = ContentType.json;
       request.response.write(jsonEncode({
-        'success': true,
-        'session': session?.toMap(),
+        'status': 'running',
+        'info': info,
       }));
     } catch (e) {
-      request.response.statusCode = HttpStatus.conflict;
-      request.response.write(jsonEncode({
-        'success': false,
-        'error': e.toString(),
-      }));
+      debugPrint('Error handling status request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Status error: $e');
     }
-
     await request.response.close();
   }
 
-  static Future<void> _handleValidateSession(HttpRequest request) async {
-    final body = await utf8.decoder.bind(request).join();
-    final data = jsonDecode(body) as Map<String, dynamic>;
-
-    final session =
-        LanSessionService.validateSession(data['sessionId'], data['token']);
-
-    request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode({
-      'valid': session != null,
-      'session': session?.toMap(),
-    }));
-    await request.response.close();
-  }
-
-  static Future<void> _handleGetSessions(HttpRequest request) async {
-    final sessions =
-        LanSessionService.activeSessions.values.map((s) => s.toMap()).toList();
-
-    request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode({
-      'sessions': sessions,
-      'count': sessions.length,
-      'timestamp': DateTime.now().toIso8601String(),
-    }));
-    await request.response.close();
-  }
-
-  static Future<void> _handleUpdateActivity(HttpRequest request) async {
-    final body = await utf8.decoder.bind(request).join();
-    final data = jsonDecode(body) as Map<String, dynamic>;
-
-    await LanSessionService.updateSessionActivity(data['sessionId']);
-
-    request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode({'success': true}));
-    await request.response.close();
-  }
-
-  static Future<void> _handleEndSession(
-      HttpRequest request, String sessionId) async {
-    final success = await LanSessionService.endUserSession(sessionId);
-
-    request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode({'success': success}));
-    await request.response.close();
-  }
-
-  // Regenerate access code
+  /// Regenerate access code for LAN server
   static Future<String> regenerateAccessCode() async {
-    final newCode = _generateAccessCode();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_accessCodeKey, newCode);
-    _accessCode = newCode;
-    return newCode;
-  }
-
-  // Stop LAN server
-  static Future<void> stopLanServer() async {
     try {
-      await _server?.close(force: true);
-      _server = null;
+      _accessCode = _generateAccessCode();
 
-      _watchdogTimer?.cancel();
-      _watchdogTimer = null;
-
-      // Save setting
+      // Save to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_lanServerEnabledKey, false);
+      await prefs.setString(_accessCodeKey, _accessCode!);
 
-      debugPrint('LAN server stopped');
+      debugPrint('Access code regenerated: $_accessCode');
+      return _accessCode!;
     } catch (e) {
-      debugPrint('Error stopping LAN server: $e');
+      debugPrint('Error regenerating access code: $e');
+      throw Exception('Failed to regenerate access code: $e');
     }
   }
 
-  // Start watchdog timer
-  static void _startWatchdog() {
-    _watchdogTimer?.cancel();
-
-    _watchdogTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-      if (_server == null) {
-        debugPrint('Watchdog detected server is down, restarting...');
-
-        final prefs = await SharedPreferences.getInstance();
-        final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
-
-        await startLanServer(port: port);
-      }
-    });
-  }
-
-  // Monitor for file changes
-  static Future<void> _startFileChangeMonitoring() async {
-    try {
-      if (_watchDir == null) return;
-
-      // Cancel existing watcher if any
-      await _dirWatcher?.cancel();
-
-      // Watch for changes in the directory
-      _dirWatcher = _watchDir!.watch(recursive: false).listen((event) {
-        final path = event.path;
-
-        // If our database file was modified externally
-        if (path.endsWith('patient_management.db')) {
-          debugPrint('Database file modified externally at ${DateTime.now()}');
-          // No need to do anything special here as SQLite handles this automatically
-          // with its built-in concurrency control
-        }
-      });
-
-      debugPrint('File change monitoring started for: ${_watchDir!.path}');
-    } catch (e) {
-      debugPrint('Error setting up file monitoring: $e');
-    }
-  }
-
-  // Get network information for connecting
-  static Future<Map<String, dynamic>> getConnectionInfo() async {
+  /// Get database browser instructions
+  static Future<Map<String, dynamic>> getDbBrowserInstructions() async {
     try {
       final interfaces = await NetworkInterface.list();
-      final ipAddresses = <String>[];
-      final allIpAddresses = <String>[]; // For debugging
+      final List<String> ipAddresses = [];
 
-      for (var interface in interfaces) {
-        for (var addr in interface.addresses) {
-          if (addr.type == InternetAddressType.IPv4) {
-            allIpAddresses.add('${addr.address} (${interface.name})');
-            // More inclusive LAN IP detection
-            if (_isValidLanIp(addr.address)) {
-              ipAddresses.add(addr.address);
-            }
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            ipAddresses.add(addr.address);
           }
         }
       }
-
-      // If no LAN IPs found, add all non-loopback IPv4 addresses
-      if (ipAddresses.isEmpty) {
-        for (var interface in interfaces) {
-          for (var addr in interface.addresses) {
-            if (addr.type == InternetAddressType.IPv4 &&
-                !addr.isLoopback &&
-                addr.address != '0.0.0.0') {
-              ipAddresses.add(addr.address);
-            }
-          }
-        }
-      }
-
-      debugPrint('All network interfaces: $allIpAddresses');
-      debugPrint('Selected LAN IPs: $ipAddresses');
 
       final prefs = await SharedPreferences.getInstance();
-      final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
-      final lanServerEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
+      final serverPort = prefs.getInt(_serverPortKey) ?? _defaultPort;
 
       return {
+        'accessCode': _accessCode ?? 'Not generated',
+        'serverPort': serverPort,
+        'ipAddresses': ipAddresses,
+        'dbEndpoint': '/db',
+        'statusEndpoint': '/status',
+        'syncEndpoint': '/sync',
+        'instructions': [
+          '1. Connect to the same WiFi/LAN network as this device',
+          '2. Use any of the IP addresses listed above',
+          '3. Access the database via: http://[IP]:$serverPort/db',
+          '4. Include Authorization header: Bearer ${_accessCode ?? '[ACCESS_CODE]'}',
+          '5. Check server status: http://[IP]:$serverPort/status',
+        ],
+        'curlExample':
+            'curl -H "Authorization: Bearer ${_accessCode ?? '[ACCESS_CODE]'}" http://[IP]:$serverPort/db',
+      };
+    } catch (e) {
+      debugPrint('Error getting DB browser instructions: $e');
+      return {
+        'error': 'Failed to get instructions: $e',
+        'accessCode': _accessCode ?? 'Not available',
+        'serverPort': _defaultPort,
+        'ipAddresses': <String>[],
+        'instructions': ['Error retrieving network information'],
+      };
+    }
+  }
+
+  /// Get access code for display
+  static String? getAccessCode() {
+    return _accessCode;
+  }
+
+  /// Get connection information for UI display
+  static Future<Map<String, dynamic>> getConnectionInfo() async {
+    try {
+      // Get network interfaces for IP addresses
+      final List<String> ipAddresses = [];
+      try {
+        final interfaces = await NetworkInterface.list();
+        for (final interface in interfaces) {
+          for (final addr in interface.addresses) {
+            if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+              ipAddresses.add(addr.address);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Failed to get network interfaces: $e');
+      }
+
+      // Get settings from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final lanServerEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
+      final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
+
+      return {
+        'lanServerEnabled': lanServerEnabled,
+        'accessCode': _accessCode ?? 'Not generated',
         'ipAddresses': ipAddresses,
         'port': port,
-        'lanServerEnabled': lanServerEnabled,
-        'dbPath': _dbPath,
-        'connectionUrls':
-            ipAddresses.map((ip) => 'http://$ip:$port/db').toList(),
-        'statusUrl': ipAddresses.isNotEmpty
-            ? 'http://${ipAddresses.first}:$port/status'
-            : null,
-        'accessCode': _accessCode,
-        'allowedNetworks':
-            _allowedIpRanges.map((prefix) => '$prefix.*').toList(),
+        'dbPath': _dbPath ?? 'Not available',
+        'allowedNetworks': _allowedIpRanges,
+        'serverRunning': _server != null,
       };
     } catch (e) {
       debugPrint('Error getting connection info: $e');
       return {
-        'error': e.toString(),
+        'lanServerEnabled': false,
+        'accessCode': 'Error',
+        'ipAddresses': <String>[],
+        'port': _defaultPort,
+        'dbPath': 'Error',
+        'allowedNetworks': <String>[],
+        'serverRunning': false,
       };
     }
   }
 
-  // More comprehensive LAN IP validation
-  static bool _isValidLanIp(String ip) {
-    // Check for private network ranges
-    if (ip.startsWith('192.168.') ||
-        ip.startsWith('10.') ||
-        ip.startsWith('127.0.0.1')) {
-      return true;
-    }
-
-    // Check for 172.16.0.0 to 172.31.255.255 range
-    if (ip.startsWith('172.')) {
-      final parts = ip.split('.');
-      if (parts.length >= 2) {
-        final secondOctet = int.tryParse(parts[1]);
-        if (secondOctet != null && secondOctet >= 16 && secondOctet <= 31) {
-          return true;
-        }
-      }
-    }
-
-    // Check against configured ranges if available
-    return _isLanIp(ip);
-  }
-
+  /// Get pending changes count
   static Future<int> getPendingChanges() async {
     try {
-      if (_dbHelper == null) {
-        return 0;
-      }
+      if (_dbHelper == null) return 0;
       final changes = await _dbHelper!.getPendingChanges();
       return changes.length;
     } catch (e) {
@@ -910,133 +1325,218 @@ class LanSyncService {
     }
   }
 
-  // Generate instructions for DB Browser connection
-  static Future<String> getDbBrowserInstructions() async {
-    final connectionInfo = await getConnectionInfo();
-
-    final StringBuffer instructions = StringBuffer();
-    instructions.writeln('=== DB BROWSER CONNECTION INSTRUCTIONS ===\n');
-    instructions.writeln('To view the database in DB Browser for SQLite:');
-
-    if (connectionInfo['lanServerEnabled'] == true) {
-      instructions
-          .writeln('\nOption 1: Direct Network Connection (Recommended)');
-      instructions.writeln('1. Open DB Browser for SQLite');
-      instructions.writeln('2. Select "File" > "Open Database"');
-      instructions.writeln('3. In the URL field, enter one of:');
-
-      for (final url in connectionInfo['connectionUrls']) {
-        instructions.writeln('   - $url');
-      }
-
-      instructions.writeln('4. When prompted for authentication:');
-      instructions.writeln(
-          '   - Use "Bearer ${connectionInfo['accessCode']}" as the token');
-      instructions.writeln('5. Select "Read and Write" mode');
-      instructions.writeln(
-          '6. Check "Keep updating the SQL view as the database changes"');
+  /// Handle documents list request
+  static Future<void> _handleDocumentsRequest(HttpRequest request) async {
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
     }
 
-    instructions.writeln('\nOption 2: Manual File Connection');
-    instructions.writeln('1. Find the database file at:');
-    instructions.writeln('   ${connectionInfo['dbPath']}');
-    instructions.writeln('2. Copy this file to your computer');
-    instructions.writeln('3. Open it in DB Browser for SQLite');
-    instructions.writeln('4. Note: This won\'t show live updates');
-
-    instructions.writeln('\nLAN Access Information:');
-    instructions
-        .writeln('IP Addresses: ${connectionInfo['ipAddresses'].join(', ')}');
-    instructions.writeln('Server Port: ${connectionInfo['port']}');
-    instructions.writeln(
-        'Server Status: ${connectionInfo['lanServerEnabled'] ? 'Running' : 'Stopped'}');
-    instructions.writeln('Access Code: ${connectionInfo['accessCode']}');
-    instructions.writeln(
-        'Allowed Networks: ${connectionInfo['allowedNetworks'].join(', ')}');
-
-    return instructions.toString();
-  }
-
-  // Dispose the service
-  static Future<void> dispose() async {
-    _syncTimer?.cancel();
-    _watchdogTimer?.cancel();
-    await _dirWatcher?.cancel();
-    await _server?.close(force: true);
-
-    _syncTimer = null;
-    _watchdogTimer = null;
-    _dirWatcher = null;
-    _server = null;
-  }
-
-  // Add this to your LanSyncService class
-  static Future<void> enableContinuousLocalCopy() async {
-    Timer.periodic(const Duration(seconds: 30), (_) async {
-      try {
-        final localPath = join((await getApplicationDocumentsDirectory()).path,
-            'patient_management_live.db');
-        final dbPath = await _dbHelper!.exportDatabase();
-
-        // Copy to a "live" version
-        final sourceFile = File(dbPath);
-        final targetFile = File(localPath);
-        await sourceFile.copy(targetFile.path);
-
-        debugPrint('Live copy updated: $localPath');
-      } catch (e) {
-        debugPrint('Error updating live copy: $e');
-      }
-    });
-  }
-
-  // Add periodic database copy for live sharing
-  static void _startDatabaseSync() {
-    Timer.periodic(const Duration(seconds: 10), (_) async {
-      try {
-        // Copy the main database to the shared location for live updates
-        await _copyDatabaseToSharedLocation();
-      } catch (e) {
-        debugPrint('Error in periodic database sync: $e');
-      }
-    });
-  }
-
-  // Initialize LAN sharing with better error handling
-  static Future<bool> initializeLanSharing() async {
     try {
       if (_dbHelper == null) {
-        debugPrint('Database helper not initialized');
-        return false;
+        request.response.statusCode = HttpStatus.internalServerError;
+        request.response.write('Database helper not initialized');
+        await request.response.close();
+        return;
       }
 
-      await _setupDbForSharing();
-      _startDatabaseSync();
+      // Get unsynced documents
+      final unsyncedDocuments =
+          await _dbHelper!.documentTrackingService.getUnsyncedDocuments();
 
-      // Auto-start LAN server if enabled
-      final prefs = await SharedPreferences.getInstance();
-      final lanEnabled = prefs.getBool(_lanServerEnabledKey) ?? false;
-
-      if (lanEnabled) {
-        final port = prefs.getInt(_serverPortKey) ?? _defaultPort;
-        await startLanServer(port: port);
-      }
-
-      return true;
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(jsonEncode({
+        'unsyncedDocuments': unsyncedDocuments,
+        'count': unsyncedDocuments.length,
+      }));
     } catch (e) {
-      debugPrint('Failed to initialize LAN sharing: $e');
-      return false;
+      debugPrint('Error handling documents request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Documents request error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Handle document sync request (upload/download documents)
+  static Future<void> _handleDocumentSyncRequest(HttpRequest request) async {
+    if (!_validateAuth(request)) {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.add('WWW-Authenticate', 'Bearer');
+      request.response.write('Authentication required');
+      await request.response.close();
+      return;
+    }
+
+    try {
+      if (_dbHelper == null) {
+        request.response.statusCode = HttpStatus.internalServerError;
+        request.response.write('Database helper not initialized');
+        await request.response.close();
+        return;
+      }
+
+      final body = await utf8.decoder.bind(request).join();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final syncType = data['type'] as String?;
+
+      if (syncType == 'download') {
+        // Client wants to download documents
+        final lastSyncTimestamp = data['lastSyncTimestamp'] as String?;
+
+        final documents = await _getDocumentsSince(lastSyncTimestamp);
+
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({
+          'success': true,
+          'documents': documents,
+          'syncTimestamp': DateTime.now().toIso8601String(),
+        }));
+      } else if (syncType == 'upload') {
+        // Client is uploading documents
+        final documentsData = data['documents'] as List<dynamic>?;
+
+        if (documentsData != null) {
+          await _processUploadedDocuments(documentsData);
+
+          request.response.statusCode = HttpStatus.ok;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({
+            'success': true,
+            'message': 'Documents synced successfully',
+            'processed': documentsData.length,
+          }));
+        } else {
+          request.response.statusCode = HttpStatus.badRequest;
+          request.response.write('Invalid documents data');
+        }
+      } else {
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write('Invalid sync type');
+      }
+    } catch (e) {
+      debugPrint('Error handling document sync request: $e');
+      request.response.statusCode = HttpStatus.internalServerError;
+      request.response.write('Document sync error: $e');
+    }
+    await request.response.close();
+  }
+
+  /// Get documents modified since a specific timestamp
+  static Future<List<Map<String, dynamic>>> _getDocumentsSince(
+      String? lastSyncTimestamp) async {
+    if (_dbHelper == null) return [];
+
+    try {
+      final db = await _dbHelper!.database;
+
+      String whereClause = 'synced = 0';
+      List<dynamic> whereArgs = [];
+
+      if (lastSyncTimestamp != null && lastSyncTimestamp.isNotEmpty) {
+        whereClause += ' OR generatedAt > ?';
+        whereArgs.add(lastSyncTimestamp);
+      }
+
+      final results = await db.query(
+        'generated_documents',
+        where: whereClause,
+        whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+        orderBy: 'generatedAt DESC',
+      );
+
+      return results;
+    } catch (e) {
+      debugPrint('Error getting documents since timestamp: $e');
+      return [];
     }
   }
 
-  // Add session service initialization
-  static Future<void> initializeWithSessionManagement() async {
+  /// Process uploaded documents from client devices
+  static Future<void> _processUploadedDocuments(
+      List<dynamic> documentsData) async {
+    if (_dbHelper == null) return;
+
     try {
-      await initialize(DatabaseHelper());
-      await LanSessionService.initialize();
-      debugPrint('LAN Sync Service with session management initialized');
+      final db = await _dbHelper!.database;
+
+      for (final docData in documentsData) {
+        final docMap = docData as Map<String, dynamic>;
+        final documentId = docMap['id'] as String?;
+
+        if (documentId == null) continue;
+
+        // Check if document already exists
+        final existing = await db.query(
+          'generated_documents',
+          where: 'id = ?',
+          whereArgs: [documentId],
+          limit: 1,
+        );
+
+        if (existing.isEmpty) {
+          // Insert new document
+          await db.insert('generated_documents', docMap);
+          await _dbHelper!
+              .logChange('generated_documents', documentId, 'insert', data: {
+            'documentType': docMap['documentType'],
+            'fileName': docMap['fileName'],
+            'fileSize': docMap['fileSize'],
+          });
+
+          debugPrint('Synced new document: $documentId');
+        } else {
+          // Update existing document if newer
+          final existingTimestamp = existing.first['generatedAt'] as String;
+          final newTimestamp = docMap['generatedAt'] as String;
+
+          if (newTimestamp.compareTo(existingTimestamp) > 0) {
+            await db.update(
+              'generated_documents',
+              docMap,
+              where: 'id = ?',
+              whereArgs: [documentId],
+            );
+            await _dbHelper!
+                .logChange('generated_documents', documentId, 'update', data: {
+              'documentType': docMap['documentType'],
+              'fileName': docMap['fileName'],
+              'fileSize': docMap['fileSize'],
+            });
+
+            debugPrint('Updated document: $documentId');
+          }
+        }
+      }
     } catch (e) {
-      debugPrint('Failed to initialize LAN services: $e');
+      debugPrint('Error processing uploaded documents: $e');
+      rethrow;
     }
+  }
+
+  /// Notify clients of document changes
+  static Future<void> notifyDocumentChange(
+      String documentType, String documentId, String operation,
+      {Map<String, dynamic>? documentData}) async {
+    if (_activeWebSockets.isEmpty) return;
+
+    final documentNotification = {
+      'type': 'document_change',
+      'documentType': documentType,
+      'documentId': documentId,
+      'operation': operation,
+      'data': documentData,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _broadcastToClients(documentNotification);
+    _syncUpdates.add(documentNotification);
+
+    debugPrint(
+        'Notified clients of document change: $documentType - $operation');
   }
 }

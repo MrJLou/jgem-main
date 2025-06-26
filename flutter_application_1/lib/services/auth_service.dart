@@ -123,6 +123,13 @@ class AuthService {
           username,
           'User logged out',
         );
+
+        // Notify LAN session service about logout
+        try {
+          await _notifySessionLogout(username);
+        } catch (e) {
+          debugPrint('Failed to notify session service of logout: $e');
+        }
       }
 
       if (kDebugMode) {
@@ -133,6 +140,39 @@ class AuthService {
         print('Error during logout: $e');
       }
       rethrow; // Propagate the error for handling in UI
+    }
+  }
+
+  /// Force logout this device due to session invalidation from another device
+  static Future<void> forceLogoutDueToSessionInvalidation() async {
+    try {
+      final username = await _secureStorage.read(key: _usernameKey);
+
+      // Clear all credentials without notifying session service (since it was initiated by session service)
+      await _secureStorage.delete(key: _authTokenKey);
+      await _secureStorage.delete(key: _tokenExpiryKey);
+      await _secureStorage.delete(key: _usernameKey);
+      await _secureStorage.delete(key: _accessLevelKey);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_authTokenKey);
+      await prefs.remove(_usernameKey);
+      await prefs.remove(_accessLevelKey);
+      await prefs.setBool(_isLoggedInKey, false);
+
+      _currentUserRole = null;
+
+      if (username != null) {
+        final db = DatabaseHelper();
+        await db.logUserActivity(
+          username,
+          'Session invalidated - logged out from another device',
+        );
+      }
+
+      debugPrint('Force logout completed due to session invalidation');
+    } catch (e) {
+      debugPrint('Error during force logout: $e');
     }
   }
 
@@ -370,10 +410,11 @@ class AuthService {
 
   // Enhanced login with session management
   static Future<Map<String, dynamic>> loginWithSessionManagement(
-      String username, String password) async {
+      String username, String password,
+      {bool forceLogoutExisting = false}) async {
     try {
-      // First check if user is already logged in elsewhere
-      if (LanSessionService.isUserLoggedIn(username)) {
+      // Check if user is already logged in elsewhere
+      if (LanSessionService.isUserLoggedIn(username) && !forceLogoutExisting) {
         throw Exception(
             'User is already logged in on another device. Please logout from the other device first.');
       }
@@ -401,6 +442,7 @@ class AuthService {
               deviceId: deviceId,
               deviceName: deviceName,
               accessLevel: auth['user'].role,
+              forceLogoutExisting: forceLogoutExisting,
             );
           } catch (e) {
             debugPrint('Failed to register session: $e');
@@ -417,22 +459,32 @@ class AuthService {
     }
   }
 
-  // Enhanced logout with session cleanup
-  static Future<void> logoutWithSessionCleanup() async {
+  /// Method to check if current session is still valid (called by real-time sync)
+  static Future<bool> validateCurrentSession() async {
     try {
-      // End session if active
-      final deviceId = await getDeviceId();
-      final session = LanSessionService.getSessionByDevice(deviceId);
-      if (session != null) {
-        await LanSessionService.endUserSession(session.sessionId);
+      if (!await isLoggedIn()) {
+        return false;
       }
 
-      // Clear all credentials
-      await logout();
+      final username = await getCurrentUsername();
+      final deviceId = await getDeviceId();
+
+      if (username == null) return false;
+
+      // Check if our session is still valid in the session service
+      if (LanSessionService.isServerRunning) {
+        final session = LanSessionService.getSessionByDevice(deviceId);
+        if (session == null || session.username != username) {
+          // Our session is no longer valid, force logout
+          await forceLogoutDueToSessionInvalidation();
+          return false;
+        }
+      }
+
+      return true;
     } catch (e) {
-      debugPrint('Error during logout with session cleanup: $e');
-      // Still clear credentials even if session cleanup fails
-      await logout();
+      debugPrint('Error validating session: $e');
+      return false;
     }
   }
 
@@ -450,5 +502,40 @@ class AuthService {
       debugPrint('Failed to get device name: $e');
     }
     return 'Unknown Device';
+  }
+
+  // Helper method to notify session service of logout
+  static Future<void> _notifySessionLogout(String username) async {
+    try {
+      // Get current device ID
+      final deviceId = await getDeviceId();
+
+      // End the session for this user/device
+      if (_getActiveSessionsStatic != null && _endSessionStatic != null) {
+        final activeSessions = _getActiveSessionsStatic!();
+        for (final session in activeSessions.values) {
+          if (session.username == username && session.deviceId == deviceId) {
+            await _endSessionStatic!(session.sessionId);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error notifying session logout: $e');
+    }
+  }
+
+  // Static references to session service (to avoid circular imports)
+  static Map<String, dynamic> Function()? _getActiveSessionsStatic;
+  static Future<void> Function(String sessionId)? _endSessionStatic;
+
+  // Method to register session service callbacks
+  static void registerSessionCallbacks({
+    required Map<String, dynamic> Function() getActiveSessions,
+    required Future<void> Function(String sessionId) endSession,
+  }) {
+    _getActiveSessionsStatic = getActiveSessions;
+    _endSessionStatic = endSession;
+    debugPrint('Session callbacks registered with AuthService');
   }
 }

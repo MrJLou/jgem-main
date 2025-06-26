@@ -161,6 +161,26 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         invoiceDate: now,
       );
 
+      // Track the generated PDF for sync
+      try {
+        await _dbHelper.documentTrackingService.trackInvoiceGeneration(
+          billId: invoiceNumber, // Using invoice number as bill ID for tracking
+          invoiceNumber: invoiceNumber,
+          pdfBytes: pdfBytes,
+          patientName: patientQueueItem.patientName,
+          userId: _currentUserId,
+          additionalMetadata: {
+            'queueEntryId': patientQueueItem.queueEntryId,
+            'totalAmount': items.fold(0.0, (sum, item) => sum + item.itemTotal),
+            'status': 'generated',
+          },
+        );
+        debugPrint('Invoice PDF tracked for sync: $invoiceNumber');
+      } catch (e) {
+        debugPrint('Warning: Failed to track invoice PDF for sync: $e');
+        // Continue with invoice generation even if tracking fails
+      }
+
       setState(() {
         _generatedInvoiceNumber = invoiceNumber;
         _currentBillItems = items;
@@ -178,7 +198,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       if (mounted) setState(() => _isGeneratingInvoice = false);
     }
   }
-  
+
   void _processPayment() async {
     // Guard clauses
     if (_selectedPatientQueueItem == null ||
@@ -216,7 +236,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         amountPaidByCustomer: amountPaid,
         paymentMethod: 'Cash',
         paymentNotes: 'Payment for Invoice #$_generatedInvoiceNumber',
-      );      // Use the specialized payment success method that handles appointment status updates
+      ); // Use the specialized payment success method that handles appointment status updates
       await _queueService.markPaymentSuccessfulAndServe(
           _selectedPatientQueueItem!.queueEntryId);
 
@@ -241,6 +261,28 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       };
       final receiptBytes =
           await ReceiptService.generateReceiptPdfBytes(receiptDetails);
+
+      // Track the generated receipt PDF for sync
+      try {
+        final paymentRef = result['paymentReferenceNumber'] ?? 'UNKNOWN';
+        await _dbHelper.documentTrackingService.trackReceiptGeneration(
+          paymentId: paymentRef,
+          referenceNumber: paymentRef,
+          pdfBytes: receiptBytes,
+          patientName: _selectedPatientQueueItem!.patientName,
+          userId: _currentUserId,
+          additionalMetadata: {
+            'invoiceNumber': _generatedInvoiceNumber,
+            'totalAmount': totalBillAmount,
+            'amountPaid': amountPaid,
+            'change': amountPaid - totalBillAmount,
+          },
+        );
+        debugPrint('Receipt PDF tracked for sync: $paymentRef');
+      } catch (e) {
+        debugPrint('Warning: Failed to track receipt PDF for sync: $e');
+        // Continue with receipt generation even if tracking fails
+      }
       // --- End Generate Receipt ---
 
       setState(() {
@@ -249,14 +291,15 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         _currentStep = InvoiceFlowStep.paymentComplete;
         _generatedReceiptBytes = receiptBytes;
       });
-          if (mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Payment processed successfully for ${_selectedPatientQueueItem?.patientName}'),
+            content: Text(
+                'Payment processed successfully for ${_selectedPatientQueueItem?.patientName}'),
             backgroundColor: Colors.green,
           ),
         );
-        
+
         // Refresh queue displays after successful payment
         ViewQueueScreen.refreshDashboardAfterPayment();
       }
@@ -270,7 +313,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       if (mounted) setState(() => _isProcessingPayment = false);
     }
   }
-  
+
   void _saveInvoiceAsUnpaid() async {
     if (_selectedPatientQueueItem == null || _currentUserId == null) return;
     setState(() => _isSavingUnpaid = true);
@@ -296,9 +339,9 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         dueDate: now.add(const Duration(days: 30)),
         currentUserId: _currentUserId!,
         notes: "Unpaid invoice for ${patientQueueItem.patientName}",
-      );      // Use the specialized payment success method that also handles appointment status
-      await _queueService.markPaymentSuccessfulAndServe(
-          patientQueueItem.queueEntryId);
+      ); // Use the specialized payment success method that also handles appointment status
+      await _queueService
+          .markPaymentSuccessfulAndServe(patientQueueItem.queueEntryId);
 
       final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
         queueItem: patientQueueItem,
@@ -307,14 +350,36 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         invoiceDate: now,
       );
 
-      await _savePdfToDevice(pdfBytes, invoiceNumber);      if (mounted) {
+      // Track the generated unpaid invoice PDF for sync
+      try {
+        await _dbHelper.documentTrackingService.trackInvoiceGeneration(
+          billId: invoiceNumber,
+          invoiceNumber: invoiceNumber,
+          pdfBytes: pdfBytes,
+          patientName: patientQueueItem.patientName,
+          userId: _currentUserId,
+          additionalMetadata: {
+            'queueEntryId': patientQueueItem.queueEntryId,
+            'totalAmount': totalAmount,
+            'status': 'unpaid',
+          },
+        );
+        debugPrint('Unpaid invoice PDF tracked for sync: $invoiceNumber');
+      } catch (e) {
+        debugPrint('Warning: Failed to track unpaid invoice PDF for sync: $e');
+        // Continue with invoice generation even if tracking fails
+      }
+
+      await _savePdfToDevice(pdfBytes, invoiceNumber);
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Unpaid invoice $invoiceNumber saved for ${patientQueueItem.patientName}'),
+            content: Text(
+                'Unpaid invoice $invoiceNumber saved for ${patientQueueItem.patientName}'),
             backgroundColor: Colors.teal,
           ),
         );
-        
+
         // Refresh patient list and queue displays
         _fetchInConsultationPatients();
         ViewQueueScreen.refreshDashboardAfterPayment();
@@ -330,17 +395,20 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-
-  List<BillItem> _buildBillItems(ActivePatientQueueItem patientQueueItem, String billId) {
-    if (patientQueueItem.selectedServices != null && patientQueueItem.selectedServices!.isNotEmpty) {
-      return patientQueueItem.selectedServices!.map((service) => BillItem(
-        billId: billId,
-        description: service['name'] as String? ?? 'Unknown Service',
-        quantity: 1,
-        unitPrice: (service['price'] as num?)?.toDouble() ?? 0.0,
-        itemTotal: (service['price'] as num?)?.toDouble() ?? 0.0,
-        serviceId: service['id'] as String?,
-      )).toList();
+  List<BillItem> _buildBillItems(
+      ActivePatientQueueItem patientQueueItem, String billId) {
+    if (patientQueueItem.selectedServices != null &&
+        patientQueueItem.selectedServices!.isNotEmpty) {
+      return patientQueueItem.selectedServices!
+          .map((service) => BillItem(
+                billId: billId,
+                description: service['name'] as String? ?? 'Unknown Service',
+                quantity: 1,
+                unitPrice: (service['price'] as num?)?.toDouble() ?? 0.0,
+                itemTotal: (service['price'] as num?)?.toDouble() ?? 0.0,
+                serviceId: service['id'] as String?,
+              ))
+          .toList();
     }
     return [
       BillItem(
@@ -355,12 +423,13 @@ class InvoiceScreenState extends State<InvoiceScreen> {
 
   // --- PDF HANDLING ---
 
-  Future<void> _savePdfToDevice(Uint8List pdfBytes, String invoiceNumber) async {
+  Future<void> _savePdfToDevice(
+      Uint8List pdfBytes, String invoiceNumber) async {
     try {
       final dbFile = File((await _dbHelper.database).path);
       final invoiceDir = Directory('${dbFile.parent.path}/Invoice');
       if (!await invoiceDir.exists()) await invoiceDir.create(recursive: true);
-      
+
       final filePath = '${invoiceDir.path}/$invoiceNumber.pdf';
       final file = File(filePath);
       await file.writeAsBytes(pdfBytes);
@@ -369,12 +438,17 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('PDF saved to: $filePath'),
-            action: SnackBarAction(label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+            action: SnackBarAction(
+                label: 'Open', onPressed: () => OpenFilex.open(filePath)),
           ),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving PDF: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error saving PDF: $e'),
+            backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -420,7 +494,8 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        title: const Text('Generate Invoice & Process Payment', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Generate Invoice & Process Payment',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.teal[700],
         elevation: 2,
         actions: [
@@ -489,7 +564,8 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           currencyFormat: _currencyFormat,
           onPrint: _printPdf,
           onSave: _savePdfToDevice,
-          onProceedToPayment: () => setState(() => _currentStep = InvoiceFlowStep.paymentProcessing),
+          onProceedToPayment: () =>
+              setState(() => _currentStep = InvoiceFlowStep.paymentProcessing),
         );
       case InvoiceFlowStep.paymentProcessing:
         return PaymentProcessingView(
@@ -555,8 +631,8 @@ class InvoiceScreenState extends State<InvoiceScreen> {
                 ),
                 const SizedBox(width: 16),
                 ElevatedButton.icon(
-                  onPressed: () => _saveReceiptToDevice(
-                      _generatedReceiptBytes!, 'RECEIPT-${_generatedInvoiceNumber!}'),
+                  onPressed: () => _saveReceiptToDevice(_generatedReceiptBytes!,
+                      'RECEIPT-${_generatedInvoiceNumber!}'),
                   icon: const Icon(Icons.save_alt_outlined),
                   label: const Text('Save Receipt'),
                   style: ElevatedButton.styleFrom(
@@ -578,5 +654,4 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       ),
     );
   }
-
-} 
+}

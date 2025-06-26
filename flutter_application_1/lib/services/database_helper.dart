@@ -7,6 +7,7 @@ import 'package:flutter_application_1/services/user_database_service.dart';
 import 'package:flutter_application_1/services/patient_database_service.dart';
 import 'package:flutter_application_1/services/appointment_database_service.dart';
 import 'package:flutter_application_1/services/clinic_service_database_service.dart';
+import 'package:flutter_application_1/services/document_tracking_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -28,6 +29,7 @@ class DatabaseHelper {
     patientDbService = PatientDatabaseService(this);
     appointmentDbService = AppointmentDatabaseService(this);
     clinicServiceDbService = ClinicServiceDatabaseService(this);
+    documentTrackingService = DocumentTrackingService(this);
   }
 
   // Instance variables for the database and its path
@@ -59,6 +61,7 @@ class DatabaseHelper {
   late final PatientDatabaseService patientDbService;
   late final AppointmentDatabaseService appointmentDbService;
   late final ClinicServiceDatabaseService clinicServiceDbService;
+  late final DocumentTrackingService documentTrackingService;
 
   // Getter for database instance
   Future<Database> get database async {
@@ -565,6 +568,38 @@ class DatabaseHelper {
       )
     ''');
 
+    // Generated Documents table for tracking PDFs and other documents
+    await db.execute('''
+      CREATE TABLE generated_documents (
+        id TEXT PRIMARY KEY,
+        documentType TEXT NOT NULL,
+        relatedTable TEXT,
+        relatedRecordId TEXT,
+        fileName TEXT NOT NULL,
+        filePath TEXT,
+        fileSize INTEGER,
+        documentData TEXT,
+        generatedAt TEXT NOT NULL,
+        generatedByUserId TEXT,
+        synced INTEGER DEFAULT 0,
+        metadata TEXT,
+        FOREIGN KEY (generatedByUserId) REFERENCES $tableUsers (id)
+      )
+    ''');
+
+    // Create indexes for efficient querying
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_documents_type ON generated_documents (documentType)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_documents_related ON generated_documents (relatedTable, relatedRecordId)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_documents_generated ON generated_documents (generatedAt)
+    ''');
+    debugPrint(
+        'DATABASE_HELPER: Created generated_documents table with indexes');
+
     // Patient Queue Reports table (for daily history)
     await db.execute('''
       CREATE TABLE $tablePatientQueue (
@@ -1067,7 +1102,7 @@ class DatabaseHelper {
 
   // Log changes for synchronization
   Future<void> logChange(String tableName, String recordId, String action,
-      {DatabaseExecutor? executor}) async {
+      {DatabaseExecutor? executor, Map<String, dynamic>? data}) async {
     final exec = executor ?? await database;
     await exec.insert(DatabaseHelper.tableSyncLog, {
       'tableName': tableName,
@@ -1076,7 +1111,46 @@ class DatabaseHelper {
       'timestamp': DateTime.now().toIso8601String(),
       'synced': 0,
     });
+
+    // IMPORTANT: Trigger real-time sync notification for immediate broadcasting
+    try {
+      await _notifyDatabaseChange(tableName, action, recordId, data: data);
+    } catch (e) {
+      debugPrint('Failed to send real-time sync notification: $e');
+      // Don't fail the main operation if real-time sync fails
+    }
   }
+
+  // Helper method to notify LAN sync service of database changes
+  Future<void> _notifyDatabaseChange(
+      String table, String operation, String recordId,
+      {Map<String, dynamic>? data}) async {
+    // Use a callback-based approach to avoid circular imports
+    if (_onDatabaseChanged != null) {
+      try {
+        await _onDatabaseChanged!(table, operation, recordId, data);
+      } catch (e) {
+        debugPrint('Real-time sync notification failed: $e');
+      }
+    }
+  }
+
+  // Static method to register database change callback
+  static void setDatabaseChangeCallback(
+      Future<void> Function(String table, String operation, String recordId,
+              Map<String, dynamic>? data)
+          callback) {
+    _onDatabaseChanged = callback;
+  }
+
+  // Static method to clear database change callback
+  static void clearDatabaseChangeCallback() {
+    _onDatabaseChanged = null;
+  }
+
+  // Static callback for database change notifications (set by LanSyncService)
+  static Future<void> Function(String table, String operation, String recordId,
+      Map<String, dynamic>? data)? _onDatabaseChanged;
 
   // Get pending changes for sync
   Future<List<Map<String, dynamic>>> getPendingChanges() async {

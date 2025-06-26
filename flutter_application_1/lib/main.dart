@@ -4,6 +4,7 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
 import 'services/lan_client_service.dart';
+import 'services/session_monitor_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
@@ -34,6 +35,9 @@ void main() async {
 
   // Initialize LAN client service with auto-reconnection
   await LanClientService.initialize();
+
+  // Initialize session monitoring service
+  await SessionMonitorService.initialize();
 
   runApp(const PatientRecordManagementApp());
 }

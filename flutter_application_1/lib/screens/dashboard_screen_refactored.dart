@@ -1,12 +1,13 @@
-// Refactored dashboard screen with modular components
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/session_monitor_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
 import '../screens/lan_client_connection_screen.dart';
 import '../screens/lan_server_connection_screen.dart';
+import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
   final String accessLevel;
@@ -27,6 +28,8 @@ class DashboardScreenState extends State<DashboardScreen> {
   late List<Widget> _screens;
   late List<IconData> _menuIcons;
 
+  StreamSubscription? _sessionSubscription;
+
   @override
   void initState() {
     if (kDebugMode) {
@@ -34,9 +37,52 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
     super.initState();
     _configureMenuForRole();
+    _initializeSessionMonitoring();
     if (kDebugMode) {
       print('DEBUG: DashboardScreen initState END');
     }
+  }
+
+  @override
+  void dispose() {
+    _sessionSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _initializeSessionMonitoring() {
+    // Listen for session invalidation events
+    _sessionSubscription =
+        SessionMonitorService.sessionInvalidated.listen((event) {
+      if (mounted) {
+        _handleSessionInvalidated(event);
+      }
+    });
+  }
+
+  void _handleSessionInvalidated(Map<String, dynamic> event) {
+    final reason = event['reason'] as String? ?? 'Session invalidated';
+
+    // Show dialog to user and navigate to login
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Session Expired'),
+        content: Text(reason),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _configureMenuForRole() {
@@ -96,7 +142,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       },
     );
     if (shouldLogout == true) {
-      await AuthService.logoutWithSessionCleanup();
+      await AuthService.logout();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),

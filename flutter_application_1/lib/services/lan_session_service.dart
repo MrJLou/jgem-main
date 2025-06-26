@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'database_helper.dart';
+import 'auth_service.dart';
 
 /// Enhanced LAN Session Service for multi-device user session management
 class LanSessionService {
@@ -37,6 +38,13 @@ class LanSessionService {
     try {
       await _loadServerConfiguration();
       await _startSessionMonitoring();
+
+      // Register session callbacks with auth service
+      AuthService.registerSessionCallbacks(
+        getActiveSessions: () => _activeSessions,
+        endSession: endUserSession,
+      );
+
       debugPrint('LAN Session Service initialized');
     } catch (e) {
       debugPrint('Failed to initialize LAN Session Service: $e');
@@ -109,13 +117,29 @@ class LanSessionService {
     required String deviceName,
     required String accessLevel,
     String? ipAddress,
+    bool forceLogoutExisting = false,
   }) async {
     try {
       // Check if user is already logged in on another device
       final existingSession = _findUserSession(username);
       if (existingSession != null) {
-        throw Exception(
-            'User "$username" is already logged in on device "${existingSession.deviceName}"');
+        if (forceLogoutExisting) {
+          // Force logout the existing session
+          await endUserSession(existingSession.sessionId);
+
+          // Broadcast session invalidation to force logout on the other device
+          _broadcastSessionUpdate({
+            'type': 'session_invalidated',
+            'username': username,
+            'reason': 'User logged in from another device',
+            'deviceId': existingSession.deviceId,
+          });
+
+          debugPrint('Forced logout of existing session for $username');
+        } else {
+          throw Exception(
+              'User "$username" is already logged in on device "${existingSession.deviceName}"');
+        }
       }
 
       final sessionId = _generateSessionId();
@@ -231,6 +255,19 @@ class LanSessionService {
   /// Check if user is logged in
   static bool isUserLoggedIn(String username) {
     return _findUserSession(username) != null;
+  }
+
+  /// Force end user session by username (for logout cleanup)
+  static Future<bool> forceEndUserSession(String username) async {
+    try {
+      final session = _findUserSession(username);
+      if (session == null) return false;
+
+      return await endUserSession(session.sessionId);
+    } catch (e) {
+      debugPrint('Error force ending user session: $e');
+      return false;
+    }
   }
 
   /// Get logged in users count

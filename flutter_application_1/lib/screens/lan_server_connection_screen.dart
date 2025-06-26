@@ -369,7 +369,29 @@ class _LanServerConnectionScreenState extends State<LanServerConnectionScreen> {
     });
 
     try {
-      final instructions = await LanSyncService.getDbBrowserInstructions();
+      final instructionsData = await LanSyncService.getDbBrowserInstructions();
+
+      // Format the instructions into a readable string
+      final instructionsText = '''
+Database Browser Connection Instructions
+
+Access Code: ${instructionsData['accessCode']}
+Server Port: ${instructionsData['serverPort']}
+
+Available IP Addresses:
+${(instructionsData['ipAddresses'] as List<String>).map((ip) => '• $ip').join('\n')}
+
+Endpoints:
+• Database: ${instructionsData['dbEndpoint']}
+• Status: ${instructionsData['statusEndpoint']}
+• Sync: ${instructionsData['syncEndpoint']}
+
+Instructions:
+${(instructionsData['instructions'] as List<String>).map((instruction) => instruction).join('\n')}
+
+cURL Example:
+${instructionsData['curlExample']}
+''';
 
       if (!mounted) return;
       showDialog(
@@ -377,7 +399,7 @@ class _LanServerConnectionScreenState extends State<LanServerConnectionScreen> {
         builder: (context) => AlertDialog(
           title: const Text('DB Browser Connection Instructions'),
           content: SingleChildScrollView(
-            child: SelectableText(instructions),
+            child: SelectableText(instructionsText),
           ),
           actions: [
             TextButton(
@@ -386,7 +408,7 @@ class _LanServerConnectionScreenState extends State<LanServerConnectionScreen> {
             ),
             TextButton(
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: instructions));
+                Clipboard.setData(ClipboardData(text: instructionsText));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                       content: Text('Instructions copied to clipboard')),

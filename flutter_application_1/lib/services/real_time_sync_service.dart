@@ -22,6 +22,10 @@ class RealTimeSyncService {
   static final StreamController<Map<String, dynamic>> _patientInfoUpdates =
       StreamController<Map<String, dynamic>>.broadcast();
 
+  // Callback for queue updates (for BTreeQueueManager)
+  static Future<void> Function(String operation, Map<String, dynamic> data)?
+      _queueUpdateCallback;
+
   // Getters for streams
   static Stream<Map<String, dynamic>> get patientQueueUpdates =>
       _patientQueueUpdates.stream;
@@ -129,6 +133,7 @@ class RealTimeSyncService {
   static void _handlePatientQueueUpdate(Map<String, dynamic> data) async {
     try {
       final queueData = data['data'] as Map<String, dynamic>;
+      final operation = data['operation'] as String? ?? 'queue_update';
 
       // Update local database
       await _dbHelper.updatePatientQueueFromSync(queueData);
@@ -139,6 +144,15 @@ class RealTimeSyncService {
         'data': queueData,
         'timestamp': DateTime.now().toIso8601String(),
       });
+
+      // Call registered callback for BTreeQueueManager
+      if (_queueUpdateCallback != null) {
+        try {
+          await _queueUpdateCallback!(operation, queueData);
+        } catch (e) {
+          debugPrint('Error in queue update callback: $e');
+        }
+      }
 
       debugPrint('Patient queue updated: ${queueData['patientId']}');
     } catch (e) {
@@ -286,5 +300,17 @@ class RealTimeSyncService {
     if (!_patientInfoUpdates.isClosed) {
       await _patientInfoUpdates.close();
     }
+  }
+
+  // Register queue update callback
+  static void registerQueueUpdateCallback(
+      Future<void> Function(String operation, Map<String, dynamic> data)
+          callback) {
+    _queueUpdateCallback = callback;
+  }
+
+  // Clear queue update callback
+  static void clearQueueUpdateCallback() {
+    _queueUpdateCallback = null;
   }
 }

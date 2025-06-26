@@ -207,6 +207,13 @@ class LoginScreenState extends State<LoginScreen>
           );
         }
       } catch (e) {
+        // Check if user is already logged in elsewhere
+        if (e.toString().contains('already logged in') ||
+            e.toString().contains('logged in on another device')) {
+          await _handleSessionConflict(username, _passwordController.text);
+          return;
+        }
+
         // Record failed attempt for rate limiting if username was provided
         // if (_usernameController.text.isNotEmpty) { // COMMENTED OUT
         //   await LoginRateLimiter.recordFailedAttempt(_usernameController.text); // COMMENTED OUT
@@ -278,6 +285,89 @@ class LoginScreenState extends State<LoginScreen>
           },
         );
       }
+    }
+  }
+
+  Future<void> _handleSessionConflict(String username, String password) async {
+    // Show dialog asking user if they want to force logout existing session
+    final shouldForceLogout = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('User Already Logged In'),
+          content: const Text(
+              'This user is already logged in on another device. Do you want to log out the existing session and continue?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+            ),
+            TextButton(
+              child: const Text('Force Logout'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldForceLogout == true) {
+      setState(() => _isLoading = true);
+      try {
+        // Attempt login with force logout
+        final response = await AuthService.loginWithSessionManagement(
+            username, password,
+            forceLogoutExisting: true);
+
+        // Validate that the user has a role (access level) from the response
+        final userRole = response['user']?.role;
+        if (userRole == null) {
+          setState(() {
+            _errorMessage = 'Login failed: User role not found in response.';
+          });
+          return;
+        }
+
+        // Reset login attempts for this user on successful login
+        _loginAttempts.remove(username);
+
+        // Save credentials after successful login
+        await AuthService.saveLoginCredentials(
+          token: response['token'],
+          username: username,
+          accessLevel: userRole,
+        );
+
+        // Navigate to dashboard and remove all previous routes
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                accessLevel: userRole,
+              ),
+            ),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _errorMessage =
+              'Failed to force logout existing session: ${e.toString()}';
+        });
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    } else {
+      // User cancelled, reset loading state
+      setState(() => _isLoading = false);
     }
   }
 
