@@ -35,18 +35,18 @@ class PatientBill {
 
   factory PatientBill.fromMap(Map<String, dynamic> map, [Patient? patient]) {
     return PatientBill(
-      id: map['id'] as String,
-      displayInvoiceNumber: map['displayInvoiceNumber'] as String,
+      id: map['id'] as String? ?? '',
+      displayInvoiceNumber: map['displayInvoiceNumber'] as String? ?? '',
       patientId: map['patientId'] as String?,
       billItems: (map['billItems'] as List<dynamic>?)?.map((item) => item as Map<String, dynamic>).toList() ?? [],
-      subtotal: (map['subtotal'] as num).toDouble(),
-      discountAmount: (map['discountAmount'] as num).toDouble(),
-      taxAmount: (map['taxAmount'] as num).toDouble(),
-      totalAmount: (map['totalAmount'] as num).toDouble(),
-      invoiceDate: DateTime.parse(map['invoiceDate'] as String),
-      dueDate: DateTime.parse(map['dueDate'] as String),
-      status: map['status'] as String,
-      createdByUserId: map['createdByUserId'] as String,
+      subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0.0,
+      discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0.0,
+      taxAmount: (map['taxAmount'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      invoiceDate: DateTime.parse(map['invoiceDate'] as String? ?? DateTime.now().toIso8601String()),
+      dueDate: DateTime.parse(map['dueDate'] as String? ?? DateTime.now().toIso8601String()),
+      status: map['status'] as String? ?? '',
+      createdByUserId: map['createdByUserId'] as String? ?? '',
       notes: map['notes'] as String?,
       patient: patient,
     );

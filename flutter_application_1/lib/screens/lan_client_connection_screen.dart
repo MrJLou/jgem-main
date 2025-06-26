@@ -45,7 +45,17 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
   Future<void> _loadSavedConnection() async {
     final prefs = await SharedPreferences.getInstance();
     _serverIpController.text = prefs.getString('lan_server_ip') ?? '';
-    _portController.text = prefs.getString('lan_server_port') ?? '8080';
+    
+    // Handle both int and string values for port
+    final portValue = prefs.get('lan_server_port');
+    if (portValue is int) {
+      _portController.text = portValue.toString();
+    } else if (portValue is String) {
+      _portController.text = portValue;
+    } else {
+      _portController.text = '8080';
+    }
+    
     _accessCodeController.text = prefs.getString('lan_access_code') ?? '';
 
     // Check if we were previously connected
@@ -58,7 +68,7 @@ class _LanClientConnectionScreenState extends State<LanClientConnectionScreen> {
   Future<void> _saveConnection() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('lan_server_ip', _serverIpController.text);
-    await prefs.setString('lan_server_port', _portController.text);
+    await prefs.setInt('lan_server_port', int.tryParse(_portController.text) ?? 8080);
     await prefs.setString('lan_access_code', _accessCodeController.text);
   }
 

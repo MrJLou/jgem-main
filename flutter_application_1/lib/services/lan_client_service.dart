@@ -45,7 +45,16 @@ class LanClientService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final serverIp = prefs.getString('lan_server_ip');
-      final serverPort = prefs.getString('lan_server_port');
+      
+      // Handle both int and string values for port
+      final serverPortValue = prefs.get('lan_server_port');
+      String? serverPort;
+      if (serverPortValue is int) {
+        serverPort = serverPortValue.toString();
+      } else if (serverPortValue is String) {
+        serverPort = serverPortValue;
+      }
+      
       final accessCode = prefs.getString('lan_access_code');
       final wasConnected = prefs.getBool('was_connected') ?? false;
 
@@ -89,7 +98,16 @@ class LanClientService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final serverIp = prefs.getString('lan_server_ip');
-      final serverPort = prefs.getString('lan_server_port');
+      
+      // Handle both int and string values for port
+      final serverPortValue = prefs.get('lan_server_port');
+      String? serverPort;
+      if (serverPortValue is int) {
+        serverPort = serverPortValue.toString();
+      } else if (serverPortValue is String) {
+        serverPort = serverPortValue;
+      }
+      
       final accessCode = prefs.getString('lan_access_code');
 
       if (serverIp != null && serverPort != null && accessCode != null) {
@@ -152,7 +170,7 @@ class LanClientService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('lan_server_ip', serverIp);
-      await prefs.setString('lan_server_port', port.toString());
+      await prefs.setInt('lan_server_port', port);
       await prefs.setString('lan_access_code', accessCode);
       await prefs.setBool('was_connected', true);
     } catch (e) {
@@ -716,7 +734,16 @@ class LanClientService {
       // Check saved connection info
       final prefs = await SharedPreferences.getInstance();
       final serverIp = prefs.getString('lan_server_ip');
-      final serverPort = prefs.getString('lan_server_port');
+      
+      // Handle both int and string values for port
+      final serverPortValue = prefs.get('lan_server_port');
+      String? serverPort;
+      if (serverPortValue is int) {
+        serverPort = serverPortValue.toString();
+      } else if (serverPortValue is String) {
+        serverPort = serverPortValue;
+      }
+      
       final accessCode = prefs.getString('lan_access_code');
       final syncEnabled = prefs.getBool('sync_enabled') ?? false;
       final lanServerEnabled = prefs.getBool('lan_server_enabled') ?? false;

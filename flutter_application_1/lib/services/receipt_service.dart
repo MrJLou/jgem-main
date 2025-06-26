@@ -8,13 +8,13 @@ class ReceiptService {
     final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
     final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
     
-    final patientName = receiptDetails['patientName'] as String;
-    final invoiceNumber = receiptDetails['invoiceNumber'] as String?;
-    final referenceNumber = receiptDetails['referenceNumber'] as String;
-    final paymentDate = receiptDetails['paymentDate'] as DateTime;
-    final totalAmount = receiptDetails['totalAmount'] as double;
-    final amountPaid = receiptDetails['amountPaid'] as double;
-    final change = receiptDetails['change'] as double;
+    final patientName = receiptDetails['patientName'] as String? ?? '';
+    final invoiceNumber = receiptDetails['invoiceNumber'] as String? ?? '';
+    final referenceNumber = receiptDetails['referenceNumber'] as String? ?? '';
+    final paymentDate = receiptDetails['paymentDate'] as DateTime? ?? DateTime.now();
+    final totalAmount = (receiptDetails['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final amountPaid = (receiptDetails['amountPaid'] as num?)?.toDouble() ?? 0.0;
+    final change = (receiptDetails['change'] as num?)?.toDouble() ?? 0.0;
     final billItems = receiptDetails['billItems'] as List<dynamic>? ?? [];
 
     pdf.addPage(
@@ -35,7 +35,7 @@ class ReceiptService {
               pw.Text('074 Pook Hulo, Brgy. Loma de Gato, Marilao, Philippines'),
               pw.Divider(height: 30),
               pw.Text('Patient: $patientName'),
-              if (invoiceNumber != null) pw.Text('Invoice #: $invoiceNumber'),
+              if (invoiceNumber.isNotEmpty) pw.Text('Invoice #: $invoiceNumber'),
               pw.Text('Payment Ref: $referenceNumber'),
               pw.Text('Date: ${DateFormat('yyyy-MM-dd hh:mm a').format(paymentDate)}'),
               pw.Divider(height: 30),

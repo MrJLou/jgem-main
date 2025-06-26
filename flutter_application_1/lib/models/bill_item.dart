@@ -20,12 +20,12 @@ class BillItem {
   factory BillItem.fromJson(Map<String, dynamic> json) {
     return BillItem(
       id: json['id'] as int?,
-      billId: json['billId'] as String,
+      billId: json['billId'] as String? ?? '',
       serviceId: json['serviceId'] as String?,
-      description: json['description'] as String,
-      quantity: json['quantity'] as int,
-      unitPrice: (json['unitPrice'] as num).toDouble(),
-      itemTotal: (json['itemTotal'] as num).toDouble(),
+      description: json['description'] as String? ?? '',
+      quantity: json['quantity'] as int? ?? 1,
+      unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0.0,
+      itemTotal: (json['itemTotal'] as num?)?.toDouble() ?? 0.0,
     );
   }
 

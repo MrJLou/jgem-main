@@ -135,7 +135,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
           throw Exception('User not logged in.');
         }
 
-        final billId = bill['id'] as String;
+        final billId = bill['id'] as String? ?? '';
         final patientId = bill['patientId'] as String?;
         final totalAmount = (bill['totalAmount'] as num?)?.toDouble() ?? 0.0;
         

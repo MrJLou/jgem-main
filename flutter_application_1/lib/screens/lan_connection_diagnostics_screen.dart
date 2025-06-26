@@ -36,7 +36,16 @@ class _LanConnectionDiagnosticsScreenState
   Future<void> _loadSavedConnection() async {
     final prefs = await SharedPreferences.getInstance();
     _serverIpController.text = prefs.getString('lan_server_ip') ?? '';
-    _portController.text = prefs.getString('lan_server_port') ?? '8080';
+    
+    // Handle both int and string values for port
+    final portValue = prefs.get('lan_server_port');
+    if (portValue is int) {
+      _portController.text = portValue.toString();
+    } else if (portValue is String) {
+      _portController.text = portValue;
+    } else {
+      _portController.text = '8080';
+    }
   }
 
   Future<void> _runDiagnostics() async {

@@ -47,7 +47,17 @@ class RealTimeSyncService {
   static Future<void> _loadConnectionSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _serverIp = prefs.getString('lan_server_ip');
-    _serverPort = prefs.getInt('lan_server_port') ?? 8080;
+
+    // Handle both int and string values for port (for backward compatibility)
+    final portValue = prefs.get('lan_server_port');
+    if (portValue is int) {
+      _serverPort = portValue;
+    } else if (portValue is String) {
+      _serverPort = int.tryParse(portValue) ?? 8080;
+    } else {
+      _serverPort = 8080;
+    }
+
     _accessCode = prefs.getString('lan_access_code');
   }
 
@@ -106,6 +116,10 @@ class RealTimeSyncService {
   static void _handleWebSocketMessage(dynamic message) {
     try {
       final data = jsonDecode(message);
+      if (data is! Map<String, dynamic>) {
+        debugPrint('Invalid message format: $message');
+        return;
+      }
       final type = data['type'] as String?;
 
       switch (type) {
@@ -132,7 +146,11 @@ class RealTimeSyncService {
   /// Handle patient queue updates
   static void _handlePatientQueueUpdate(Map<String, dynamic> data) async {
     try {
-      final queueData = data['data'] as Map<String, dynamic>;
+      final queueData = data['data'];
+      if (queueData is! Map<String, dynamic>) {
+        debugPrint('Invalid queue data format: $queueData');
+        return;
+      }
       final operation = data['operation'] as String? ?? 'queue_update';
 
       // Update local database
@@ -163,7 +181,11 @@ class RealTimeSyncService {
   /// Handle patient info updates
   static void _handlePatientInfoUpdate(Map<String, dynamic> data) async {
     try {
-      final patientData = data['data'] as Map<String, dynamic>;
+      final patientData = data['data'];
+      if (patientData is! Map<String, dynamic>) {
+        debugPrint('Invalid patient data format: $patientData');
+        return;
+      }
 
       // Update local database
       await _dbHelper.updatePatientFromSync(patientData);

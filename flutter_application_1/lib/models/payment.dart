@@ -29,13 +29,13 @@ class Payment {
     return Payment(
       id: json['id'] as int?,
       billId: json['billId'] as String?,
-      patientId: json['patientId'] as String,
-      patientName: json['patientName'] as String,
-      referenceNumber: json['referenceNumber'] as String,
-      paymentDate: DateTime.parse(json['paymentDate'] as String),
-      amountPaid: (json['amountPaid'] as num).toDouble(),
-      paymentMethod: json['paymentMethod'] as String,
-      receivedByUserId: json['receivedByUserId'] as String,
+      patientId: json['patientId'] as String? ?? '',
+      patientName: json['patientName'] as String? ?? '',
+      referenceNumber: json['referenceNumber'] as String? ?? '',
+      paymentDate: DateTime.parse(json['paymentDate'] as String? ?? DateTime.now().toIso8601String()),
+      amountPaid: (json['amountPaid'] as num?)?.toDouble() ?? 0.0,
+      paymentMethod: json['paymentMethod'] as String? ?? '',
+      receivedByUserId: json['receivedByUserId'] as String? ?? '',
       notes: json['notes'] as String?,
     );
   }

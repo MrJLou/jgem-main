@@ -1194,8 +1194,16 @@ class DatabaseHelper {
 
       // Check if we have server connection info
       final serverIp = prefs.getString('lan_server_ip');
-      final serverPort = prefs.getString('lan_server_port');
+      final serverPortValue = prefs.get('lan_server_port');
       final accessCode = prefs.getString('lan_access_code');
+
+      // Handle both int and string values for port
+      String? serverPort;
+      if (serverPortValue is int) {
+        serverPort = serverPortValue.toString();
+      } else if (serverPortValue is String) {
+        serverPort = serverPortValue;
+      }
 
       if (serverIp == null || serverPort == null || accessCode == null) {
         debugPrint('Sync disabled - no server configured');
