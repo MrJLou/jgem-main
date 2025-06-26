@@ -15,6 +15,7 @@ class SessionMonitorService {
     try {
       // Listen for session updates
       _sessionSubscription = LanSessionService.sessionUpdates.listen((update) {
+        debugPrint('SessionMonitorService: Received session update: ${update['type']}');
         _handleSessionUpdate(update);
       });
 

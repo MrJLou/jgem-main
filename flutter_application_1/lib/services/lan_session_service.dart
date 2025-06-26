@@ -20,6 +20,7 @@ class LanSessionService {
   static Timer? _sessionMonitor;
   static String? _serverToken;
   static bool _isServerRunning = false;
+  static bool _integratedMode = false; // Flag for integrated mode
 
   // Session configuration
   static const Duration _sessionTimeout = Duration(hours: 8);
@@ -36,6 +37,7 @@ class LanSessionService {
   /// Initialize the session service
   static Future<void> initialize() async {
     try {
+      debugPrint('LanSessionService: Starting initialization...');
       await _loadServerConfiguration();
       await _startSessionMonitoring();
 
@@ -45,10 +47,17 @@ class LanSessionService {
         endSession: endUserSession,
       );
 
-      debugPrint('LAN Session Service initialized');
+      debugPrint('LAN Session Service initialized successfully');
+      debugPrint('Session server running: $_isServerRunning');
     } catch (e) {
       debugPrint('Failed to initialize LAN Session Service: $e');
     }
+  }
+
+  /// Set integrated mode (called by LAN sync service)
+  static void setIntegratedMode(bool integrated) {
+    _integratedMode = integrated;
+    debugPrint('LanSessionService: Integrated mode set to $integrated');
   }
 
   /// Start the session server
@@ -120,10 +129,15 @@ class LanSessionService {
     bool forceLogoutExisting = false,
   }) async {
     try {
+      debugPrint('LanSessionService: Registering session for $username on $deviceName');
+      debugPrint('LanSessionService: Current active sessions: ${_activeSessions.length}');
+      
       // Check if user is already logged in on another device
       final existingSession = _findUserSession(username);
       if (existingSession != null) {
+        debugPrint('LanSessionService: Found existing session for $username on ${existingSession.deviceName}');
         if (forceLogoutExisting) {
+          debugPrint('LanSessionService: Force logout enabled, ending existing session');
           // Force logout the existing session
           await endUserSession(existingSession.sessionId);
 
@@ -553,8 +567,21 @@ class LanSessionService {
     final port = prefs.getInt('session_server_port') ?? _defaultSessionPort;
     _serverToken = prefs.getString('session_server_token');
 
-    if (isEnabled && _serverToken != null) {
+    debugPrint('LanSessionService: Loading configuration - enabled: $isEnabled, port: $port, hasToken: ${_serverToken != null}, integratedMode: $_integratedMode');
+
+    // Only start standalone server if not in integrated mode
+    if (isEnabled && _serverToken != null && !_integratedMode) {
+      debugPrint('LanSessionService: Starting standalone session server...');
       await startSessionServer(port: port);
+    } else if (_integratedMode) {
+      debugPrint('LanSessionService: Running in integrated mode - skipping standalone server start');
+      // Generate token for integrated mode if needed
+      if (_serverToken == null) {
+        _generateServerToken();
+        await prefs.setString('session_server_token', _serverToken!);
+      }
+    } else {
+      debugPrint('LanSessionService: Session server not enabled or token missing');
     }
   }
 
@@ -583,12 +610,14 @@ class LanSessionService {
 
   /// Broadcast session update
   static void _broadcastSessionUpdate(Map<String, dynamic> update) {
+    debugPrint('LanSessionService: Broadcasting session update: ${update['type']}');
     _sessionUpdates.add(update);
 
     // Send to all connected devices
     for (final connection in _deviceConnections.values) {
       try {
         connection.sink.add(jsonEncode(update));
+        debugPrint('LanSessionService: Sent update to device');
       } catch (e) {
         debugPrint('Error broadcasting to device: $e');
       }

@@ -354,10 +354,10 @@ class LanClientService {
         try {
           await http
               .post(
-                Uri.parse('$_sessionServerUrl/sessions/activity'),
+                Uri.parse('$_sessionServerUrl/session/update'),
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': 'Bearer $_sessionToken',
+                  'Authorization': 'Bearer $_accessCode',
                 },
                 body: jsonEncode({
                   'sessionId': _currentSession!.sessionId,
@@ -379,7 +379,7 @@ class LanClientService {
       final response = await http.get(
         Uri.parse('$_sessionServerUrl/sessions'),
         headers: {
-          'Authorization': 'Bearer $_sessionToken',
+          'Authorization': 'Bearer $_accessCode',
         },
       ).timeout(const Duration(seconds: 10));
 

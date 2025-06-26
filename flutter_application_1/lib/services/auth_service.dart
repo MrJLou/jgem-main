@@ -432,11 +432,13 @@ class AuthService {
         );
 
         // Register session if session service is running
+        debugPrint('AuthService: Checking if session service is running: ${LanSessionService.isServerRunning}');
         if (LanSessionService.isServerRunning) {
           try {
             final deviceId = await getDeviceId();
             final deviceName = await _getDeviceName();
 
+            debugPrint('AuthService: Registering session for $username on $deviceName (Device: $deviceId)');
             await LanSessionService.registerUserSession(
               username: username,
               deviceId: deviceId,
@@ -444,10 +446,13 @@ class AuthService {
               accessLevel: auth['user'].role,
               forceLogoutExisting: forceLogoutExisting,
             );
+            debugPrint('AuthService: Session registered successfully');
           } catch (e) {
             debugPrint('Failed to register session: $e');
             // Don't fail login if session registration fails
           }
+        } else {
+          debugPrint('AuthService: Session service not running, skipping session registration');
         }
 
         return auth;

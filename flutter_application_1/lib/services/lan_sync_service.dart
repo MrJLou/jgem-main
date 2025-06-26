@@ -507,8 +507,18 @@ class LanSyncService {
   /// Initialize session management within the LAN server
   static Future<void> _initializeSessionManagement() async {
     try {
+      // Initialize the session service without starting its own server
+      // since we handle session requests through the main LAN server
+      debugPrint('LanSyncService: Initializing session management (integrated mode)...');
+      
+      // Set the session service to integrated mode
+      LanSessionService.setIntegratedMode(true);
+      
+      // Just initialize the session service without starting a separate server
+      await LanSessionService.initialize();
+      
+      debugPrint('LanSyncService: Session management initialized in integrated mode');
       debugPrint('Session management integrated into LAN server');
-      // Session management is now handled by the main server endpoints
     } catch (e) {
       debugPrint('Error initializing session management: $e');
     }
@@ -533,7 +543,7 @@ class LanSyncService {
         await _handleCreateSession(request);
       } else if (path == '/session/validate' && method == 'POST') {
         await _handleValidateSession(request);
-      } else if (path == '/session/list' && method == 'GET') {
+      } else if ((path == '/session/list' || path == '/sessions') && method == 'GET') {
         await _handleGetSessions(request);
       } else if (path == '/session/update' && method == 'POST') {
         await _handleUpdateActivity(request);
@@ -839,6 +849,14 @@ class LanSyncService {
   /// Stop the LAN server
   static Future<void> stopLanServer() async {
     try {
+      // Reset session service integrated mode when stopping
+      LanSessionService.setIntegratedMode(false);
+      
+      // Only stop session service if it was running its own server
+      if (LanSessionService.isServerRunning) {
+        await LanSessionService.stopSessionServer();
+      }
+
       // Close all WebSocket connections
       for (final socket in _activeWebSockets.values) {
         try {

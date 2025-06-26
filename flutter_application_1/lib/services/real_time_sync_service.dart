@@ -78,8 +78,11 @@ class RealTimeSyncService {
       // Close existing connection and cancel old subscription
       await disconnect();
 
+      // Generate a device ID for this connection
+      final deviceId = await _getDeviceId();
+
       // Connect to WebSocket
-      final wsUrl = 'ws://$serverIp:$port/ws?access_code=$accessCode';
+      final wsUrl = 'ws://$serverIp:$port/ws?access_code=$accessCode&deviceId=$deviceId';
       _wsChannel = IOWebSocketChannel.connect(wsUrl);
 
       // Listen for messages and store the subscription
