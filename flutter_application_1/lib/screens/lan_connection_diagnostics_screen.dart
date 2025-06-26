@@ -36,7 +36,7 @@ class _LanConnectionDiagnosticsScreenState
   Future<void> _loadSavedConnection() async {
     final prefs = await SharedPreferences.getInstance();
     _serverIpController.text = prefs.getString('lan_server_ip') ?? '';
-    
+
     // Handle both int and string values for port
     final portValue = prefs.get('lan_server_port');
     if (portValue is int) {

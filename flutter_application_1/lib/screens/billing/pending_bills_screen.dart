@@ -29,7 +29,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   final QueueService _queueService = QueueService();
   static const Uuid _uuid = Uuid();
-  
+
   List<Map<String, dynamic>> _pendingBills = [];
   bool _isLoading = false;
   bool _hasSearched = false;
@@ -64,7 +64,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
 
   Future<void> _searchPendingBills() async {
     final patientIdOrName = _patientIdController.text.trim();
-    
+
     setState(() {
       _isLoading = true;
       _hasSearched = true;
@@ -77,7 +77,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         startDate: _selectedDateRange?.start,
         endDate: _selectedDateRange?.end,
       );
-      
+
       setState(() {
         _pendingBills = bills;
         _isLoading = false;
@@ -138,10 +138,11 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         final billId = bill['id'] as String? ?? '';
         final patientId = bill['patientId'] as String?;
         final totalAmount = (bill['totalAmount'] as num?)?.toDouble() ?? 0.0;
-        
+
         // Create payment record
         final uuidString = _uuid.v4().replaceAll('-', '');
-        final referenceNumber = 'PAY-${uuidString.substring(0, 8).toUpperCase()}';
+        final referenceNumber =
+            'PAY-${uuidString.substring(0, 8).toUpperCase()}';
         final paymentDateTime = DateTime.now();
         final paymentData = {
           'billId': billId,
@@ -152,7 +153,8 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
           'amountPaid': totalAmount, // Assuming full amount is paid
           'paymentMethod': 'Cash', // Defaulting to Cash
           'receivedByUserId': currentUserId,
-          'notes': 'Payment marked as paid from Pending Bills screen for Invoice #: $invoiceNumber',
+          'notes':
+              'Payment marked as paid from Pending Bills screen for Invoice #: $invoiceNumber',
           'totalBillAmount': totalAmount,
         };
         await _dbHelper.insertPayment(paymentData);
@@ -161,23 +163,27 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         if (patientId != null) {
           final queueItem = await _queueService.findPatientInQueue(patientId);
           if (queueItem != null) {
-            await _queueService.markPaymentSuccessfulAndServe(queueItem.queueEntryId);
+            await _queueService
+                .markPaymentSuccessfulAndServe(queueItem.queueEntryId);
           }
         }
-        
+
         await _dbHelper.logUserActivity(
           currentUserId,
           'Marked bill as paid and saved for invoice $invoiceNumber',
           targetRecordId: billId,
           targetTable: DatabaseHelper.tablePatientBills,
-          details: jsonEncode({'paymentReference': referenceNumber, 'amountPaid': totalAmount}),
+          details: jsonEncode(
+              {'paymentReference': referenceNumber, 'amountPaid': totalAmount}),
         );
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invoice $invoiceNumber marked as paid.'), backgroundColor: Colors.green),
+          SnackBar(
+              content: Text('Invoice $invoiceNumber marked as paid.'),
+              backgroundColor: Colors.green),
         );
-        
+
         // Refresh queue displays after marking payment
         ViewQueueScreen.refreshDashboardAfterPayment();
       }
@@ -377,7 +383,8 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                             onTap: _selectDateRange,
                             child: Container(
                               height: 56,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
                               decoration: BoxDecoration(
                                 border: Border.all(color: Colors.grey[400]!),
                                 borderRadius: BorderRadius.circular(4),
@@ -392,8 +399,8 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                                           ? 'Select Date Range'
                                           : '${DateFormat('MMM dd').format(_selectedDateRange!.start)} - ${DateFormat('MMM dd, yyyy').format(_selectedDateRange!.end)}',
                                       style: TextStyle(
-                                        color: _selectedDateRange == null 
-                                            ? Colors.grey[600] 
+                                        color: _selectedDateRange == null
+                                            ? Colors.grey[600]
                                             : Colors.black87,
                                         fontSize: 16,
                                       ),
@@ -415,13 +422,14 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                             backgroundColor: Colors.teal[700],
                             foregroundColor: Colors.white,
                           ),
-                          icon: _isLoading 
+                          icon: _isLoading
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                 )
                               : const Icon(Icons.search),
@@ -477,7 +485,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                _hasSearched 
+                                _hasSearched
                                     ? 'No pending bills found for your search'
                                     : 'No pending bills found',
                                 style: TextStyle(
@@ -505,7 +513,7 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
 
   Widget _buildPendingBillCard(Map<String, dynamic> bill) {
     final billDate = DateTime.parse(bill['billDate'] as String);
-    final dueDate = bill['dueDate'] != null 
+    final dueDate = bill['dueDate'] != null
         ? DateTime.parse(bill['dueDate'] as String)
         : billDate.add(const Duration(days: 30));
     final totalAmount = (bill['totalAmount'] as num?)?.toDouble() ?? 0.0;
@@ -573,7 +581,8 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                     ),
                     if (isOverdue)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.red[100],
                           borderRadius: BorderRadius.circular(8),
@@ -595,19 +604,19 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
             Row(
               children: [
                 _buildDetailChip(
-                  'Bill Date', 
+                  'Bill Date',
                   DateFormat('MMM dd, yyyy').format(billDate),
                   Colors.blue,
                 ),
                 const SizedBox(width: 8),
                 _buildDetailChip(
-                  'Due Date', 
+                  'Due Date',
                   DateFormat('MMM dd, yyyy').format(dueDate),
                   isOverdue ? Colors.red : Colors.orange,
                 ),
                 const SizedBox(width: 8),
                 _buildDetailChip(
-                  'Created By', 
+                  'Created By',
                   createdBy,
                   Colors.green,
                 ),
@@ -639,7 +648,8 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                     TextButton.icon(
                       icon: const Icon(Icons.print_outlined, size: 16),
                       label: const Text('Print Bill'),
-                      onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: true),
+                      onPressed: () =>
+                          _handlePrintOrSaveBill(bill, isPrinting: true),
                     ),
                     const SizedBox(width: 8),
                     TextButton.icon(
@@ -652,11 +662,13 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.check_circle_outline, size: 16),
                       label: const Text('Mark Paid'),
-                      onPressed: () => _handlePrintOrSaveBill(bill, isPrinting: false, markAsPaid: true),
+                      onPressed: () => _handlePrintOrSaveBill(bill,
+                          isPrinting: false, markAsPaid: true),
                       style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[600],
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8)),
                     )
                   ],
                 ),
@@ -698,11 +710,19 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
           children: [
             _buildDetailRow('Patient', bill['patient_name'] ?? 'N/A'),
             _buildDetailRow('Invoice Number', bill['invoiceNumber'] ?? 'N/A'),
-            _buildDetailRow('Total Amount', '₱${((bill['totalAmount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}'),
-            _buildDetailRow('Bill Date', DateFormat('MMM dd, yyyy').format(DateTime.parse(bill['billDate']))),
+            _buildDetailRow('Total Amount',
+                '₱${((bill['totalAmount'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)}'),
+            _buildDetailRow(
+                'Bill Date',
+                DateFormat('MMM dd, yyyy')
+                    .format(DateTime.parse(bill['billDate']))),
             if (bill['dueDate'] != null)
-              _buildDetailRow('Due Date', DateFormat('MMM dd, yyyy').format(DateTime.parse(bill['dueDate']))),
-            _buildDetailRow('Created By', bill['created_by_user_name'] ?? 'N/A'),
+              _buildDetailRow(
+                  'Due Date',
+                  DateFormat('MMM dd, yyyy')
+                      .format(DateTime.parse(bill['dueDate']))),
+            _buildDetailRow(
+                'Created By', bill['created_by_user_name'] ?? 'N/A'),
             if (bill['notes'] != null && (bill['notes'] as String).isNotEmpty)
               _buildDetailRow('Notes', bill['notes']),
           ],
@@ -742,7 +762,9 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Invoice number is missing.'), backgroundColor: Colors.red),
+        const SnackBar(
+            content: Text('Error: Invoice number is missing.'),
+            backgroundColor: Colors.red),
       );
       return;
     }

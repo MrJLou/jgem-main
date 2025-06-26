@@ -5,7 +5,6 @@ import 'services/auth_service.dart';
 import 'services/real_time_sync_service.dart';
 import 'services/lan_client_service.dart';
 import 'services/session_monitor_service.dart';
-import 'screens/auth_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'screens/lan_client_connection_screen.dart';
@@ -14,6 +13,7 @@ import 'screens/lan_connection_diagnostics_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
+import 'screens/auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,7 +100,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
         }
 
         if (snapshot.hasData && snapshot.data == true) {
-          return const LoginScreen();
+          return const DashboardScreen(accessLevel: 'admin');
         }
         return const LoginScreen();
       },

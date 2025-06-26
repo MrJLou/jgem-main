@@ -24,7 +24,8 @@ class UserActivityLog {
       actionDescription: json['actionDescription'] as String? ?? '',
       targetRecordId: json['targetRecordId'] as String?,
       targetTable: json['targetTable'] as String?,
-      timestamp: DateTime.parse(json['timestamp'] as String? ?? DateTime.now().toIso8601String()),
+      timestamp: DateTime.parse(
+          json['timestamp'] as String? ?? DateTime.now().toIso8601String()),
       details: json['details'] as String?,
     );
   }

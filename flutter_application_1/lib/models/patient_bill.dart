@@ -38,13 +38,18 @@ class PatientBill {
       id: map['id'] as String? ?? '',
       displayInvoiceNumber: map['displayInvoiceNumber'] as String? ?? '',
       patientId: map['patientId'] as String?,
-      billItems: (map['billItems'] as List<dynamic>?)?.map((item) => item as Map<String, dynamic>).toList() ?? [],
+      billItems: (map['billItems'] as List<dynamic>?)
+              ?.map((item) => item as Map<String, dynamic>)
+              .toList() ??
+          [],
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0.0,
       discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0.0,
       taxAmount: (map['taxAmount'] as num?)?.toDouble() ?? 0.0,
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0.0,
-      invoiceDate: DateTime.parse(map['invoiceDate'] as String? ?? DateTime.now().toIso8601String()),
-      dueDate: DateTime.parse(map['dueDate'] as String? ?? DateTime.now().toIso8601String()),
+      invoiceDate: DateTime.parse(
+          map['invoiceDate'] as String? ?? DateTime.now().toIso8601String()),
+      dueDate: DateTime.parse(
+          map['dueDate'] as String? ?? DateTime.now().toIso8601String()),
       status: map['status'] as String? ?? '',
       createdByUserId: map['createdByUserId'] as String? ?? '',
       notes: map['notes'] as String?,

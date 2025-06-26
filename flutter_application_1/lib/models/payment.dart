@@ -32,7 +32,8 @@ class Payment {
       patientId: json['patientId'] as String? ?? '',
       patientName: json['patientName'] as String? ?? '',
       referenceNumber: json['referenceNumber'] as String? ?? '',
-      paymentDate: DateTime.parse(json['paymentDate'] as String? ?? DateTime.now().toIso8601String()),
+      paymentDate: DateTime.parse(
+          json['paymentDate'] as String? ?? DateTime.now().toIso8601String()),
       amountPaid: (json['amountPaid'] as num?)?.toDouble() ?? 0.0,
       paymentMethod: json['paymentMethod'] as String? ?? '',
       receivedByUserId: json['receivedByUserId'] as String? ?? '',
