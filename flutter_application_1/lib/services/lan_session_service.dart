@@ -129,15 +129,19 @@ class LanSessionService {
     bool forceLogoutExisting = false,
   }) async {
     try {
-      debugPrint('LanSessionService: Registering session for $username on $deviceName');
-      debugPrint('LanSessionService: Current active sessions: ${_activeSessions.length}');
-      
+      debugPrint(
+          'LanSessionService: Registering session for $username on $deviceName');
+      debugPrint(
+          'LanSessionService: Current active sessions: ${_activeSessions.length}');
+
       // Check if user is already logged in on another device
       final existingSession = _findUserSession(username);
       if (existingSession != null) {
-        debugPrint('LanSessionService: Found existing session for $username on ${existingSession.deviceName}');
+        debugPrint(
+            'LanSessionService: Found existing session for $username on ${existingSession.deviceName}');
         if (forceLogoutExisting) {
-          debugPrint('LanSessionService: Force logout enabled, ending existing session');
+          debugPrint(
+              'LanSessionService: Force logout enabled, ending existing session');
           // Force logout the existing session
           await endUserSession(existingSession.sessionId);
 
@@ -567,21 +571,24 @@ class LanSessionService {
     final port = prefs.getInt('session_server_port') ?? _defaultSessionPort;
     _serverToken = prefs.getString('session_server_token');
 
-    debugPrint('LanSessionService: Loading configuration - enabled: $isEnabled, port: $port, hasToken: ${_serverToken != null}, integratedMode: $_integratedMode');
+    debugPrint(
+        'LanSessionService: Loading configuration - enabled: $isEnabled, port: $port, hasToken: ${_serverToken != null}, integratedMode: $_integratedMode');
 
     // Only start standalone server if not in integrated mode
     if (isEnabled && _serverToken != null && !_integratedMode) {
       debugPrint('LanSessionService: Starting standalone session server...');
       await startSessionServer(port: port);
     } else if (_integratedMode) {
-      debugPrint('LanSessionService: Running in integrated mode - skipping standalone server start');
+      debugPrint(
+          'LanSessionService: Running in integrated mode - skipping standalone server start');
       // Generate token for integrated mode if needed
       if (_serverToken == null) {
         _generateServerToken();
         await prefs.setString('session_server_token', _serverToken!);
       }
     } else {
-      debugPrint('LanSessionService: Session server not enabled or token missing');
+      debugPrint(
+          'LanSessionService: Session server not enabled or token missing');
     }
   }
 
@@ -610,7 +617,8 @@ class LanSessionService {
 
   /// Broadcast session update
   static void _broadcastSessionUpdate(Map<String, dynamic> update) {
-    debugPrint('LanSessionService: Broadcasting session update: ${update['type']}');
+    debugPrint(
+        'LanSessionService: Broadcasting session update: ${update['type']}');
     _sessionUpdates.add(update);
 
     // Send to all connected devices

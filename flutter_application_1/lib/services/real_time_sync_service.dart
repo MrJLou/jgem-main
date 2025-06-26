@@ -82,7 +82,8 @@ class RealTimeSyncService {
       final deviceId = await _getDeviceId();
 
       // Connect to WebSocket
-      final wsUrl = 'ws://$serverIp:$port/ws?access_code=$accessCode&deviceId=$deviceId';
+      final wsUrl =
+          'ws://$serverIp:$port/ws?access_code=$accessCode&deviceId=$deviceId';
       _wsChannel = IOWebSocketChannel.connect(wsUrl);
 
       // Listen for messages and store the subscription
@@ -124,6 +125,7 @@ class RealTimeSyncService {
         return;
       }
       final type = data['type'] as String?;
+      debugPrint('Received WebSocket message type: $type');
 
       switch (type) {
         case 'patient_queue_update':
@@ -132,6 +134,9 @@ class RealTimeSyncService {
         case 'patient_info_update':
           _handlePatientInfoUpdate(data);
           break;
+        case 'database_change':
+          _handleDatabaseChange(data);
+          break;
         case 'sync_complete':
           debugPrint('Server sync complete');
           break;
@@ -139,7 +144,7 @@ class RealTimeSyncService {
           _sendPong();
           break;
         default:
-          debugPrint('Unknown message type: $type');
+          debugPrint('Unknown message type: $type, full message: $data');
       }
     } catch (e) {
       debugPrint('Error handling WebSocket message: $e');
@@ -203,6 +208,63 @@ class RealTimeSyncService {
       debugPrint('Patient info updated: ${patientData['id']}');
     } catch (e) {
       debugPrint('Error handling patient info update: $e');
+    }
+  }
+
+  /// Handle database changes from server
+  static void _handleDatabaseChange(Map<String, dynamic> data) async {
+    try {
+      final changeData = data['data'];
+      if (changeData is! Map<String, dynamic>) {
+        debugPrint('Invalid database change data format: $changeData');
+        return;
+      }
+
+      final table = changeData['table'] as String?;
+      final operation = changeData['operation'] as String?;
+      final recordId = changeData['recordId'] as String?;
+      final changeDataPayload = changeData['data'] as Map<String, dynamic>?;
+
+      if (table == null || operation == null) {
+        debugPrint('Invalid database change: missing table or operation');
+        return;
+      }
+
+      debugPrint('Handling database change: $operation on $table (ID: $recordId)');
+
+      // Apply the change to local database based on table
+      switch (table) {
+        case 'patients':
+          if (changeDataPayload != null) {
+            await _dbHelper.updatePatientFromSync(changeDataPayload);
+          }
+          break;
+        case 'active_patient_queue':
+          if (changeDataPayload != null) {
+            await _dbHelper.updatePatientQueueFromSync(changeDataPayload);
+
+            // Also notify the queue update callback
+            if (_queueUpdateCallback != null) {
+              try {
+                await _queueUpdateCallback!(operation, changeDataPayload);
+              } catch (e) {
+                debugPrint('Error in queue update callback: $e');
+              }
+            }
+          }
+          break;
+        case 'appointments':
+          if (changeDataPayload != null) {
+            await _dbHelper.updatePatientQueueFromSync(changeDataPayload);
+          }
+          break;
+        default:
+          debugPrint('Unhandled table for database change: $table');
+      }
+
+      debugPrint('Database change applied successfully');
+    } catch (e) {
+      debugPrint('Error handling database change: $e');
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
+import 'package:flutter_application_1/services/real_time_sync_service.dart';
 // You might need to import Patient model if it's used for return types or specific casting
 // import '../models/patient.dart'; 
 
@@ -22,6 +23,15 @@ class PatientDatabaseService {
 
     await db.insert(DatabaseHelper.tablePatients, patient);
     await _dbHelper.logChange(DatabaseHelper.tablePatients, patient['id'], 'insert');
+
+    // Send real-time sync notification for new patient
+    try {
+      await RealTimeSyncService.sendPatientInfoUpdate(patient);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to send real-time sync for new patient: $e');
+      }
+    }
 
     return patient['id'];
   }
@@ -80,6 +90,16 @@ class PatientDatabaseService {
 
     // 4. Log the update action itself
     await _dbHelper.logChange(DatabaseHelper.tablePatients, patientId, 'update');
+
+    // Send real-time sync notification for patient update
+    try {
+      await RealTimeSyncService.sendPatientInfoUpdate(patient);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Failed to send real-time sync for patient update: $e');
+      }
+    }
+
     return result;
   }
 

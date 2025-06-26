@@ -509,15 +509,17 @@ class LanSyncService {
     try {
       // Initialize the session service without starting its own server
       // since we handle session requests through the main LAN server
-      debugPrint('LanSyncService: Initializing session management (integrated mode)...');
-      
+      debugPrint(
+          'LanSyncService: Initializing session management (integrated mode)...');
+
       // Set the session service to integrated mode
       LanSessionService.setIntegratedMode(true);
-      
+
       // Just initialize the session service without starting a separate server
       await LanSessionService.initialize();
-      
-      debugPrint('LanSyncService: Session management initialized in integrated mode');
+
+      debugPrint(
+          'LanSyncService: Session management initialized in integrated mode');
       debugPrint('Session management integrated into LAN server');
     } catch (e) {
       debugPrint('Error initializing session management: $e');
@@ -543,7 +545,8 @@ class LanSyncService {
         await _handleCreateSession(request);
       } else if (path == '/session/validate' && method == 'POST') {
         await _handleValidateSession(request);
-      } else if ((path == '/session/list' || path == '/sessions') && method == 'GET') {
+      } else if ((path == '/session/list' || path == '/sessions') &&
+          method == 'GET') {
         await _handleGetSessions(request);
       } else if (path == '/session/update' && method == 'POST') {
         await _handleUpdateActivity(request);
@@ -819,10 +822,12 @@ class LanSyncService {
 
     final changeNotification = {
       'type': 'database_change',
-      'table': table,
-      'operation': operation,
-      'record_id': recordId,
-      'data': data,
+      'data': {
+        'table': table,
+        'operation': operation,
+        'recordId': recordId,
+        'data': data,
+      },
       'timestamp': DateTime.now().toIso8601String(),
     };
 
@@ -851,7 +856,7 @@ class LanSyncService {
     try {
       // Reset session service integrated mode when stopping
       LanSessionService.setIntegratedMode(false);
-      
+
       // Only stop session service if it was running its own server
       if (LanSessionService.isServerRunning) {
         await LanSessionService.stopSessionServer();
@@ -1047,7 +1052,7 @@ class LanSyncService {
     try {
       // Immediate notification for real-time sync (< 1 second delay)
       await notifyDatabaseChange(table, operation, recordId, data: data);
-      
+
       // Special handling for document changes with immediate broadcast
       if (table == 'generated_documents' && data != null) {
         await notifyDocumentChange(
@@ -1056,7 +1061,7 @@ class LanSyncService {
           operation,
           documentData: data,
         );
-        
+
         // Additional immediate notification for critical document operations
         if (operation == 'insert' && _activeWebSockets.isNotEmpty) {
           final urgentNotification = {
@@ -1071,15 +1076,16 @@ class LanSyncService {
           debugPrint('Sent urgent document sync notification for $recordId');
         }
       }
-      
+
       // Immediate broadcast for critical table changes
       final criticalTables = [
+        'patients',
         'patient_bills',
-        'payments', 
+        'payments',
         'active_patient_queue',
         'generated_documents'
       ];
-      
+
       if (criticalTables.contains(table) && _activeWebSockets.isNotEmpty) {
         final urgentNotification = {
           'type': 'urgent_sync',
@@ -1092,7 +1098,6 @@ class LanSyncService {
         _broadcastToClients(urgentNotification);
         debugPrint('Sent urgent sync notification for $table:$recordId');
       }
-      
     } catch (e) {
       debugPrint('Error in database change callback: $e');
     }
