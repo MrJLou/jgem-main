@@ -13,6 +13,7 @@ import '../../screens/reports/report_hub_screen.dart';
 import '../../screens/billing/billing_hub_screen.dart';
 import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
+import '../../screens/server_management_screen.dart';
 import '../../screens/help/help_screen.dart';
 import '../../screens/about_screen.dart';
 import '../../services/queue_service.dart';
@@ -94,6 +95,10 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
     },
+    'Server Management': {
+      'screen': (String accessLevel) => const ServerManagementScreen(),
+      'icon': Icons.dns_outlined
+    },
     '---': {
       'screen': (String accessLevel) =>
           const SizedBox.shrink(), // No screen for a divider
@@ -117,7 +122,7 @@ class DashboardMenuConfig {
       'Payment',
       'Billing',
       '---',
-      'LAN Server',
+      'Server Management',
       '---',
       'Help',
       'About'
