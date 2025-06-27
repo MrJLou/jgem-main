@@ -39,6 +39,7 @@ void main() async {
     try {
       // Call the database change handler in EnhancedShelfServer
       await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
+      debugPrint('Database change notification sent to Enhanced Shelf Server: $table.$operation');
     } catch (e) {
       debugPrint('Error notifying Enhanced Shelf Server of database change: $e');
     }
@@ -46,6 +47,8 @@ void main() async {
   
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
+  
+  debugPrint('Application initialized with bidirectional database sync capabilities');
 
   runApp(const PatientRecordManagementApp());
 }

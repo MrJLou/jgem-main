@@ -9,6 +9,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 import 'database_helper.dart';
 
 /// Enhanced Shelf server for HTTP database operations
@@ -796,6 +797,8 @@ class EnhancedShelfServer {
   static Future<void> _handleWebSocketDatabaseChange(Map<String, dynamic> data) async {
     try {
       final changeData = data['change'] as Map<String, dynamic>?;
+      final clientInfo = data['clientInfo'] as Map<String, dynamic>?;
+      
       if (changeData == null) {
         debugPrint('Invalid WebSocket database change data');
         return;
@@ -823,33 +826,53 @@ class EnhancedShelfServer {
         switch (operation.toLowerCase()) {
           case 'insert':
             if (recordData != null) {
-              await db.insert(table, recordData);
-              debugPrint('Inserted record in $table via WebSocket');
+              try {
+                await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+              } catch (e) {
+                debugPrint('Error applying WebSocket insert: $e');
+              }
             }
             break;
           case 'update':
             if (recordData != null) {
-              await db.update(table, recordData, where: 'id = ?', whereArgs: [recordId]);
-              debugPrint('Updated record in $table via WebSocket');
+              try {
+                final rowsAffected = await db.update(table, recordData, where: 'id = ?', whereArgs: [recordId]);
+                debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+              } catch (e) {
+                debugPrint('Error applying WebSocket update: $e');
+              }
             }
             break;
           case 'delete':
-            await db.delete(table, where: 'id = ?', whereArgs: [recordId]);
-            debugPrint('Deleted record from $table via WebSocket');
+            try {
+              final rowsAffected = await db.delete(table, where: 'id = ?', whereArgs: [recordId]);
+              debugPrint('Successfully applied WebSocket delete: $table.$recordId (rows affected: $rowsAffected)');
+            } catch (e) {
+              debugPrint('Error applying WebSocket delete: $e');
+            }
             break;
           default:
             debugPrint('Unknown WebSocket operation: $operation');
         }
         
-        // Broadcast this change to other connected clients
-        _broadcastWebSocketChange(changeData);
+        // Add client info to the change data for tracking
+        final broadcastData = Map<String, dynamic>.from(changeData);
+        broadcastData['source'] = 'client';
+        if (clientInfo != null) {
+          broadcastData['clientInfo'] = clientInfo;
+        }
+        
+        // Broadcast this change to other connected clients (excluding sender)
+        _broadcastWebSocketChange(broadcastData);
         
       } finally {
         // Re-enable change callback
         DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       }
+      
     } catch (e) {
-      debugPrint('Error applying WebSocket database change: $e');
+      debugPrint('Error handling WebSocket database change: $e');
     }
   }
 

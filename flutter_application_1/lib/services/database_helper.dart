@@ -1132,8 +1132,10 @@ class DatabaseHelper {
     if (_onDatabaseChanged != null) {
       try {
         await _onDatabaseChanged!(table, operation, recordId, data);
+        debugPrint('Real-time sync notification sent: $table.$operation for record $recordId');
       } catch (e) {
         debugPrint('Real-time sync notification failed: $e');
+        // Don't rethrow to avoid breaking database operations
       }
     }
   }

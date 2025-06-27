@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import '../../services/queue_service.dart';
-import '../../services/btree_queue_manager.dart';
-import '../../models/active_patient_queue_item.dart';
-import '../../models/appointment.dart';
-import '../../services/api_service.dart';
-import '../../models/user.dart';
-import '../../models/patient.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../../models/appointment.dart';
+import '../../models/active_patient_queue_item.dart';
+import '../../models/patient.dart';
+import '../../models/user.dart';
+import '../../services/api_service.dart';
+import '../../services/queue_service.dart';
+import '../../services/btree_queue_manager.dart';
+import '../../services/database_sync_client.dart';
 import 'add_to_queue_screen.dart';
+import 'dart:async';
 
 class _AppointmentDisplayItem {
   final Appointment appointment;
@@ -77,6 +79,9 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
 
   // Debug state for performance monitoring
   bool _showPerformanceMetrics = false;
+  
+  // Stream subscription for real-time sync updates
+  StreamSubscription? _syncSubscription;
 
   @override
   void initState() {
@@ -93,6 +98,19 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     
     // Setup search listener
     _searchController.addListener(_onSearchChanged);
+
+    // Listen to real-time sync updates from DatabaseSyncClient
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      // Check if this is a queue-related update
+      if (updateEvent['type'] == 'remote_change_applied' || 
+          updateEvent['type'] == 'database_change') {
+        final change = updateEvent['change'] as Map<String, dynamic>?;
+        if (change != null && change['table'] == 'active_patient_queue') {
+          // Refresh live queue data on queue updates
+          _refreshCurrentTabData();
+        }
+      }
+    });
   }
 
   @override
@@ -100,6 +118,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     _tabController.removeListener(_handleTabSelection);
     _tabController.dispose();
     _searchController.dispose();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 
