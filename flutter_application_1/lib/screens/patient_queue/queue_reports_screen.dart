@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 // import 'package:flutter_application_1/models/active_patient_queue_item.dart'; // Not directly used for instantiation here
 import 'package:intl/intl.dart'; // For date formatting
@@ -7,13 +8,13 @@ import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
 
 class QueueReportsScreen extends StatefulWidget {
-  const QueueReportsScreen({Key? key}) : super(key: key);
+  const QueueReportsScreen({super.key});
 
   @override
-  _QueueReportsScreenState createState() => _QueueReportsScreenState();
+  QueueReportsScreenState createState() => QueueReportsScreenState();
 }
 
-class _QueueReportsScreenState extends State<QueueReportsScreen> {
+class QueueReportsScreenState extends State<QueueReportsScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final QueueService _queueService = QueueService();
   late Future<List<Map<String, dynamic>>> _reportsFuture;
@@ -55,24 +56,26 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           await _dbHelper.getQueueReportByDate(reportDateString);
 
       if (existingReportForDate != null) {
+        if (!mounted) return;
         bool overwrite = await showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text('Report Exists'),
+                title: const Text('Report Exists'),
                 content: Text(
                     'A report for $reportDateString already exists. Overwrite it?'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: Text('Cancel')),
+                      child: const Text('Cancel')),
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: Text('Overwrite')),
+                      child: const Text('Overwrite')),
                 ],
               ),
             ) ??
             false;
         if (!overwrite) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content:
                   Text('Report generation for $reportDateString cancelled.')));
@@ -80,6 +83,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         } else {
           // User confirmed overwrite, so delete the existing report first
           await _dbHelper.deleteQueueReport(existingReportForDate['id']);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -93,6 +97,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
 
       final reportId =
           await _queueService.saveDailyReportToDb(reportData: reportData);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
@@ -101,24 +106,26 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
       );
       _loadReports(); // Refresh the list of saved reports
 
+      if (!mounted) return;
       bool exportNow = await showDialog(
             context: context,
             builder: (context) => AlertDialog(
-              title: Text('Export Report'),
+              title: const Text('Export Report'),
               content: Text(
                   'Do you want to export the generated report for $reportDateString to PDF now?'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: Text('Later')),
+                    child: const Text('Later')),
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: Text('Export Now')),
+                    child: const Text('Export Now')),
               ],
             ),
           ) ??
           false;
 
+      if (!mounted) return;
       if (exportNow) {
         // Fetch the just saved report data to pass its full data to export function
         // The `reportData` variable already holds what we need for export.
@@ -130,26 +137,29 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
       if (dateForReport.year == today.year &&
           dateForReport.month == today.month &&
           dateForReport.day == today.day) {
+        if (!mounted) return;
         bool clearQueue = await showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: Text('Clear Active Queue?'),
-                content: Text(
+                title: const Text('Clear Active Queue?'),
+                content: const Text(
                     'Today\'s report has been saved. Do you want to clear the current active queue to prepare for the next operational day?'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: Text('No, Keep It')),
+                      child: const Text('No, Keep It')),
                   ElevatedButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: Text('Yes, Clear Now')),
+                      child: const Text('Yes, Clear Now')),
                 ],
               ),
             ) ??
             false;
 
+        if (!mounted) return;
         if (clearQueue) {
           int clearedCount = await _queueService.clearTodaysActiveQueue();
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -160,6 +170,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content:
@@ -177,7 +188,9 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           typedQueueData =
               List<Map<String, dynamic>>.from(jsonDecode(report['queueData']));
         } catch (e) {
-          print("Error decoding queueData in _viewAndExportReport: $e");
+          if (kDebugMode) {
+            print("Error decoding queueData in _viewAndExportReport: $e");
+          }
         }
       } else if (report['queueData'] is List) {
         typedQueueData = List<Map<String, dynamic>>.from(report['queueData']);
@@ -205,7 +218,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
                   const SizedBox(height: 10),
                   Text(
                       'Total Queue Entries Processed: ${typedQueueData.length}',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   // Removed the detailed list of patients
                 ],
               ),
@@ -213,11 +226,11 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Close')),
+                  child: const Text('Close')),
               ElevatedButton.icon(
-                icon: Icon(Icons.picture_as_pdf, color: Colors.white),
+                icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                 label:
-                    Text('Export PDF', style: TextStyle(color: Colors.white)),
+                    const Text('Export PDF', style: TextStyle(color: Colors.white)),
                 onPressed: () {
                   Navigator.of(context).pop(); // Close dialog first
                   // Ensure the report passed to _exportReport has queueData as List<Map> not String
@@ -245,7 +258,9 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           dataForPdf['queueData'] = List<Map<String, dynamic>>.from(
               jsonDecode(dataForPdf['queueData']));
         } catch (e) {
-          print("Error decoding queueData for PDF export: $e");
+          if (kDebugMode) {
+            print("Error decoding queueData for PDF export: $e");
+          }
           dataForPdf['queueData'] = []; // Fallback to empty list
         }
       } else if (dataForPdf['queueData'] == null) {
@@ -253,13 +268,15 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
       }
 
       final filePath = await _queueService.exportDailyReportToPdf(dataForPdf);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Report exported to: $filePath'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 5)),
+            duration: const Duration(seconds: 5)),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Error exporting report: $e'),
@@ -277,12 +294,12 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
         backgroundColor: Colors.teal[700],
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh, color: Colors.white),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadReports,
             tooltip: 'Refresh Reports',
           ),
           IconButton(
-            icon: Icon(Icons.date_range, color: Colors.white),
+            icon: const Icon(Icons.date_range, color: Colors.white),
             onPressed: () => _pickDateForReport(context),
             tooltip: 'Select Date for New Report',
           )
@@ -293,16 +310,16 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton.icon(
-              icon: Icon(Icons.save_alt, color: Colors.white),
+              icon: const Icon(Icons.save_alt, color: Colors.white),
               label: Text(
                   'Generate & Save Report for ${DateFormat('yyyy-MM-dd').format(_selectedDateForNewReport)}',
-                  style: TextStyle(color: Colors.white)),
+                  style: const TextStyle(color: Colors.white)),
               onPressed: () =>
                   _generateAndSaveReportForDate(_selectedDateForNewReport),
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal[600],
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             ),
           ),
           Expanded(
@@ -335,7 +352,7 @@ class _QueueReportsScreenState extends State<QueueReportsScreen> {
                         title: Text('Report Date: ${report['reportDate']}'),
                         subtitle: Text(
                             'Patients in Queue: ${report['totalPatientsInQueue'] ?? report['totalPatients'] ?? 'N/A'} - Served: ${report['patientsServed'] ?? 'N/A'}'), // Handle old and new field names
-                        trailing: Icon(Icons.arrow_forward_ios),
+                        trailing: const Icon(Icons.arrow_forward_ios),
                         onTap: () => _viewAndExportReport(report),
                       ),
                     );

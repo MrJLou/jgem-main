@@ -16,6 +16,7 @@ class ActivePatientQueueItem {
       selectedServices; // New: To store structured service data
   final double? totalPrice; // New: To store calculated total price
   final String status; // e.g., 'waiting', 'ongoing', 'done', 'removed'
+  final String paymentStatus; // Added: e.g., 'Pending', 'Paid', 'Waived'
   final DateTime createdAt; // Timestamp when this queue entry was created
   final String? addedByUserId; // User ID of staff who added the patient
   final DateTime? servedAt; // Timestamp when patient status changes to 'served'
@@ -23,6 +24,10 @@ class ActivePatientQueueItem {
       removedAt; // Timestamp when patient status changes to 'removed'
   final DateTime?
       consultationStartedAt; // Timestamp when patient status changes to 'in_consultation'
+  final String? originalAppointmentId; // ADDED: To link back to the original appointment if applicable
+  final String? doctorId; // ADDED: To assign a doctor to the queue entry
+  final String? doctorName; // ADDED: To display doctor's name easily
+  final bool isWalkIn;
   const ActivePatientQueueItem({
     required this.queueEntryId,
     this.patientId,
@@ -35,12 +40,40 @@ class ActivePatientQueueItem {
     this.selectedServices, // Added
     this.totalPrice, // Added
     required this.status,
+    this.paymentStatus = 'Pending', // Added with default value
     required this.createdAt,
     this.addedByUserId,
     this.servedAt,
     this.removedAt,
     this.consultationStartedAt,
-  });
+    this.originalAppointmentId, // ADDED
+    this.doctorId, // ADDED
+    this.doctorName, // ADDED
+    this.isWalkIn = false,
+  });  // Empty constructor for B-Tree initialization
+  ActivePatientQueueItem.empty()
+    : queueEntryId = '',
+      patientId = null,
+      patientName = '',
+      arrivalTime = DateTime.fromMillisecondsSinceEpoch(0),
+      queueNumber = 0,
+      gender = null,
+      age = null,
+      conditionOrPurpose = null,
+      selectedServices = null,
+      totalPrice = null,
+      status = '',
+      paymentStatus = 'Pending',
+      createdAt = DateTime.fromMillisecondsSinceEpoch(0),
+      addedByUserId = null,
+      servedAt = null,
+      removedAt = null,
+      consultationStartedAt = null,
+      originalAppointmentId = null,
+      doctorId = null,
+      doctorName = null,
+      isWalkIn = false;
+
   factory ActivePatientQueueItem.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>>? services;
     if (json['selectedServices'] != null) {
@@ -54,6 +87,8 @@ class ActivePatientQueueItem {
         } catch (e) {
           if (kDebugMode) {
             print("Error decoding selectedServices from JSON string: $e");
+            print("JSON data: ${json['selectedServices']}");
+            print("Patient: ${json['patientName']}");
           }
           services = null;
         }
@@ -66,6 +101,8 @@ class ActivePatientQueueItem {
         } catch (e) {
           if (kDebugMode) {
             print("Error casting selectedServices from List: $e");
+            print("List data: ${json['selectedServices']}");
+            print("Patient: ${json['patientName']}");
           }
           services = null;
         }
@@ -84,6 +121,7 @@ class ActivePatientQueueItem {
       selectedServices: services, // Updated
       totalPrice: (json['totalPrice'] as num?)?.toDouble(), // Updated
       status: json['status'] as String,
+      paymentStatus: json['paymentStatus'] as String? ?? 'Pending', // Added
       createdAt: DateTime.parse(json['createdAt'] as String),
       addedByUserId: json['addedByUserId'] as String?,
       servedAt: json['servedAt'] != null
@@ -95,6 +133,10 @@ class ActivePatientQueueItem {
       consultationStartedAt: json['consultationStartedAt'] != null
           ? DateTime.parse(json['consultationStartedAt'] as String)
           : null,
+      originalAppointmentId: json['originalAppointmentId'] as String?, // ADDED
+      doctorId: json['doctorId'] as String?, // ADDED
+      doctorName: json['doctorName'] as String?, // ADDED
+      isWalkIn: (json['isWalkIn'] is bool) ? json['isWalkIn'] : (json['isWalkIn'] == 1),
     );
   }
   Map<String, dynamic> toJson() {
@@ -112,11 +154,16 @@ class ActivePatientQueueItem {
           : null, // Encode to JSON string
       'totalPrice': totalPrice,
       'status': status,
+      'paymentStatus': paymentStatus, // Added
       'createdAt': createdAt.toIso8601String(),
       'addedByUserId': addedByUserId,
       'servedAt': servedAt?.toIso8601String(),
       'removedAt': removedAt?.toIso8601String(),
       'consultationStartedAt': consultationStartedAt?.toIso8601String(),
+      'originalAppointmentId': originalAppointmentId, // ADDED
+      'doctorId': doctorId, // ADDED
+      'doctorName': doctorName, // ADDED
+      'isWalkIn': isWalkIn ? 1 : 0,
     };
   }
 
@@ -132,11 +179,16 @@ class ActivePatientQueueItem {
     List<Map<String, dynamic>>? selectedServices, // Added
     double? totalPrice, // Added
     String? status,
+    String? paymentStatus, // Added
     DateTime? createdAt,
     String? addedByUserId,
     DateTime? servedAt,
     DateTime? removedAt,
     DateTime? consultationStartedAt,
+    String? originalAppointmentId, // ADDED
+    String? doctorId, // ADDED
+    String? doctorName, // ADDED
+    bool? isWalkIn,
   }) {
     return ActivePatientQueueItem(
       queueEntryId: queueEntryId ?? this.queueEntryId,
@@ -150,12 +202,17 @@ class ActivePatientQueueItem {
       selectedServices: selectedServices ?? this.selectedServices, // Updated
       totalPrice: totalPrice ?? this.totalPrice, // Updated
       status: status ?? this.status,
+      paymentStatus: paymentStatus ?? this.paymentStatus, // Added
       createdAt: createdAt ?? this.createdAt,
       addedByUserId: addedByUserId ?? this.addedByUserId,
       servedAt: servedAt ?? this.servedAt,
       removedAt: removedAt ?? this.removedAt,
       consultationStartedAt:
           consultationStartedAt ?? this.consultationStartedAt,
+      originalAppointmentId: originalAppointmentId ?? this.originalAppointmentId, // ADDED
+      doctorId: doctorId ?? this.doctorId, // ADDED
+      doctorName: doctorName ?? this.doctorName, // ADDED
+      isWalkIn: isWalkIn ?? this.isWalkIn,
     );
   }
 }

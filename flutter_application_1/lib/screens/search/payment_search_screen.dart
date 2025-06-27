@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../services/api_service.dart';
 import '../../services/database_helper.dart';
-import '../../models/payment.dart';
 
 class PaymentSearchScreen extends StatefulWidget {
   const PaymentSearchScreen({super.key});
 
   @override
-  _PaymentSearchScreenState createState() => _PaymentSearchScreenState();
+  PaymentSearchScreenState createState() => PaymentSearchScreenState();
 }
 
-class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
+class PaymentSearchScreenState extends State<PaymentSearchScreen> {
   final TextEditingController _referenceController = TextEditingController();
   bool _hasSearched = false;
   bool _isLoading = false;
@@ -51,7 +49,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
             if (_hasSearched) ...[
               const SizedBox(height: 24),
               if (_isLoading)
-                Center(child: CircularProgressIndicator())
+                const Center(child: CircularProgressIndicator())
               else if (_paymentResults.isNotEmpty)
                 _buildPaymentResultsList()
               else
@@ -72,7 +70,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.2),
+            color: Colors.teal.withAlpha(51),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -109,7 +107,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                 'Search and manage payment transactions by Reference Number',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withAlpha(230),
                   fontSize: 16,
                   height: 1.5,
                 ),
@@ -127,7 +125,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
-      shadowColor: Colors.teal.withOpacity(0.2),
+      shadowColor: Colors.teal.withAlpha(51),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -179,7 +177,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                       ),
                       suffixIcon: _startDate != null
                           ? IconButton(
-                              icon: Icon(Icons.clear),
+                              icon: const Icon(Icons.clear),
                               onPressed: () =>
                                   setState(() => _startDate = null))
                           : null,
@@ -197,6 +195,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                         firstDate: DateTime(2000),
                         lastDate: DateTime.now(),
                       );
+                      if (!mounted) return;
                       if (date != null) {
                         setState(() => _startDate = date);
                       }
@@ -215,7 +214,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                       ),
                       suffixIcon: _endDate != null
                           ? IconButton(
-                              icon: Icon(Icons.clear),
+                              icon: const Icon(Icons.clear),
                               onPressed: () => setState(() => _endDate = null))
                           : null,
                     ),
@@ -232,6 +231,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                         firstDate: _startDate ?? DateTime(2000),
                         lastDate: DateTime.now(),
                       );
+                      if (!mounted) return;
                       if (date != null) {
                         setState(() => _endDate = date);
                       }
@@ -316,7 +316,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
   Widget _buildPaymentResultsList() {
     return ListView.builder(
       shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: _paymentResults.length,
       itemBuilder: (context, index) {
         final payment = _paymentResults[index];
@@ -349,7 +349,7 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
                     ),
                   ],
                 ),
-                Divider(height: 15),
+                const Divider(height: 15),
                 _buildDetailRow(
                     'Patient Name:', payment['patient_name'] ?? 'N/A'),
                 _buildDetailRow('Amount Paid:',
@@ -416,11 +416,13 @@ class _PaymentSearchScreenState extends State<PaymentSearchScreen> {
             _selectedPaymentType == 'all' ? null : _selectedPaymentType,
       );
 
+      if (!mounted) return;
       setState(() {
         _paymentResults = results;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _paymentResults = [];

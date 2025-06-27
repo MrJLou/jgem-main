@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
+import 'dart:math' as math; // Added for rotation
+// import 'dart:async'; // REMOVED for Timer
+import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/auth_service.dart';
-import '../widgets/login_rate_limiter.dart';
-import 'dashboard_screen.dart';
 import 'forgot_password_screen.dart';
-import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  LoginScreenState createState() => LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class LoginScreenState extends State<LoginScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -23,23 +23,84 @@ class _LoginScreenState extends State<LoginScreen>
   String? _errorMessage;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  int _selectedIndex = 0; // 0 for Sign In, 1 for Sign Up
+
+  // State for interactive image rotation
+  double _interactiveRotationAngle =
+      0.0; // Renamed from _rotationAngle and initialized
+  double _interactiveRotationAngleStartSnap = 0.0; // For snap-back logic
+  AnimationController? _imageRotationController; // Make nullable
+  // late Animation<double> _imageRotationAnimation; // REMOVED - replaced by direct controller listener
+
+  // New animations for floating logo and continuous rotation
+  late AnimationController _logoFloatController;
+  late Animation<double> _logoFloatAnimation;
+  late AnimationController _continuousRotationController;
+  late Animation<double> _continuousRotationAnimation;
+
+  // Login attempt tracking
+  final Map<String, int> _loginAttempts = {};
+  final int _maxLoginAttempts = 3;
 
   @override
   void initState() {
     super.initState();
-    _checkExistingSession();
+
+    // Initialize controllers first
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
+    _imageRotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    )..addListener(() {
+        if (mounted) {
+          setState(() {
+            _interactiveRotationAngle = lerpDouble(
+                _interactiveRotationAngleStartSnap,
+                0.0,
+                _imageRotationController!.value)!;
+          });
+        }
+      });
+    _logoFloatController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _continuousRotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 25), // Slower rotation
+    );
+
+    // Then initialize animations that depend on these controllers
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
       ),
     );
+    _logoFloatAnimation = Tween<double>(begin: -10.0, end: 10.0).animate(
+      CurvedAnimation(parent: _logoFloatController, curve: Curves.easeInOut),
+    )..addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    _continuousRotationAnimation = Tween<double>(begin: 0, end: 2 * math.pi)
+        .animate(_continuousRotationController)
+      ..addListener(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+
+    // Now call methods that might trigger rebuilds or use controllers
+    _checkExistingSession();
+
+    // Finally, start animations
     _animationController.forward();
+    _logoFloatController.repeat(reverse: true);
+    _continuousRotationController.repeat();
   }
 
   Future<void> _checkExistingSession() async {
@@ -84,6 +145,11 @@ class _LoginScreenState extends State<LoginScreen>
     _usernameController.dispose();
     _passwordController.dispose();
     _animationController.dispose();
+    _imageRotationController?.dispose(); // Use ?. for nullable controller
+    _logoFloatController.dispose(); // Dispose new controller
+    _continuousRotationController.dispose(); // Dispose new controller
+    // _pageController?.dispose(); // REMOVED Dispose PageController
+    // _timer?.cancel(); // REMOVED Cancel Timer
     super.dispose();
   }
 
@@ -94,28 +160,32 @@ class _LoginScreenState extends State<LoginScreen>
 
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
+      final username = _usernameController.text; // Store username locally
 
       try {
-        final username = _usernameController.text;
+        // final username = _usernameController.text; // Already defined above        // Check rate limiting before attempting login
+        // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
-        // Check rate limiting before attempting login
-        await LoginRateLimiter.canAttemptLogin(username);
-
-        final response =
-            await ApiService.login(username, _passwordController.text);
+        // Use enhanced session management login
+        final response = await AuthService.loginWithSessionManagement(
+            username, _passwordController.text);
 
         // Validate that the user has a role (access level) from the response
-        final userRole = response['user']?['role'];
+        final userRole = response['user']?.role;
         if (userRole == null) {
           setState(() {
             _errorMessage = 'Login failed: User role not found in response.';
           });
-          await LoginRateLimiter.recordFailedAttempt(username);
+          _recordFailedLoginAttempt(username); // Record failed attempt
+          // await LoginRateLimiter.recordFailedAttempt(username); // COMMENTED OUT
           return;
         }
 
         // Record successful login for rate limiting
-        await LoginRateLimiter.recordSuccessfulLogin(username);
+        // await LoginRateLimiter.recordSuccessfulLogin(username); // COMMENTED OUT
+
+        // Reset login attempts for this user on successful login
+        _loginAttempts.remove(username);
 
         // Save credentials after successful login
         await AuthService.saveLoginCredentials(
@@ -137,17 +207,26 @@ class _LoginScreenState extends State<LoginScreen>
           );
         }
       } catch (e) {
-        // Record failed attempt for rate limiting if username was provided
-        if (_usernameController.text.isNotEmpty) {
-          await LoginRateLimiter.recordFailedAttempt(_usernameController.text);
+        // Check if user is already logged in elsewhere
+        if (e.toString().contains('already logged in') ||
+            e.toString().contains('logged in on another device')) {
+          await _handleSessionConflict(username, _passwordController.text);
+          return;
         }
+
+        // Record failed attempt for rate limiting if username was provided
+        // if (_usernameController.text.isNotEmpty) { // COMMENTED OUT
+        //   await LoginRateLimiter.recordFailedAttempt(_usernameController.text); // COMMENTED OUT
+        // }
+        _recordFailedLoginAttempt(username); // Record failed attempt
 
         setState(() {
           _errorMessage = e.toString();
-          if (e.toString().contains('Too many attempts')) {
-            _errorMessage =
-                'Login failed: Too many attempts. Please try again later.';
-          } else if (e.toString().contains('Invalid credentials') ||
+          // if (e.toString().contains('Too many attempts')) { // COMMENTED OUT
+          //   _errorMessage = // COMMENTED OUT
+          //       'Login failed: Too many attempts. Please try again later.'; // COMMENTED OUT
+          // } else
+          if (e.toString().contains('Invalid credentials') ||
               e.toString().contains('User not found')) {
             _errorMessage = 'Login failed: Invalid username or password.';
           } else {
@@ -163,10 +242,138 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  void _recordFailedLoginAttempt(String username) {
+    if (username.isEmpty) return;
+
+    final attempts = (_loginAttempts[username] ?? 0) + 1;
+    _loginAttempts[username] = attempts;
+
+    if (attempts >= _maxLoginAttempts) {
+      // Show alert dialog
+      if (mounted) {
+        // Ensure widget is still in the tree
+        showDialog(
+          context: context,
+          barrierDismissible: false, // User must tap button!
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              title: const Text('Too Many Login Attempts'),
+              content: const Text(
+                  'You have exceeded the maximum number of login attempts. Would you like to reset your password?'),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                  },
+                ),
+                TextButton(
+                  child: const Text('Reset Password'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Dismiss dialog
+                    // Reset attempts for this user as they are being navigated to reset password
+                    _loginAttempts.remove(username);
+                    Navigator.push(
+                      context, // Use the original context for navigation
+                      MaterialPageRoute(
+                          builder: (context) => const ForgotPasswordScreen()),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
+  }
+
+  Future<void> _handleSessionConflict(String username, String password) async {
+    // Show dialog asking user if they want to force logout existing session
+    final shouldForceLogout = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('User Already Logged In'),
+          content: const Text(
+              'This user is already logged in on another device. Do you want to log out the existing session and continue?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+            ),
+            TextButton(
+              child: const Text('Force Logout'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldForceLogout == true) {
+      setState(() => _isLoading = true);
+      try {
+        // Attempt login with force logout
+        final response = await AuthService.loginWithSessionManagement(
+            username, password,
+            forceLogoutExisting: true);
+
+        // Validate that the user has a role (access level) from the response
+        final userRole = response['user']?.role;
+        if (userRole == null) {
+          setState(() {
+            _errorMessage = 'Login failed: User role not found in response.';
+          });
+          return;
+        }
+
+        // Reset login attempts for this user on successful login
+        _loginAttempts.remove(username);
+
+        // Save credentials after successful login
+        await AuthService.saveLoginCredentials(
+          token: response['token'],
+          username: username,
+          accessLevel: userRole,
+        );
+
+        // Navigate to dashboard and remove all previous routes
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                accessLevel: userRole,
+              ),
+            ),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _errorMessage =
+              'Failed to force logout existing session: ${e.toString()}';
+        });
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    } else {
+      // User cancelled, reset loading state
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final theme = Theme.of(context);
+    Theme.of(context);
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -181,7 +388,7 @@ class _LoginScreenState extends State<LoginScreen>
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withAlpha(50),
                         blurRadius: 10,
                         offset: const Offset(2, 0),
                       ),
@@ -196,7 +403,7 @@ class _LoginScreenState extends State<LoginScreen>
                         width: 60,
                         decoration: BoxDecoration(
                           color: Colors.teal[700],
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(30),
                         ),
                         child: const Icon(
                           Icons.medical_services_rounded,
@@ -210,25 +417,9 @@ class _LoginScreenState extends State<LoginScreen>
                       _buildSideNavItem(
                         icon: Icons.login,
                         label: 'Sign In',
-                        isSelected: _selectedIndex == 0,
+                        isSelected: true,
                         onTap: () {
-                          setState(() {
-                            _selectedIndex = 0;
-                          });
-                        },
-                      ),
-
-                      // Sign Up Button
-                      _buildSideNavItem(
-                        icon: Icons.person_add,
-                        label: 'Sign Up',
-                        isSelected: _selectedIndex == 1,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const SignUpScreen()),
-                          );
+                          // No action needed as this is the only option
                         },
                       ),
                     ],
@@ -265,29 +456,161 @@ class _LoginScreenState extends State<LoginScreen>
                                   "Manage patient records securely.",
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withAlpha(230),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 60),
-                              // Here we would add an illustration like in the image
-                              // Using a placeholder in this case
+                              const SizedBox(height: 50), // Adjusted spacing
+
+                              // Static image with circular white background, now with FadeTransition
                               FadeTransition(
-                                opacity: _fadeAnimation,
-                                child: Container(
-                                  height: 250,
-                                  width: 250,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Icon(
-                                    Icons.medical_services_outlined,
-                                    size: 120,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                                opacity:
+                                    _fadeAnimation, // Using the existing fade animation
+                                child: _imageRotationController ==
+                                        null // Guard condition
+                                    ? const SizedBox(
+                                        width: 220,
+                                        height:
+                                            220) // Placeholder if not initialized
+                                    : AnimatedBuilder(
+                                        animation: _logoFloatController,
+                                        builder: (BuildContext context,
+                                            Widget? staticRotatingChild) {
+                                          double floatValue =
+                                              _logoFloatAnimation.value;
+                                          double normalizedFloatAbs = floatValue
+                                                  .abs() /
+                                              10.0; // 0 at center, 1 at extremes
+
+                                          double shadowOpacity = 0.15 +
+                                              (0.1 * (1 - normalizedFloatAbs));
+                                          double shadowBlur =
+                                              8 + (12 * normalizedFloatAbs);
+                                          double shadowSpread =
+                                              1 + (4 * normalizedFloatAbs);
+                                          double shadowWidth =
+                                              180 - (30 * normalizedFloatAbs);
+                                          double shadowHeight =
+                                              15 - (7 * normalizedFloatAbs);
+
+                                          return Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              // Shadow Element
+                                              if (_logoFloatController
+                                                  .isAnimating)
+                                                Transform.translate(
+                                                  offset: const Offset(0,
+                                                      125.0), // Changed: Fixed Y offset for shadow to be at the bottom
+                                                  child: Container(
+                                                    width: shadowWidth,
+                                                    height: shadowHeight,
+                                                    decoration: BoxDecoration(
+                                                      shape: BoxShape.rectangle,
+                                                      borderRadius:
+                                                          BorderRadius.all(
+                                                              Radius.elliptical(
+                                                                  shadowWidth /
+                                                                      2,
+                                                                  shadowHeight /
+                                                                      2)),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.black
+                                                              .withAlpha((255 *
+                                                                      shadowOpacity)
+                                                                  .round()),
+                                                          blurRadius:
+                                                              shadowBlur,
+                                                          spreadRadius:
+                                                              shadowSpread,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+
+                                              // Floating and Rotating Logo
+                                              Transform.translate(
+                                                offset: Offset(0, floatValue),
+                                                child: staticRotatingChild,
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                        child: GestureDetector(
+                                          onPanUpdate: (details) {
+                                            if (mounted) {
+                                              // Add mounted check
+                                              setState(() {
+                                                _interactiveRotationAngle +=
+                                                    details.delta.dx * 0.01;
+                                              });
+                                            }
+                                          },
+                                          onPanEnd: (details) {
+                                            if (mounted &&
+                                                _imageRotationController !=
+                                                    null &&
+                                                !_imageRotationController!
+                                                    .isAnimating) {
+                                              // Add mounted & null checks
+                                              _interactiveRotationAngleStartSnap =
+                                                  _interactiveRotationAngle;
+                                              _imageRotationController!
+                                                  .forward(from: 0.0);
+                                            }
+                                          },
+                                          child: Transform(
+                                            alignment: Alignment.center,
+                                            transform: Matrix4.identity()
+                                              ..setEntry(3, 2, 0.001)
+                                              ..rotateY(
+                                                  _continuousRotationAnimation
+                                                          .value +
+                                                      _interactiveRotationAngle),
+                                            child: Container(
+                                              width:
+                                                  200, // Slightly smaller to give shadow space
+                                              height: 200,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color:
+                                                    Colors.white.withAlpha(242),
+                                              ),
+                                              child: ClipOval(
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                      15.0),
+                                                  child: Image.asset(
+                                                    'assets/images/slide1.png',
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder:
+                                                        (BuildContext context,
+                                                            Object exception,
+                                                            StackTrace?
+                                                                stackTrace) {
+                                                      return Center(
+                                                        child: Icon(
+                                                          Icons
+                                                              .broken_image_outlined,
+                                                          color:
+                                                              Colors.teal[700],
+                                                          size:
+                                                              50, // Adjusted size
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                               ),
+                              const SizedBox(
+                                  height: 40), // Spacing after the image
                             ],
                           ),
                         ),
@@ -308,32 +631,6 @@ class _LoginScreenState extends State<LoginScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const SizedBox(height: 80),
-
-                                    // Don't have an account text
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        const Text("Don't have an account?"),
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    const SignUpScreen(),
-                                              ),
-                                            );
-                                          },
-                                          child: Text(
-                                            'Sign Up',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: theme.primaryColor,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
 
                                     const SizedBox(height: 40),
 
@@ -479,27 +776,27 @@ class _LoginScreenState extends State<LoginScreen>
 
                                     const SizedBox(height: 16),
 
-                                    // Forgot password link
-                                    Center(
-                                      child: TextButton(
-                                        onPressed: _isLoading
-                                            ? null
-                                            : () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        const ForgotPasswordScreen(),
-                                                  ),
-                                                );
-                                              },
-                                        child: Text(
-                                          'Forgot Password?',
-                                          style: TextStyle(
-                                              color: theme.primaryColor),
-                                        ),
-                                      ),
-                                    ),
+                                    // Forgot password link - REMOVED
+                                    // Center(
+                                    //   child: TextButton(
+                                    //     onPressed: _isLoading
+                                    //         ? null
+                                    //         : () {
+                                    //             Navigator.push(
+                                    //               context,
+                                    //               MaterialPageRoute(
+                                    //                 builder: (context) =>
+                                    //                     const ForgotPasswordScreen(),
+                                    //               ),
+                                    //             );
+                                    //           },
+                                    //     child: Text(
+                                    //       'Forgot Password?',
+                                    //       style: TextStyle(
+                                    //           color: theme.primaryColor),
+                                    //     ),
+                                    //   ),
+                                    // ),
                                   ],
                                 ),
                               ),

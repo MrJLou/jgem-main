@@ -74,7 +74,7 @@ class LaboratoryHubScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => PreviousConsultationScreen(),
+                          builder: (context) => const PreviousConsultationScreen(),
                         ),
                       ),
                     ),
@@ -89,7 +89,7 @@ class LaboratoryHubScreen extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
-                              PreviousDiagnosesTreatmentsScreen(),
+                              const PreviousDiagnosesTreatmentsScreen(),
                         ),
                       ),
                     ),
@@ -104,7 +104,7 @@ class LaboratoryHubScreen extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
-                              PreviousLaboratoryResultsScreen(),
+                              const PreviousLaboratoryResultsScreen(),
                         ),
                       ),
                     ),
@@ -141,7 +141,7 @@ class LaboratoryHubScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

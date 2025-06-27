@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 // import 'receipts_screen.dart';
 // import 'payment_settings_screen.dart';
 import 'payment_screen.dart'; // Added import for PaymentScreen
+import 'package:flutter_application_1/screens/billing/transaction_history_screen.dart';
+import 'package:flutter_application_1/screens/receipts/receipts_screen.dart';
 
 class PaymentHubScreen extends StatelessWidget {
   // final String accessLevel; // Removed accessLevel
@@ -13,11 +15,6 @@ class PaymentHubScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Placeholder onTap actions - replace with actual navigation
-    VoidCallback placeholderOnTap = () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Navigation to be implemented.')),
-      );
-    };
 
     return Scaffold(
       appBar: AppBar(
@@ -88,7 +85,7 @@ class PaymentHubScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (context) => PaymentScreen()),
+                              builder: (context) => const PaymentScreen()),
                         );
                       },
                     ),
@@ -100,7 +97,13 @@ class PaymentHubScreen extends StatelessWidget {
                       title: 'Payment History',
                       subtitle: 'View past payment records',
                       color: Colors.teal[600]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const TransactionHistoryScreen()),
+                        );
+                      },
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -110,18 +113,12 @@ class PaymentHubScreen extends StatelessWidget {
                       title: 'Receipts',
                       subtitle: 'View and print payment receipts',
                       color: Colors.teal[500]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
-                    ),
-                    const SizedBox(height: 20),
-                    _buildFeatureCard(
-                      // Changed to _buildFeatureCard
-                      context,
-                      icon: Icons
-                          .settings_applications_outlined, // More specific icon
-                      title: 'Payment Settings',
-                      subtitle: 'Configure payment methods and options',
-                      color: Colors.teal[400]!,
-                      onTap: placeholderOnTap, // Replace with actual navigation
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ReceiptsScreen()),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -157,7 +154,7 @@ class PaymentHubScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

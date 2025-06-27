@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 
@@ -8,17 +7,16 @@ class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
 
   @override
-  _BackupScreenState createState() => _BackupScreenState();
+  BackupScreenState createState() => BackupScreenState();
 }
 
-class _BackupScreenState extends State<BackupScreen> {
+class BackupScreenState extends State<BackupScreen> {
   bool _isAutoBackupEnabled = false;
   String _selectedBackupFrequency = 'Daily';
   final List<String> _backupFrequencies = ['Daily', 'Weekly', 'Monthly'];
   bool _isBackingUp = false;
   bool _isRestoring = false;
   Timer? _backupTimer;
-  String? _lastBackupDate;
   String? _backupLocation;
 
   // Dummy backup history data
@@ -52,9 +50,7 @@ class _BackupScreenState extends State<BackupScreen> {
   Future<void> _initializeBackupSettings() async {
     // BACKUP LOCATION
     _backupLocation =
-        (await getApplicationDocumentsDirectory()).path + '/backups';
-    _lastBackupDate =
-        _backupHistory.isNotEmpty ? _backupHistory.first['date'] : null;
+        '${(await getApplicationDocumentsDirectory()).path}/backups';
   }
 
   @override
@@ -63,7 +59,7 @@ class _BackupScreenState extends State<BackupScreen> {
     super.dispose();
   }
 
-  Future<void> _createBackup(BuildContext context) async {
+  Future<void> _createBackup() async {
     if (_isBackingUp) return;
 
     setState(() {
@@ -82,9 +78,9 @@ class _BackupScreenState extends State<BackupScreen> {
         'type': 'Manual',
       };
 
+      if (!mounted) return;
       setState(() {
         _backupHistory.insert(0, backupEntry);
-        _lastBackupDate = backupEntry['date'];
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,6 +94,7 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to create backup: $e'),
@@ -109,13 +106,15 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     } finally {
-      setState(() {
-        _isBackingUp = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isBackingUp = false;
+        });
+      }
     }
   }
 
-  Future<void> _restoreBackup(BuildContext context) async {
+  Future<void> _restoreBackup() async {
     if (_isRestoring) return;
 
     setState(() {
@@ -125,6 +124,7 @@ class _BackupScreenState extends State<BackupScreen> {
     try {
       // Simulate restore process
       await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -137,6 +137,7 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to restore system: $e'),
@@ -148,16 +149,19 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     } finally {
-      setState(() {
-        _isRestoring = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isRestoring = false;
+        });
+      }
     }
   }
 
-  Future<void> _exportBackup(BuildContext context) async {
+  Future<void> _exportBackup() async {
     try {
       // Simulate export process
       await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -170,6 +174,7 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to export backup: $e'),
@@ -213,7 +218,7 @@ class _BackupScreenState extends State<BackupScreen> {
     }
 
     _backupTimer = Timer.periodic(interval, (timer) {
-      _createBackup(context);
+      _createBackup();
     });
   }
 
@@ -248,9 +253,10 @@ class _BackupScreenState extends State<BackupScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Manage your system backups and restoration points',
+                    'Easily backup and restore your application data.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withAlpha(230),
                       fontSize: 16,
                     ),
                   ),
@@ -268,21 +274,21 @@ class _BackupScreenState extends State<BackupScreen> {
                       'Backup Now',
                       Icons.backup,
                       Colors.blue[700]!,
-                      _isBackingUp ? null : () => _createBackup(context),
+                      _isBackingUp ? null : () => _createBackup(),
                       isLoading: _isBackingUp,
                     ),
                     _buildActionCard(
                       'Restore',
                       Icons.restore,
                       Colors.orange[700]!,
-                      _isRestoring ? null : () => _restoreBackup(context),
+                      _isRestoring ? null : () => _restoreBackup(),
                       isLoading: _isRestoring,
                     ),
                     _buildActionCard(
                       'Export',
                       Icons.upload_file,
                       Colors.green[700]!,
-                      () => _exportBackup(context),
+                      () => _exportBackup(),
                     ),
                   ],
                 ),
@@ -448,7 +454,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         ],
                       ),
                     ),
-                    Container(
+                    SizedBox(
                       width: double.infinity,
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -458,7 +464,7 @@ class _BackupScreenState extends State<BackupScreen> {
                           ),
                           child: DataTable(
                             headingRowColor:
-                                MaterialStateProperty.all(Colors.grey[50]),
+                                WidgetStateProperty.all(Colors.grey[50]),
                             columnSpacing: 24,
                             horizontalMargin: 24,
                             columns: [
@@ -547,14 +553,14 @@ class _BackupScreenState extends State<BackupScreen> {
                                           icon: Icon(Icons.restore,
                                               color: Colors.teal[700]),
                                           onPressed: () =>
-                                              _restoreBackup(context),
+                                              _restoreBackup(),
                                           tooltip: 'Restore',
                                         ),
                                         IconButton(
                                           icon: Icon(Icons.download,
                                               color: Colors.teal[700]),
                                           onPressed: () =>
-                                              _exportBackup(context),
+                                              _exportBackup(),
                                           tooltip: 'Download',
                                         ),
                                       ],

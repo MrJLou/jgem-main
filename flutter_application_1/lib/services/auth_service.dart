@@ -15,12 +15,14 @@ class AuthService {
   static const _accessLevelKey = 'access_level';
   static const _deviceIdKey = 'device_id';
   static const _isLoggedInKey = 'is_logged_in'; // Key for logged in state
-
   // --- Additions for debounce ----
   static String? _lastLoggedInUser;
   static DateTime? _lastLoginLogTime;
   static const Duration _loginLogDebounceDuration = Duration(seconds: 5);
   // --- End additions ----
+
+  // Current user role for authorization
+  static String? _currentUserRole;
 
   // Token expiration duration (in minutes)
   static const int _tokenValidityMinutes = 60; // 1 hour
@@ -105,10 +107,12 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_authTokenKey);
       await prefs.remove(_usernameKey);
-      await prefs.remove(_accessLevelKey);
-
-      // Make sure to explicitly set the logged in state to false
+      await prefs.remove(
+          _accessLevelKey); // Make sure to explicitly set the logged in state to false
       await prefs.setBool(_isLoggedInKey, false);
+
+      // Clear current user role
+      _currentUserRole = null;
 
       // Log the logout activity if we have the username
       if (username != null) {
@@ -127,6 +131,39 @@ class AuthService {
         print('Error during logout: $e');
       }
       rethrow; // Propagate the error for handling in UI
+    }
+  }
+
+  /// Force logout this device due to session invalidation from another device
+  static Future<void> forceLogoutDueToSessionInvalidation() async {
+    try {
+      final username = await _secureStorage.read(key: _usernameKey);
+
+      // Clear all credentials without notifying session service (since it was initiated by session service)
+      await _secureStorage.delete(key: _authTokenKey);
+      await _secureStorage.delete(key: _tokenExpiryKey);
+      await _secureStorage.delete(key: _usernameKey);
+      await _secureStorage.delete(key: _accessLevelKey);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_authTokenKey);
+      await prefs.remove(_usernameKey);
+      await prefs.remove(_accessLevelKey);
+      await prefs.setBool(_isLoggedInKey, false);
+
+      _currentUserRole = null;
+
+      if (username != null) {
+        final db = DatabaseHelper();
+        await db.logUserActivity(
+          username,
+          'Session invalidated - logged out from another device',
+        );
+      }
+
+      debugPrint('Force logout completed due to session invalidation');
+    } catch (e) {
+      debugPrint('Error during force logout: $e');
     }
   }
 
@@ -219,9 +256,11 @@ class AuthService {
     await _secureStorage.delete(key: _tokenExpiryKey);
     await _secureStorage.delete(key: _usernameKey);
     await _secureStorage.delete(key: _accessLevelKey);
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_isLoggedInKey, false);
+
+    // Clear current user role
+    _currentUserRole = null;
   }
 
   // Check if user is logged in and token is valid
@@ -319,7 +358,7 @@ class AuthService {
   }
 
   // Method to get the current logged-in user's details from DB
-  Future<User?> getCurrentUser() async {
+  static Future<User?> getCurrentUser() async {
     final savedCreds = await getSavedCredentials();
     if (savedCreds != null && savedCreds['username'] != null) {
       final db = DatabaseHelper();
@@ -336,17 +375,75 @@ class AuthService {
   }
 
   // Method to get the current logged-in user's ID
-  Future<String?> getCurrentUserId() async {
+  static Future<String?> getCurrentUserId() async {
     final user = await getCurrentUser();
     return user?.id;
   }
 
   // Method to get the current user's access level
-  Future<String?> getCurrentUserAccessLevel() async {
+  static Future<String?> getCurrentUserAccessLevel() async {
     final savedCreds = await getSavedCredentials();
     if (savedCreds != null && savedCreds['accessLevel'] != null) {
       return savedCreds['accessLevel'];
     }
     return null;
   }
+
+  // Get current user role (cached)
+  static String? getCurrentUserRole() {
+    return _currentUserRole;
+  }
+
+  // Clear current user role
+  static void clearCurrentUserRole() {
+    _currentUserRole = null;
+  }
+
+  // Enhanced login with session management
+  static Future<Map<String, dynamic>> loginWithSessionManagement(
+      String username, String password,
+      {bool forceLogoutExisting = false}) async {
+    try {
+      // Proceed with normal authentication
+      final auth = await DatabaseHelper().authenticateUser(username, password);
+      if (auth != null && auth['user'] != null && auth['user'].role != null) {
+        _currentUserRole = auth['user'].role;
+
+        // Save to SharedPreferences
+        await saveLoginCredentials(
+          token: auth['token'],
+          username: username,
+          accessLevel: auth['user'].role,
+        );
+
+        debugPrint('AuthService: User $username logged in successfully');
+        
+        return auth;
+      } else {
+        throw Exception('Invalid credentials or user data missing');
+      }
+    } catch (e) {
+      throw Exception('Failed to login: $e');
+    }
+  }
+
+  /// Method to check if current session is still valid (called by real-time sync)
+  static Future<bool> validateCurrentSession() async {
+    try {
+      if (!await isLoggedIn()) {
+        return false;
+      }
+
+      final username = await getCurrentUsername();
+      if (username == null) return false;
+
+      // Simplified validation - just check if user is still logged in locally
+      return true;
+    } catch (e) {
+      debugPrint('Error validating session: $e');
+      return false;
+    }
+  }
+
+  // Get device name
 }

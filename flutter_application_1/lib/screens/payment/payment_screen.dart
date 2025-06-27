@@ -1,45 +1,64 @@
 import 'dart:convert'; // Added for jsonEncode
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/active_patient_queue_item.dart';
-import 'package:flutter_application_1/services/database_helper.dart';
-import 'package:flutter_application_1/services/queue_service.dart';
-import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
+import '../../models/active_patient_queue_item.dart';
 import '../../services/auth_service.dart'; // For fetching current user ID
-
-// Removed TransactionHistoryScreen import as it's not used directly in this refactor yet.
-// import 'transaction_history_screen.dart';
+import '../../services/database_helper.dart';
+import '../../services/queue_service.dart';
+import '../../services/receipt_service.dart';
 
 class PaymentScreen extends StatefulWidget {
+  final String? invoiceNumber;
+  const PaymentScreen({super.key, this.invoiceNumber});
+
   @override
-  _PaymentScreenState createState() => _PaymentScreenState();
+  PaymentScreenState createState() => PaymentScreenState();
 }
 
-class _PaymentScreenState extends State<PaymentScreen> {
+class PaymentScreenState extends State<PaymentScreen> {
   final TextEditingController _amountPaidController = TextEditingController();
   // double _totalAmount = 150.0; // Example total amount - will be dynamic
   bool _isPaymentProcessed = false;
   double _change = 0.0;
   String? _generatedReferenceNumber;
-
-  List<ActivePatientQueueItem> _inConsultationPatients = [];
-  ActivePatientQueueItem? _selectedPatientQueueItem;
-  bool _isLoadingPatients = true;
   String? _currentUserId;
+  ActivePatientQueueItem? _relatedQueueItem;
+
+  // PDF / Receipt state
+  Uint8List? _generatedReceiptBytes;
+
+  // New state variables for invoice search workflow
+  final TextEditingController _invoiceNumberController =
+      TextEditingController();
+  Map<String, dynamic>?
+      _searchedInvoiceDetails; // To hold bill, items, and patient data
+  bool _isLoadingInvoice = false;
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
-  final QueueService _queueService = QueueService();
-  final Uuid _uuid = Uuid(); // Made Uuid final
+  static const Uuid _uuid = Uuid();
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUserId();
-    _fetchInConsultationPatients();
+    if (widget.invoiceNumber != null) {
+      _invoiceNumberController.text = widget.invoiceNumber!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _searchInvoice();
+      });
+    }
+    // _fetchInConsultationPatients(); // Removed old patient fetching
+    // _loadLastProcessedPaymentSummary(); // Removed old summary loading
   }
 
   Future<void> _loadCurrentUserId() async {
-    final user = await AuthService().getCurrentUser();
+    final user = await AuthService.getCurrentUser();
+    if (!mounted) return;
     if (user != null) {
       setState(() {
         _currentUserId = user.id;
@@ -56,68 +75,136 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  Future<void> _fetchInConsultationPatients() async {
+  // This method is no longer fetching a list of patients for selection.
+  // It can be repurposed or removed. For now, let's clear its old logic.
+  // Or, it could be used to reset the payment screen to initial state.
+  void _resetPaymentScreen() {
     setState(() {
-      _isLoadingPatients = true;
-      // _selectedPatientQueueItem = null; // Don't reset selection if list is just refreshing
+      _invoiceNumberController.clear();
       _amountPaidController.clear();
+      _searchedInvoiceDetails = null;
       _isPaymentProcessed = false;
       _change = 0.0;
       _generatedReferenceNumber = null;
+      _isLoadingInvoice = false;
+      _generatedReceiptBytes = null;
+      _relatedQueueItem = null;
     });
-    try {
-      final patients =
-          await _dbHelper.getActiveQueue(statuses: ['in_consultation']);
-      print("Fetched 'in_consultation' patients BEFORE filtering:");
-      for (var p in patients) {
-        print(
-            "  Patient Name: ${p.patientName}, Patient ID: ${p.patientId}, totalPrice: ${p.totalPrice}, selectedServices: ${p.selectedServices}, conditionOrPurpose: ${p.conditionOrPurpose}");
-      }
-      final validPatients = patients
-          .where((p) =>
-              p.patientId != null &&
-              p.patientId!.isNotEmpty &&
-              p.totalPrice != null &&
-              p.totalPrice! > 0)
-          .toList();
+  }
 
-      setState(() {
-        _inConsultationPatients = validPatients;
-        _isLoadingPatients = false;
-        // If a selected patient is no longer in the valid list, clear selection.
-        if (_selectedPatientQueueItem != null &&
-            !validPatients.any((p) =>
-                p.queueEntryId == _selectedPatientQueueItem!.queueEntryId)) {
-          _selectedPatientQueueItem = null;
-        } else if (_selectedPatientQueueItem == null &&
-            validPatients.isNotEmpty) {
-          // Optionally, auto-select the first patient if none is selected
-          // _selectedPatientQueueItem = validPatients.first;
-        }
-      });
+  Future<Map<String, dynamic>?> _prepareReceiptDetails() {
+    if (_searchedInvoiceDetails == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please load an invoice first.'),
+            backgroundColor: Colors.orange),
+      );
+      return Future.value(null);
+    }
+
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+    final totalBillAmount =
+        (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final amountPaid = double.tryParse(_amountPaidController.text);
+
+    if (amountPaid == null || amountPaid < totalBillAmount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Please enter a valid amount greater than or equal to the total due.'),
+            backgroundColor: Colors.red),
+      );
+      return Future.value(null);
+    }
+
+    final patientData =
+        _searchedInvoiceDetails!['patient'] as Map<String, dynamic>?;
+    final patientName = patientData?['fullName'] as String? ?? 'N/A';
+
+    return Future.value({
+      'patientName': patientName,
+      'invoiceNumber': billData['invoiceNumber'],
+      'referenceNumber': 'PREVIEW-DRAFT', // Placeholder for pre-payment receipt
+      'paymentDate': DateTime.now(),
+      'totalAmount': totalBillAmount,
+      'amountPaid': amountPaid,
+      'change': amountPaid - totalBillAmount,
+      'receivedByUserId': _currentUserId ?? 'N/A',
+      'billItems': _searchedInvoiceDetails!['items'],
+    });
+  }
+
+  Future<void> _handlePrintReceipt() async {
+    final details = await _prepareReceiptDetails();
+    if (details == null) return;
+
+    try {
+      final pdfBytes = await ReceiptService.generateReceiptPdfBytes(details);
+      await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
     } catch (e) {
-      setState(() {
-        _isLoadingPatients = false;
-      });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error fetching patients: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+            content: Text('Error generating receipt for printing: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
 
+  Future<void> _handleSaveReceipt() async {
+    final details = await _prepareReceiptDetails();
+    if (details == null) return;
+
+    try {
+      final pdfBytes = await ReceiptService.generateReceiptPdfBytes(details);
+      final invoiceNumber = details['invoiceNumber'] as String? ?? 'receipt';
+
+      // Get the directory and save the file
+      final directory = await getApplicationDocumentsDirectory();
+      final receiptsDir = Directory('${directory.path}/Receipts');
+      if (!await receiptsDir.exists()) {
+        await receiptsDir.create(recursive: true);
+      }
+      final filePath =
+          '${receiptsDir.path}/${invoiceNumber}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Receipt saved to: $filePath'),
+          action: SnackBarAction(
+              label: 'Open', onPressed: () => OpenFilex.open(filePath)),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error saving receipt: $e'),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // Removed _loadLastProcessedPaymentSummary, _saveLastProcessedPaymentSummary, _clearLastProcessedPaymentSummary
+  // Removed _buildInConsultationPatientList, _buildProcessedPaymentSummarySection
+
   void _processPayment() async {
-    if (_selectedPatientQueueItem == null) {
+    // This method will be significantly updated later to use _searchedInvoiceDetails
+    if (_searchedInvoiceDetails == null) {
+      // Updated condition
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Please select a patient from the list.'),
+            content: Text('Please search and load an invoice first.'),
             backgroundColor: Colors.orange),
       );
       return;
     }
     if (_currentUserId == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text('Cannot process payment: User not identified.'),
@@ -126,10 +213,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+    final double totalBillAmount =
+        (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final String billId = billData['id'] as String;
+    final String? patientId = billData['patientId'] as String?;
+    final patientData = _searchedInvoiceDetails!['patient']
+        as Map<String, dynamic>?; // Could be null
+    final String patientName = patientData?['fullName'] as String? ?? 'N/A';
+
     final double? amountPaid = double.tryParse(_amountPaidController.text);
-    final double totalBillAmount = _selectedPatientQueueItem!.totalPrice ?? 0.0;
 
     if (amountPaid == null || amountPaid < totalBillAmount) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -140,50 +236,113 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
-    // Consider adding a loading indicator state for the payment button
-    // setState(() { _isProcessingPayment = true; });
-
     try {
-      final referenceNumber = 'PAY-${_uuid.v4().substring(0, 8).toUpperCase()}';
+      final uuidString = _uuid.v4().replaceAll('-', '');
+      final referenceNumber =
+          'PAY-${uuidString.length >= 8 ? uuidString.substring(0, 8).toUpperCase() : uuidString.toUpperCase()}';
       final paymentDateTime = DateTime.now();
 
       final paymentData = {
-        'patientId': _selectedPatientQueueItem!.patientId!,
+        'billId': billId, // Crucial for updating bill status
+        'patientId': patientId, // patientId from the bill
+        'patientName': patientName,
         'referenceNumber': referenceNumber,
         'paymentDate': paymentDateTime.toIso8601String(),
         'amountPaid': amountPaid,
-        'paymentMethod': 'Cash',
+        'paymentMethod': 'Cash', // Assuming cash for now
         'receivedByUserId': _currentUserId!,
-        'notes':
-            'Payment for services: ${_selectedPatientQueueItem!.conditionOrPurpose}',
+        'notes': 'Payment for Invoice #: ${billData['invoiceNumber']}',
+        'totalBillAmount':
+            totalBillAmount, // Store the actual bill amount at time of payment
       };
 
-      await _dbHelper.insertPayment(paymentData);
+      await _dbHelper
+          .insertPayment(paymentData); // This now also updates bill status
 
-      await _queueService.updatePatientStatusInQueue(
-        _selectedPatientQueueItem!.queueEntryId,
-        'served',
-        servedAt: paymentDateTime,
-      );
+      // If the patient was found in the active queue, update their status
+      if (_relatedQueueItem != null) {
+        await QueueService()
+            .markPaymentSuccessfulAndServe(_relatedQueueItem!.queueEntryId);
+      }
 
       await _dbHelper.logUserActivity(
         _currentUserId!,
-        'Processed payment for patient ${_selectedPatientQueueItem!.patientName} (Ref: $referenceNumber)',
-        targetRecordId: _selectedPatientQueueItem!.patientId,
-        targetTable: _dbHelper.tablePayments,
+        'Processed payment for invoice ${billData['invoiceNumber']} for patient $patientName (Ref: $referenceNumber)',
+        targetRecordId: billId, // Target the bill record
+        targetTable: DatabaseHelper.tablePatientBills,
         details: jsonEncode({
-          'queueEntryId': _selectedPatientQueueItem!.queueEntryId,
+          'paymentReference': referenceNumber,
           'amountPaid': amountPaid,
           'totalBill': totalBillAmount,
-          'services': _selectedPatientQueueItem!.selectedServices,
         }),
       );
 
+      final receiptDetails = {
+        'patientName': patientName,
+        'invoiceNumber': billData['invoiceNumber'],
+        'referenceNumber': referenceNumber,
+        'paymentDate': paymentDateTime,
+        'totalAmount': totalBillAmount,
+        'amountPaid': amountPaid,
+        'change': amountPaid - totalBillAmount,
+        'receivedByUserId': _currentUserId!,
+        'billItems': _searchedInvoiceDetails!['items'],
+      };
+
+      try {
+        final pdfBytes =
+            await ReceiptService.generateReceiptPdfBytes(receiptDetails);
+
+        // Track the generated receipt PDF for sync
+        try {
+          await _dbHelper.documentTrackingService.trackReceiptGeneration(
+            paymentId: referenceNumber,
+            referenceNumber: referenceNumber,
+            pdfBytes: pdfBytes,
+            patientName: patientName,
+            userId: _currentUserId,
+            additionalMetadata: {
+              'invoiceNumber': billData['invoiceNumber'],
+              'totalAmount': totalBillAmount,
+              'amountPaid': amountPaid,
+              'change': amountPaid - totalBillAmount,
+            },
+          );
+          debugPrint('Payment receipt PDF tracked for sync: $referenceNumber');
+        } catch (e) {
+          debugPrint('Warning: Failed to track receipt PDF for sync: $e');
+          // Continue with receipt generation even if tracking fails
+        }
+
+        if (mounted) {
+          setState(() {
+            _generatedReceiptBytes = pdfBytes;
+          });
+        }
+      } catch (e) {
+        debugPrint('Error generating receipt PDF: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'Payment successful, but receipt generation failed: ${e.toString()}'),
+                backgroundColor: Colors.orange),
+          );
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
         _isPaymentProcessed = true;
         _change = amountPaid - totalBillAmount;
         _generatedReferenceNumber = referenceNumber;
-        // _selectedPatientQueueItem will be removed from the list by _fetchInConsultationPatients
+        _amountPaidController.clear();
+        // No longer clearing _selectedPatientQueueItem as it's not used in the same way
+        // Consider resetting _searchedInvoiceDetails or parts of it to prevent re-payment without new search
+        _searchedInvoiceDetails =
+            null; // Reset after payment to force new search
+        _invoiceNumberController.clear();
+        _relatedQueueItem = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -193,124 +352,233 @@ class _PaymentScreenState extends State<PaymentScreen> {
           backgroundColor: Colors.teal,
         ),
       );
-      _fetchInConsultationPatients(); // Refresh list, selected patient should be gone
+      // No need to call _fetchInConsultationPatients() anymore
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error processing payment: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      // setState(() { _isProcessingPayment = false; });
     }
   }
 
-  // void _generateReceipt() { // Placeholder - can be implemented later
-  //   if (!_isPaymentProcessed || _generatedReferenceNumber == null) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text('Please process the payment first.'),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //     return;
-  //   }
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     SnackBar(
-  //       content: Text('Receipt generation for $_generatedReferenceNumber to be implemented.'),
-  //       backgroundColor: Colors.blue,
-  //     ),
-  //   );
-  // }
-
-  Widget _buildInConsultationPatientList() {
-    if (_isLoadingPatients) {
-      return const Center(child: CircularProgressIndicator());
+  Future<void> _saveFinalReceipt(String invoiceNumber) async {
+    if (_generatedReceiptBytes == null || _generatedReferenceNumber == null) {
+      return;
     }
-    if (_inConsultationPatients.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            'No patients currently "In Consultation" and eligible for payment.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-          ),
-        ),
-      );
-    }
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final receiptsDir = Directory('${directory.path}/Receipts');
+      if (!await receiptsDir.exists()) {
+        await receiptsDir.create(recursive: true);
+      }
+      final filePath =
+          '${receiptsDir.path}/RECEIPT_${invoiceNumber}_$_generatedReferenceNumber.pdf';
+      final file = File(filePath);
+      await file.writeAsBytes(_generatedReceiptBytes!);
 
-    return ListView.builder(
-      itemCount: _inConsultationPatients.length,
-      itemBuilder: (context, index) {
-        final patient = _inConsultationPatients[index];
-        final bool isSelected =
-            _selectedPatientQueueItem?.queueEntryId == patient.queueEntryId;
-        return Card(
-          elevation: isSelected ? 4 : 1,
-          color: isSelected ? Colors.teal[100] : Colors.white,
-          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.teal[700],
-              child: Text(
-                patient.queueNumber?.toString() ?? '?',
-                style:
-                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            title: Text(patient.patientName,
-                style: TextStyle(fontWeight: FontWeight.w500)),
-            subtitle: Text(
-                'ID: ${patient.patientId?.substring(0, 8) ?? "N/A"}\nServices: ${patient.conditionOrPurpose ?? "N/A"}'),
-            trailing: Text('₱${(patient.totalPrice ?? 0.0).toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: Colors.green[700], fontWeight: FontWeight.bold)),
-            selected: isSelected,
-            onTap: () {
-              setState(() {
-                _selectedPatientQueueItem = patient;
-                _amountPaidController.clear();
-                _isPaymentProcessed = false;
-                _change = 0.0;
-                _generatedReferenceNumber = null;
-              });
-            },
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Receipt saved to: $filePath'),
+            action: SnackBarAction(
+                label: 'Open', onPressed: () => OpenFilex.open(filePath)),
           ),
         );
-      },
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error saving receipt: $e'),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // Placeholder for the new search method
+  Future<void> _searchInvoice() async {
+    final String invoiceNum = _invoiceNumberController.text.trim();
+    if (invoiceNum.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter an invoice number.'),
+            backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoadingInvoice = true;
+      _searchedInvoiceDetails = null; // Clear previous details
+      _isPaymentProcessed = false; // Reset payment status
+      _amountPaidController.clear();
+      _generatedReferenceNumber = null;
+      _change = 0.0;
+      _generatedReceiptBytes = null;
+      _relatedQueueItem = null;
+    });
+
+    try {
+      final details = await _dbHelper.getPatientBillByInvoiceNumber(invoiceNum);
+      if (!mounted) return;
+      if (details != null) {
+        setState(() {
+          _searchedInvoiceDetails = details;
+        });
+
+        final billData =
+            _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+        final patientId = billData['patientId'] as String?;
+
+        if (patientId != null) {
+          final queueItem = await QueueService().findPatientInQueue(patientId);
+          if (mounted && queueItem != null) {
+            setState(() {
+              _relatedQueueItem = queueItem;
+            });
+          }
+        }
+
+        final billStatus = billData['status'] as String?;
+        if (billStatus == 'Paid') {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Invoice $invoiceNum has already been paid.'),
+                backgroundColor: Colors.blueAccent),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Invoice number "$invoiceNum" not found.'),
+              backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error searching for invoice: ${e.toString()}'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingInvoice = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildInvoiceSearchPane() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Find Invoice",
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal[800]),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _invoiceNumberController,
+            decoration: InputDecoration(
+              labelText: 'Enter Invoice Number',
+              hintText: 'e.g., INV-XXXXXX',
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              prefixIcon: const Icon(Icons.receipt_long_outlined),
+            ),
+            onSubmitted: (_) => _searchInvoice(), // Allow search on submit
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: _isLoadingInvoice
+                ? const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator()))
+                : ElevatedButton.icon(
+                    icon: const Icon(Icons.search),
+                    label: const Text('Search Invoice'),
+                    onPressed: _searchInvoice,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildPaymentDetailsSection() {
-    if (_selectedPatientQueueItem == null) {
+    // This will be updated to use _searchedInvoiceDetails
+    if (_searchedInvoiceDetails == null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.person_search_outlined,
-                  size: 60, color: Colors.teal[300]),
-              SizedBox(height: 16),
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.teal[50],
+                child: Icon(
+                  Icons.search_outlined, // Changed icon
+                  size: 45,
+                  color: Colors.teal[400],
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(
-                'Select a patient from the list on the left to view payment details.',
+                'Search for Invoice',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Enter an invoice number in the left pane to load details for payment.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
             ],
           ),
         ),
       );
     }
-
-    final patient = _selectedPatientQueueItem!;
-    final totalAmount = patient.totalPrice ?? 0.0;
-    final services = patient.selectedServices ?? [];
+    // ... more detailed implementation will follow using _searchedInvoiceDetails ...
+    final billData = _searchedInvoiceDetails!['bill'] as Map<String, dynamic>;
+    final patientData =
+        _searchedInvoiceDetails!['patient'] as Map<String, dynamic>?;
+    final List<Map<String, dynamic>> billItems =
+        (_searchedInvoiceDetails!['items'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+    final String patientName = patientData?['fullName'] as String? ?? 'N/A';
+    final double totalAmount =
+        (billData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final String processedInvoiceNumber = billData['invoiceNumber'];
 
     return SingleChildScrollView(
-      // Ensure right pane is scrollable if content overflows
       padding: const EdgeInsets.all(16.0),
       child: Card(
         elevation: 2,
@@ -321,127 +589,161 @@ class _PaymentScreenState extends State<PaymentScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Payment for: ${patient.patientName}',
+                'Payment for Invoice: ${billData['invoiceNumber']}',
                 style: TextStyle(
-                    fontSize: 20, // Increased font size
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.teal[800]),
               ),
-              const SizedBox(height: 10), // Increased spacing
-              Text('Patient ID: ${patient.patientId ?? "N/A"}',
-                  style: TextStyle(fontSize: 15)),
-              Text('Queue Number: ${patient.queueNumber}',
-                  style: TextStyle(fontSize: 15)),
-              const Divider(height: 25), // Increased spacing
+              if (_isPaymentProcessed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('Status: PAID',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700])),
+                )
+              else if (billData['status'] == 'Paid')
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('Status: PAID',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700])),
+                ),
+              const SizedBox(height: 10),
+              Text('Patient: $patientName',
+                  style: const TextStyle(fontSize: 15)),
+              if (patientData != null && patientData['id'] != null)
+                Text('Patient ID: ${patientData['id']}',
+                    style: const TextStyle(fontSize: 15)),
+              const Divider(height: 25),
               const Text('Services/Items:',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600)), // Increased font size
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 5),
-              if (services.isEmpty &&
-                  (patient.conditionOrPurpose == null ||
-                      patient.conditionOrPurpose!.isEmpty))
+              if (billItems.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text('No specific services listed.',
+                  child: Text('No specific services listed for this bill.',
                       style:
                           TextStyle(fontStyle: FontStyle.italic, fontSize: 15)),
                 )
-              else if (services.isNotEmpty)
-                ...services.map((service) {
-                  final serviceName = service['name'] ?? 'Unknown Service';
-                  final price = service['price'] as double? ?? 0.0;
+              else
+                ...billItems.map((item) {
+                  final itemName =
+                      item['description'] as String? ?? 'Unknown Service';
+                  final itemQty = item['quantity'] as int? ?? 1;
+                  final itemPrice =
+                      (item['unitPrice'] as num?)?.toDouble() ?? 0.0;
+                  final itemTotal = (item['itemTotal'] as num?)?.toDouble() ??
+                      (itemPrice * itemQty);
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text(serviceName, style: TextStyle(fontSize: 15)),
-                    trailing: Text('₱${price.toStringAsFixed(2)}',
-                        style: TextStyle(fontSize: 15)),
+                    title: Text('$itemName (Qty: $itemQty)',
+                        style: const TextStyle(fontSize: 15)),
+                    trailing: Text('₱${itemTotal.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 15)),
                   );
-                }).toList()
-              else if (patient.conditionOrPurpose != null &&
-                  patient.conditionOrPurpose!.isNotEmpty)
-                // Fallback to conditionOrPurpose if services list is empty but conditionOrPurpose exists
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(patient.conditionOrPurpose!,
-                      style: TextStyle(fontSize: 15)),
-                  trailing: Text('₱${totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 15)),
-                ),
-
-              if (services.isNotEmpty &&
-                  patient.conditionOrPurpose != null &&
-                  patient.conditionOrPurpose!.toLowerCase().contains('other:'))
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                      'Other: ${patient.conditionOrPurpose!.substring(patient.conditionOrPurpose!.toLowerCase().indexOf('other:') + 6).trim()}',
-                      style: const TextStyle(
-                          fontStyle: FontStyle.italic, fontSize: 15)),
-                ),
-              const Divider(height: 25), // Increased spacing
+                }),
+              const Divider(height: 25),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Total Amount Due:',
-                      style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold)), // Increased font size
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                   Text('₱${totalAmount.toStringAsFixed(2)}',
                       style: TextStyle(
-                          fontSize: 20, // Increased font size
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: Colors.teal[700])),
                 ],
               ),
               const SizedBox(height: 20),
-              TextFormField(
-                controller: _amountPaidController,
-                style: TextStyle(fontSize: 15),
-                decoration: InputDecoration(
-                  labelText: 'Enter Amount Paid (Cash)',
-                  hintText: 'e.g., ${totalAmount.toStringAsFixed(2)}',
-                  prefixText: '₱ ',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  prefixIcon: Icon(Icons.money, color: Colors.green[700]),
-                ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter amount paid.';
-                  }
-                  final pVal = double.tryParse(value);
-                  if (pVal == null) return 'Invalid amount.';
-                  if (pVal < totalAmount) {
-                    return 'Amount is less than total due.';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 25), // Increased spacing
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.payment),
-                  label: const Text('Process Cash Payment'),
-                  onPressed: _processPayment,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 15), // Increased padding
-                    textStyle: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold), // Increased font size
-                    shape: RoundedRectangleBorder(
+              if (billData['status'] != 'Paid') ...[
+                TextFormField(
+                  controller: _amountPaidController,
+                  onChanged: (value) =>
+                      setState(() {}), // To rebuild and enable/disable buttons
+                  style: const TextStyle(fontSize: 15),
+                  decoration: InputDecoration(
+                    labelText: 'Enter Amount Paid (Cash)',
+                    hintText: 'e.g., ${totalAmount.toStringAsFixed(2)}',
+                    prefixText: '₱ ',
+                    border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8)),
+                    prefixIcon: Icon(Icons.money, color: Colors.green[700]),
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter amount paid.';
+                    }
+                    final pVal = double.tryParse(value);
+                    if (pVal == null) return 'Invalid amount.';
+                    if (pVal < totalAmount) {
+                      return 'Amount is less than total due.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 25),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text('Print Receipt'),
+                        onPressed: _amountPaidController.text.isNotEmpty
+                            ? _handlePrintReceipt
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.teal,
+                          side: BorderSide(color: Colors.teal.shade200),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.save_alt_outlined),
+                        label: const Text('Save Receipt'),
+                        onPressed: _amountPaidController.text.isNotEmpty
+                            ? _handleSaveReceipt
+                            : null,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.indigo,
+                          side: BorderSide(color: Colors.indigo.shade200),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.payment),
+                    label: const Text('Process Cash Payment'),
+                    onPressed: _processPayment,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      textStyle: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.bold),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
                 ),
-              ),
+              ],
               if (_isPaymentProcessed && _generatedReferenceNumber != null) ...[
                 const Divider(height: 30),
                 Text('Payment Successful!',
@@ -450,12 +752,55 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         fontWeight: FontWeight.bold,
                         color: Colors.green[700])),
                 const SizedBox(height: 8),
-                SelectableText(
-                    'Reference Number: $_generatedReferenceNumber', // Made reference selectable
+                SelectableText('Payment Reference: $_generatedReferenceNumber',
                     style: const TextStyle(fontSize: 16)),
                 Text('Change Due: ₱${_change.toStringAsFixed(2)}',
                     style: const TextStyle(fontSize: 16)),
-                const SizedBox(height: 10),
+                const SizedBox(height: 16),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12.0,
+                  runSpacing: 12.0,
+                  children: [
+                    ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh_outlined),
+                        label: const Text("New Payment"),
+                        onPressed: _resetPaymentScreen,
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.blueAccent)),
+                    if (_generatedReceiptBytes != null) ...[
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.receipt_long),
+                        label: const Text("View Receipt"),
+                        onPressed: () =>
+                            _showReceiptPreviewDialog(_generatedReceiptBytes!),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.orange),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text("Print"),
+                        onPressed: () => Printing.layoutPdf(
+                            onLayout: (format) async =>
+                                _generatedReceiptBytes!),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.teal),
+                      ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.save_alt_outlined),
+                        label: const Text("Save"),
+                        onPressed: () =>
+                            _saveFinalReceipt(processedInvoiceNumber),
+                        style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.indigo),
+                      ),
+                    ]
+                  ],
+                )
               ],
             ],
           ),
@@ -467,10 +812,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100], // Lighten background
+      backgroundColor: Colors.grey[200],
       appBar: AppBar(
         title: const Text(
-          'Process Payment',
+          'Process Payment by Invoice', // Updated title
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -481,48 +826,97 @@ class _PaymentScreenState extends State<PaymentScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () {
-              _selectedPatientQueueItem =
-                  null; // Clear selection on manual refresh
-              _fetchInConsultationPatients();
-            },
-            tooltip: 'Refresh Patient List',
+            onPressed: _resetPaymentScreen, // Use reset for the refresh button
+            tooltip: 'Clear / New Payment',
           )
         ],
       ),
-      body: Row(
-        children: [
-          // Left Pane: Patient List
-          Expanded(
-            flex: 1, // Adjust flex ratio as needed (e.g., 1 out of 3 parts)
-            child: Container(
-              color: Colors
-                  .teal[50], // Give a distinct background to the list pane
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Text(
-                      "Patients In Consultation",
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal[800]),
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Left Pane: Invoice Search
+            Expanded(
+              flex: 1,
+              child: Container(
+                margin: const EdgeInsets.only(right: 8.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withAlpha(77),
+                      spreadRadius: 2,
+                      blurRadius: 5,
+                      offset: const Offset(0, 3),
                     ),
-                  ),
-                  Expanded(child: _buildInConsultationPatientList()),
-                ],
+                  ],
+                ),
+                child: _buildInvoiceSearchPane(), // New pane for searching
               ),
             ),
-          ),
-          // Right Pane: Payment Details
-          Expanded(
-            flex: 2, // Adjust flex ratio as needed (e.g., 2 out of 3 parts)
-            child: _buildPaymentDetailsSection(),
-          ),
-        ],
+            // Right Pane: Payment Details
+            Expanded(
+              flex: 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withAlpha(77),
+                      spreadRadius: 2,
+                      blurRadius: 5,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                // The _buildPaymentDetailsSection now returns a SingleChildScrollView with a Card
+                // if details are loaded, or a placeholder. So no need for Column/Expanded here for summary.
+                child: _buildPaymentDetailsSection(),
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  void _showReceiptPreviewDialog(Uint8List pdfBytes) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 50, vertical: 30),
+          child: Column(
+            children: [
+              AppBar(
+                title: Text('Receipt Preview - $_generatedReferenceNumber'),
+                backgroundColor: Colors.teal[700],
+                automaticallyImplyLeading: false,
+                actions: [
+                  IconButton(
+                    tooltip: 'Close Preview',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                ],
+              ),
+              Expanded(
+                child: PdfPreview(
+                  build: (format) => pdfBytes,
+                  allowPrinting: true,
+                  allowSharing: true,
+                  canChangePageFormat: false,
+                  canChangeOrientation: false,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

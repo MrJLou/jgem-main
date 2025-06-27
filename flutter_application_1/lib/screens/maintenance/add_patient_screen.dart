@@ -6,12 +6,14 @@ class AddPatientScreen extends StatelessWidget {
   final TextEditingController _patientAgeController = TextEditingController();
   final TextEditingController _patientGenderController = TextEditingController();
 
+  AddPatientScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Add Patient',
           style: TextStyle(
             color: Colors.white,
@@ -28,50 +30,50 @@ class AddPatientScreen extends StatelessWidget {
           children: [
             TextField(
               controller: _patientNameController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Patient Name',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _patientIdController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Patient ID',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _patientAgeController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Patient Age',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _patientGenderController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Patient Gender',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 // Logic to save patient details
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
+                  const SnackBar(
                     content: Text('Patient added successfully!'),
                     backgroundColor: Colors.teal,
                   ),
                 );
                 Navigator.pop(context);
               },
-              child: Text('Save Patient'),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
+              child: const Text('Save Patient'),
             ),
           ],
         ),

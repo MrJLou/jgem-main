@@ -10,10 +10,10 @@ class PatientQueueHubScreen extends StatefulWidget {
   const PatientQueueHubScreen({super.key, required this.accessLevel});
 
   @override
-  _PatientQueueHubScreenState createState() => _PatientQueueHubScreenState();
+  PatientQueueHubScreenState createState() => PatientQueueHubScreenState();
 }
 
-class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
+class PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
   final QueueService _queueService = QueueService();
 
   @override
@@ -80,14 +80,18 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                       icon: Icons.person_add,
                       title: 'Add to Queue',
                       subtitle: 'Add new patients to today\'s queue',
-                      color: Colors.teal[700]!,
-                      onTap: () => Navigator.push(
+                      color: Colors.teal[700]!,                      onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
                               AddToQueueScreen(queueService: _queueService),
                         ),
-                      ).then((_) => setState(() {})),
+                      ).then((_) {
+                        if (!mounted) return;
+                        // Refresh B-Tree if it exists
+                        ViewQueueScreen.refreshBTreeIfExists();
+                        setState(() {});
+                      }),
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -102,7 +106,10 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
                           builder: (context) => RemoveFromQueueScreen(
                               queueService: _queueService),
                         ),
-                      ).then((_) => setState(() {})),
+                      ).then((_) {
+                        if (!mounted) return;
+                        setState(() {});
+                      }),
                     ),
                     const SizedBox(height: 20),
                     _buildFeatureCard(
@@ -166,7 +173,7 @@ class _PatientQueueHubScreenState extends State<PatientQueueHubScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

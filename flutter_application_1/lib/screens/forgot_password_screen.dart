@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/user.dart'; // Import User model
 import '../services/api_service.dart';
 // import '../services/auth_service.dart'; // AuthService.hashSecurityAnswer is no longer called here
 import 'login_screen.dart';
@@ -8,10 +7,10 @@ class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  _ForgotPasswordScreenState createState() => _ForgotPasswordScreenState();
+  ForgotPasswordScreenState createState() => ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
@@ -21,7 +20,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
-  User? _userSecurityDetails;
   String? _selectedQuestionKey; // e.g., "securityQuestion1"
   Map<String, String> _userQuestionMap =
       {}; // Populated from _userSecurityDetails
@@ -65,7 +63,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     if (_usernameController.text.isEmpty) {
       setState(() {
         _errorMessage = 'Please enter a username first.';
-        _userSecurityDetails = null;
         _userQuestionMap = {};
         _selectedQuestionKey = null;
       });
@@ -74,16 +71,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     setState(() {
       _isLoadingQuestions = true;
       _errorMessage = null;
-      _userSecurityDetails = null;
       _userQuestionMap = {};
       _selectedQuestionKey = null;
     });
     try {
       final userDetails =
           await ApiService.getUserSecurityDetails(_usernameController.text);
+      if (!mounted) return;
       if (userDetails != null) {
         setState(() {
-          _userSecurityDetails = userDetails;
           _userQuestionMap = {};
           if (userDetails.securityQuestion1 != null &&
               userDetails.securityQuestion1!.isNotEmpty) {
@@ -113,11 +109,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = 'Failed to fetch security questions: ${e.toString()}';
       });
     } finally {
-      setState(() => _isLoadingQuestions = false);
+      if (mounted) {
+        setState(() => _isLoadingQuestions = false);
+      }
     }
   }
 
@@ -149,6 +148,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           _newPasswordController.text,
         );
 
+        if (!mounted) return;
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -167,11 +167,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           });
         }
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           _errorMessage = 'Error: ${e.toString()}';
         });
       } finally {
-        setState(() => _isLoading = false);
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -190,7 +193,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withAlpha(13),
                   blurRadius: 10,
                   offset: const Offset(2, 0),
                 ),
@@ -244,7 +247,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                             "Reset your password using your security question.",
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withAlpha(230),
                             ),
                             textAlign: TextAlign.center,
                           ),

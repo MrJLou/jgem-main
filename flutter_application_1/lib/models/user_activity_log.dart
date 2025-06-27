@@ -20,11 +20,12 @@ class UserActivityLog {
   factory UserActivityLog.fromJson(Map<String, dynamic> json) {
     return UserActivityLog(
       id: json['id'] as int?,
-      userId: json['userId'] as String,
-      actionDescription: json['actionDescription'] as String,
+      userId: json['userId'] as String? ?? '',
+      actionDescription: json['actionDescription'] as String? ?? '',
       targetRecordId: json['targetRecordId'] as String?,
       targetTable: json['targetTable'] as String?,
-      timestamp: DateTime.parse(json['timestamp'] as String),
+      timestamp: DateTime.parse(
+          json['timestamp'] as String? ?? DateTime.now().toIso8601String()),
       details: json['details'] as String?,
     );
   }

@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
+
 class ClinicService {
   final String id;
   final String serviceName;
   final String? description;
   final String? category;
   final double? defaultPrice;
+  final int selectionCount;
 
   ClinicService({
     required this.id,
@@ -11,16 +14,27 @@ class ClinicService {
     this.description,
     this.category,
     this.defaultPrice,
+    this.selectionCount = 0,
   });
-
   factory ClinicService.fromJson(Map<String, dynamic> json) {
-    return ClinicService(
-      id: json['id'] as String,
-      serviceName: json['serviceName'] as String,
-      description: json['description'] as String?,
-      category: json['category'] as String?,
-      defaultPrice: (json['defaultPrice'] as num?)?.toDouble(),
-    );
+    try {
+      return ClinicService(
+        id: json['id']?.toString() ?? '',
+        serviceName: json['serviceName']?.toString() ?? 'Unknown Service',
+        description: json['description']?.toString(),
+        category: json['category']?.toString(),
+        defaultPrice: (json['defaultPrice'] as num?)?.toDouble(),
+        selectionCount: json['selectionCount'] as int? ?? 0,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error creating ClinicService from JSON: $e');
+      }
+      if (kDebugMode) {
+        print('JSON data: $json');
+      }
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -30,6 +44,7 @@ class ClinicService {
       'description': description,
       'category': category,
       'defaultPrice': defaultPrice,
+      'selectionCount': selectionCount,
     };
   }
 
@@ -39,6 +54,7 @@ class ClinicService {
     String? description,
     String? category,
     double? defaultPrice,
+    int? selectionCount,
   }) {
     return ClinicService(
       id: id ?? this.id,
@@ -46,6 +62,7 @@ class ClinicService {
       description: description ?? this.description,
       category: category ?? this.category,
       defaultPrice: defaultPrice ?? this.defaultPrice,
+      selectionCount: selectionCount ?? this.selectionCount,
     );
   }
 }

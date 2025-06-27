@@ -8,10 +8,10 @@ class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
 
   @override
-  _UserManagementScreenState createState() => _UserManagementScreenState();
+  UserManagementScreenState createState() => UserManagementScreenState();
 }
 
-class _UserManagementScreenState extends State<UserManagementScreen> {
+class UserManagementScreenState extends State<UserManagementScreen> {
   List<User> _users = [];
   bool _isLoading = false;
   bool _isAddingUser = false;
@@ -21,6 +21,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _contactNumberController = TextEditingController();
 
   // Removed TextEditControllers for security questions
   final TextEditingController _securityAnswer1Controller =
@@ -82,6 +84,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     _usernameController.clear();
     _fullNameController.clear();
     _passwordController.clear();
+    _emailController.clear();
+    _contactNumberController.clear();
     _securityAnswer1Controller.clear();
     _securityAnswer2Controller.clear();
     _securityAnswer3Controller.clear();
@@ -136,6 +140,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           username: _usernameController.text,
           password: _passwordController.text,
           fullName: _fullNameController.text,
+          email: _emailController.text,
+          contactNumber: _contactNumberController.text,
           role: _selectedRole,
           securityQuestion1: _selectedSecurityQuestion1,
           securityAnswer1: hashedSecurityAnswer1,
@@ -357,6 +363,30 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
               ),
               const SizedBox(height: 16),
               TextFormField(
+                controller: _emailController,
+                decoration: _formFieldDecoration(
+                    label: 'Email Address', iconData: Icons.email_outlined),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value != null &&
+                      !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                          .hasMatch(value)) {
+                    return 'Enter a valid email address';
+                  }
+                  return null;
+                },
+                style: TextStyle(color: Colors.grey[800]),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _contactNumberController,
+                decoration: _formFieldDecoration(
+                    label: 'Contact Number', iconData: Icons.phone_outlined),
+                keyboardType: TextInputType.phone,
+                style: TextStyle(color: Colors.grey[800]),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
                 controller: _passwordController,
                 obscureText: true,
                 decoration: _formFieldDecoration(
@@ -392,21 +422,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                       _selectedSecurityQuestion1 = newValue;
                       // Ensure other selections are updated if they became invalid
                       if (_selectedSecurityQuestion1 ==
-                          _selectedSecurityQuestion2)
+                          _selectedSecurityQuestion2) {
                         _selectedSecurityQuestion2 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion1 ==
-                          _selectedSecurityQuestion3)
+                          _selectedSecurityQuestion3) {
                         _selectedSecurityQuestion3 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion2,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -439,21 +471,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     setState(() {
                       _selectedSecurityQuestion2 = newValue;
                       if (_selectedSecurityQuestion2 ==
-                          _selectedSecurityQuestion1)
+                          _selectedSecurityQuestion1) {
                         _selectedSecurityQuestion1 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion2 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion2 ==
-                          _selectedSecurityQuestion3)
+                          _selectedSecurityQuestion3) {
                         _selectedSecurityQuestion3 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion2,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -486,21 +520,23 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     setState(() {
                       _selectedSecurityQuestion3 = newValue;
                       if (_selectedSecurityQuestion3 ==
-                          _selectedSecurityQuestion1)
+                          _selectedSecurityQuestion1) {
                         _selectedSecurityQuestion1 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion2 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                       if (_selectedSecurityQuestion3 ==
-                          _selectedSecurityQuestion2)
+                          _selectedSecurityQuestion2) {
                         _selectedSecurityQuestion2 =
                             _securityQuestions.firstWhere(
                                 (q) =>
                                     q != _selectedSecurityQuestion1 &&
                                     q != _selectedSecurityQuestion3,
                                 orElse: () => '');
+                      }
                     });
                   }
                 },
@@ -530,9 +566,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     iconData: Icons.admin_panel_settings_outlined),
                 items: ['doctor', 'medtech']
                     .map((role) => DropdownMenuItem(
-                          value: role,
-                          child:
-                              Text(role[0].toUpperCase() + role.substring(1)),
+                          value: role,                          child:
+                              Text(role.isNotEmpty ? role[0].toUpperCase() + role.substring(1) : role),
                         ))
                     .toList(),
                 onChanged: (value) {
@@ -608,7 +643,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   Widget _buildRoleBadge(String role) {
     Color badgeColor;
     IconData iconData;
-    final theme = Theme.of(context);
+    Theme.of(context);
 
     switch (role.toLowerCase()) {
       case 'admin':
@@ -631,9 +666,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.12),
+        color: badgeColor.withAlpha(31),
         borderRadius: BorderRadius.circular(20), // More rounded
-        border: Border.all(color: badgeColor.withOpacity(0.5), width: 1),
+        border: Border.all(color: badgeColor.withAlpha(128), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -656,13 +691,12 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final Color primaryTeal = Colors.teal[700]!;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_isAddingUser ? 'Add New User' : 'User Management',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         backgroundColor: primaryTeal,
         leading: _isAddingUser
             ? IconButton(
@@ -781,7 +815,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                                         horizontal: 16, vertical: 10),
                                     leading: CircleAvatar(
                                       backgroundColor:
-                                          primaryTeal.withOpacity(0.12),
+                                          primaryTeal.withAlpha(31),
                                       child: Icon(Icons.account_circle_outlined,
                                           color: primaryTeal, size: 28),
                                     ),

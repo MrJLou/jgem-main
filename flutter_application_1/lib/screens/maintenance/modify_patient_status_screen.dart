@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../models/active_patient_queue_item.dart';
-import '../../models/patient.dart';
 import '../maintenance/update_screen.dart'; // Import for RecentUpdateLogService
 
 class ModifyPatientStatusScreen extends StatefulWidget {
   const ModifyPatientStatusScreen({super.key});
 
   @override
-  _ModifyPatientStatusScreenState createState() =>
-      _ModifyPatientStatusScreenState();
+  ModifyPatientStatusScreenState createState() =>
+      ModifyPatientStatusScreenState();
 }
 
-class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
+class ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
   final TextEditingController _searchController = TextEditingController();
   ActivePatientQueueItem? _searchedQueueItem;
-  List<ActivePatientQueueItem> _searchResults = [];
   bool _isLoading = false;
 
   Future<void> _performSearch() async {
@@ -24,7 +22,6 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
       setState(() {
         _isLoading = true;
         _searchedQueueItem = null;
-        _searchResults = [];
       });
       try {
         final results =
@@ -44,7 +41,6 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
           } else if (results.length == 1) {
             _searchedQueueItem = results.first;
           } else {
-            _searchResults = results;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -82,20 +78,15 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
   // Method to reload the current _searchedQueueItem details from the database
   Future<void> _loadSearchedItemDetails() async {
     if (_searchedQueueItem == null) return;
-    // No need to set _isLoading = true here if it's part of a larger loading flow (e.g. in _updateStatus)
-    // Or, if called independently, setting it might be desired.
-    // For now, assume it's called within _updateStatus which already handles _isLoading.
     try {
       final updatedItem =
           await ApiService.getActiveQueueItem(_searchedQueueItem!.queueEntryId);
       if (!mounted) return;
       setState(() {
         _searchedQueueItem = updatedItem;
-        // _isLoading = false; // Only set to false if this method was responsible for setting it true
       });
     } catch (e) {
       if (!mounted) return;
-      // setState(() => _isLoading = false); // Similarly, only if this method set it true
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error reloading patient status: $e'),
@@ -239,7 +230,7 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                    color: Colors.teal[50]?.withOpacity(0.5),
+                    color: Colors.teal[50]?.withAlpha(128),
                     borderRadius: BorderRadius.circular(12.0),
                     border: Border.all(
                       color: Colors.teal[300]!,
@@ -247,7 +238,7 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.2),
+                        color: Colors.grey.withAlpha(51),
                         spreadRadius: 1,
                         blurRadius: 3,
                         offset: const Offset(0, 2),
@@ -312,9 +303,10 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
   }
 
   Widget _buildStatusModificationArea() {
-    if (_searchedQueueItem == null)
+    if (_searchedQueueItem == null) {
       return const SizedBox
           .shrink(); // Should not happen if this widget is built
+    }
 
     // This widget will be displayed after a patient is "found"
     return Column(
@@ -383,9 +375,9 @@ class _ModifyPatientStatusScreenState extends State<ModifyPatientStatusScreen> {
 }
 
 // Helper extension for String capitalization
-extension StringExtension on String {
-  String capitalizeFirst() {
-    if (this.isEmpty) return "";
-    return "${this[0].toUpperCase()}${this.substring(1)}";
+extension StringExtension on String {  String capitalizeFirst() {
+    if (isEmpty) return "";
+    if (length < 2) return toUpperCase();
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }

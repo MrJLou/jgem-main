@@ -1,8 +1,12 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+
 class MedicalRecord {
   final String id;
   final String patientId;
   final String? appointmentId;
-  final String? serviceId;
+  final List<Map<String, dynamic>>? selectedServices;
   final String recordType;
   final DateTime recordDate;
   final String? diagnosis;
@@ -18,7 +22,7 @@ class MedicalRecord {
     required this.id,
     required this.patientId,
     this.appointmentId,
-    this.serviceId,
+    this.selectedServices,
     required this.recordType,
     required this.recordDate,
     this.diagnosis,
@@ -30,24 +34,70 @@ class MedicalRecord {
     required this.createdAt,
     required this.updatedAt,
   });
-
   factory MedicalRecord.fromJson(Map<String, dynamic> json) {
-    return MedicalRecord(
-      id: json['id'],
-      patientId: json['patientId'],
-      appointmentId: json['appointmentId'] as String?,
-      serviceId: json['serviceId'] as String?,
-      recordType: json['recordType'],
-      recordDate: DateTime.parse(json['recordDate']),
-      diagnosis: json['diagnosis'],
-      treatment: json['treatment'],
-      prescription: json['prescription'],
-      labResults: json['labResults'],
-      notes: json['notes'],
-      doctorId: json['doctorId'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
-    );
+    List<Map<String, dynamic>>? services;
+    if (json['selectedServices'] != null) {
+      if (json['selectedServices'] is String && (json['selectedServices'] as String).isNotEmpty) {
+        try {
+          var decoded = jsonDecode(json['selectedServices'] as String);
+          if (decoded is List) {
+            services = List<Map<String, dynamic>>.from(
+                decoded.map((item) => Map<String, dynamic>.from(item as Map)));
+          }
+        } catch (e) {
+          // Handle case where it might not be a valid JSON string
+          if (kDebugMode) {
+            print('Error parsing selectedServices JSON: $e');
+          }
+          services = null;
+        }
+      } else if (json['selectedServices'] is List) {
+        // If it's already a List from direct map creation
+        try {
+          services = List<Map<String, dynamic>>.from(
+              (json['selectedServices'] as List)
+                  .map((item) => Map<String, dynamic>.from(item as Map)));
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error parsing selectedServices List: $e');
+          }
+          services = null;
+        }
+      }
+    }
+    
+    try {
+      return MedicalRecord(
+        id: json['id']?.toString() ?? '',
+        patientId: json['patientId']?.toString() ?? '',
+        appointmentId: json['appointmentId']?.toString(),
+        selectedServices: services,
+        recordType: json['recordType']?.toString() ?? '',
+        recordDate: json['recordDate'] != null 
+            ? DateTime.parse(json['recordDate'].toString())
+            : DateTime.now(),
+        diagnosis: json['diagnosis']?.toString(),
+        treatment: json['treatment']?.toString(),
+        prescription: json['prescription']?.toString(),
+        labResults: json['labResults']?.toString(),
+        notes: json['notes']?.toString(),
+        doctorId: json['doctorId']?.toString() ?? '',
+        createdAt: json['createdAt'] != null 
+            ? DateTime.parse(json['createdAt'].toString())
+            : DateTime.now(),
+        updatedAt: json['updatedAt'] != null 
+            ? DateTime.parse(json['updatedAt'].toString())
+            : DateTime.now(),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error creating MedicalRecord from JSON: $e');
+      }
+      if (kDebugMode) {
+        print('JSON data: $json');
+      }
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -55,7 +105,7 @@ class MedicalRecord {
       'id': id,
       'patientId': patientId,
       'appointmentId': appointmentId,
-      'serviceId': serviceId,
+      'selectedServices': selectedServices != null ? jsonEncode(selectedServices) : null,
       'recordType': recordType,
       'recordDate': recordDate.toIso8601String(),
       'diagnosis': diagnosis,
@@ -73,7 +123,7 @@ class MedicalRecord {
     String? id,
     String? patientId,
     String? appointmentId,
-    String? serviceId,
+    List<Map<String, dynamic>>? selectedServices,
     String? recordType,
     DateTime? recordDate,
     String? diagnosis,
@@ -89,7 +139,7 @@ class MedicalRecord {
       id: id ?? this.id,
       patientId: patientId ?? this.patientId,
       appointmentId: appointmentId ?? this.appointmentId,
-      serviceId: serviceId ?? this.serviceId,
+      selectedServices: selectedServices ?? this.selectedServices,
       recordType: recordType ?? this.recordType,
       recordDate: recordDate ?? this.recordDate,
       diagnosis: diagnosis ?? this.diagnosis,
