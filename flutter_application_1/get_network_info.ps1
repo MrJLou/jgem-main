@@ -36,7 +36,7 @@ foreach ($adapter in $adapters) {
     Write-Host "📍 $interface : $ip $type" -ForegroundColor Green
     
     # Set primary IP if we haven't found a 172.30.x.x network yet
-    if (-not $found172Network -and $primaryIp -eq $null -and ($ip.StartsWith("192.168.") -or $ip.StartsWith("10.") -or $ip.StartsWith("172."))) {
+    if (-not $found172Network -and $null -eq $primaryIp -and ($ip.StartsWith("192.168.") -or $ip.StartsWith("10.") -or $ip.StartsWith("172."))) {
         $primaryIp = $ip
     }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
+import 'lan_connection_screen.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -165,6 +166,18 @@ class DashboardScreenState extends State<DashboardScreen> {
         ),
         backgroundColor: Colors.teal[700],
         actions: [
+          IconButton(
+            icon: const Icon(Icons.wifi, color: Colors.white),
+            tooltip: 'LAN Connection',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LanConnectionScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Logout',
