@@ -2,11 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import 'package:flutter_application_1/services/session_monitor_service.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
-import '../screens/enhanced_lan_client_connection_screen.dart';
-import '../screens/enhanced_lan_server_connection_screen.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -37,7 +34,6 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
     super.initState();
     _configureMenuForRole();
-    _initializeSessionMonitoring();
     if (kDebugMode) {
       print('DEBUG: DashboardScreen initState END');
     }
@@ -47,42 +43,6 @@ class DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _sessionSubscription?.cancel();
     super.dispose();
-  }
-
-  void _initializeSessionMonitoring() {
-    // Listen for session invalidation events
-    _sessionSubscription =
-        SessionMonitorService.sessionInvalidated.listen((event) {
-      if (mounted) {
-        _handleSessionInvalidated(event);
-      }
-    });
-  }
-
-  void _handleSessionInvalidated(Map<String, dynamic> event) {
-    final reason = event['reason'] as String? ?? 'Session invalidated';
-
-    // Show dialog to user and navigate to login
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Session Expired'),
-        content: Text(reason),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _configureMenuForRole() {
@@ -152,84 +112,6 @@ class DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _showLanConnectionOptions(BuildContext context) {
-    final accessLevel = widget.accessLevel.toLowerCase();
-
-    // For admin users, show both options with server as primary
-    if (accessLevel == 'admin') {
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.wifi, color: Colors.teal[700]),
-                const SizedBox(width: 8),
-                const Text('LAN Connection Options'),
-              ],
-            ),
-            content: const Text(
-              'Choose your connection type:\n\n'
-              '• LAN Server: Start a server to share data with other devices (Admin)\n'
-              '• LAN Client: Connect to another device\'s server',
-              style: TextStyle(fontSize: 16),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const EnhancedLanClientConnectionScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.wifi_find),
-                label: const Text('Connect to Server'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[700],
-                  foregroundColor: Colors.white,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const EnhancedLanServerConnectionScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.wifi_tethering),
-                label: const Text('Start Server'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal[700],
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      // For doctor and medtech users, directly navigate to client connection
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const EnhancedLanClientConnectionScreen(),
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -283,15 +165,6 @@ class DashboardScreenState extends State<DashboardScreen> {
         ),
         backgroundColor: Colors.teal[700],
         actions: [
-          IconButton(
-            icon: const Icon(Icons.wifi, color: Colors.white),
-            tooltip: widget.accessLevel.toLowerCase() == 'admin'
-                ? 'LAN Connection (Server/Client)'
-                : 'LAN Connection (Client)',
-            onPressed: () {
-              _showLanConnectionOptions(context);
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Logout',

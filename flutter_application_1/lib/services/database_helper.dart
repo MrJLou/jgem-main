@@ -36,6 +36,9 @@ class DatabaseHelper {
   Database? _instanceDatabase;
   String? _instanceDbPath;
 
+  // Change callback for LAN sync
+  static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
+
   static const String _databaseName = 'patient_management.db';
   static const int _databaseVersion = 34;
 
@@ -1147,10 +1150,6 @@ class DatabaseHelper {
   static void clearDatabaseChangeCallback() {
     _onDatabaseChanged = null;
   }
-
-  // Static callback for database change notifications (set by LanSyncService)
-  static Future<void> Function(String table, String operation, String recordId,
-      Map<String, dynamic>? data)? _onDatabaseChanged;
 
   // Get pending changes for sync
   Future<List<Map<String, dynamic>>> getPendingChanges() async {
@@ -2903,4 +2902,105 @@ To view live changes in DB Browser:
     ''';
     return await db.rawQuery(query, ['%"id":"$serviceId"%', limit]);
   }
+
+  // Remove duplicate callback system - using static callback instead
+
+  // Enhanced insert method with change notification
+  Future<int> insertWithCallback(String table, Map<String, dynamic> data, {String? conflictAlgorithm}) async {
+    final db = await database;
+    final result = await db.insert(
+      table, 
+      data, 
+      conflictAlgorithm: conflictAlgorithm != null 
+        ? ConflictAlgorithm.values.firstWhere((e) => e.toString().split('.').last == conflictAlgorithm)
+        : ConflictAlgorithm.abort
+    );
+    
+    // Generate record ID for notification
+    final recordId = data['id']?.toString() ?? result.toString();
+    await _notifyDatabaseChange(table, 'insert', recordId, data: data);
+    
+    return result;
+  }
+
+  // Enhanced update method with change notification
+  Future<int> updateWithCallback(String table, Map<String, dynamic> data, {String? where, List<Object?>? whereArgs}) async {
+    final db = await database;
+    
+    // Get the record ID before update for notification
+    String? recordId;
+    if (where != null && whereArgs != null) {
+      final existing = await db.query(table, where: where, whereArgs: whereArgs, limit: 1);
+      if (existing.isNotEmpty) {
+        recordId = existing.first['id']?.toString();
+      }
+    }
+    
+    final result = await db.update(table, data, where: where, whereArgs: whereArgs);
+    
+    if (recordId != null) {
+      await _notifyDatabaseChange(table, 'update', recordId, data: data);
+    }
+    
+    return result;
+  }
+
+  // Enhanced delete method with change notification
+  Future<int> deleteWithCallback(String table, {String? where, List<Object?>? whereArgs}) async {
+    final db = await database;
+    
+    // Get the record ID before deletion for notification
+    String? recordId;
+    if (where != null && whereArgs != null) {
+      final existing = await db.query(table, where: where, whereArgs: whereArgs, limit: 1);
+      if (existing.isNotEmpty) {
+        recordId = existing.first['id']?.toString();
+      }
+    }
+    
+    final result = await db.delete(table, where: where, whereArgs: whereArgs);
+    
+    if (recordId != null) {
+      await _notifyDatabaseChange(table, 'delete', recordId);
+    }
+    
+    return result;
+  }
+
+  // Update save methods to use callback versions
+  Future<Appointment> saveAppointment(Appointment appointment) async {
+    try {
+      final appointmentMap = appointment.toMap();
+      
+      if (appointment.id.isEmpty) {
+        appointmentMap['id'] = _generateUniqueId();
+        appointmentMap['createdAt'] = DateTime.now().toIso8601String();
+        appointmentMap['updatedAt'] = DateTime.now().toIso8601String();
+        
+        await insertWithCallback('appointments', appointmentMap);
+        return appointment.copyWith(
+          id: appointmentMap['id'] as String,
+          createdAt: DateTime.parse(appointmentMap['createdAt'] as String),
+        );
+      } else {
+        appointmentMap['updatedAt'] = DateTime.now().toIso8601String();
+        await updateWithCallback(
+          'appointments', 
+          appointmentMap, 
+          where: 'id = ?', 
+          whereArgs: [appointment.id]
+        );
+        return appointment.copyWith(updatedAt: DateTime.now());
+      }
+    } catch (e) {
+      debugPrint('Error saving appointment: $e');
+      rethrow;
+    }
+  }
+
+  // Generate unique ID helper method
+  String _generateUniqueId() {
+    return 'id_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond}';
+  }
+
 }

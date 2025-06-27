@@ -10,7 +10,7 @@ import '../models/patient_bill.dart';
 import '../models/medical_record.dart';
 import '../models/active_patient_queue_item.dart';
 import '../services/auth_service.dart';
-import '../services/shelf_lan_server.dart';
+import 'enhanced_shelf_lan_server.dart';
 import '../models/clinic_service.dart';
 import './queue_service.dart';
 import 'dart:convert';
@@ -151,16 +151,7 @@ class ApiService {
   }
 
   static Future<Appointment> saveAppointment(Appointment appointment) async {
-    try {
-      // Generate a unique ID for the appointment if not provided
-      final appointmentWithId = appointment.id.isEmpty 
-        ? appointment.copyWith(id: 'appointment-${DateTime.now().millisecondsSinceEpoch}-${(1000 + (DateTime.now().microsecond % 9000))}')
-        : appointment;
-      
-      return await _dbHelper.insertAppointment(appointmentWithId);
-    } catch (e) {
-      throw Exception('Failed to save appointment: $e');
-    }
+    return await _dbHelper.saveAppointment(appointment);
   }
 
   static Future<void> updateAppointmentStatus(
@@ -180,14 +171,11 @@ class ApiService {
 
   static Future<bool> deleteAppointment(String id) async {
     try {
-      final result = await _dbHelper.deleteAppointment(id);
-      if (result > 0) {
-        // If appointment is deleted, also remove its scheduled entry from the live queue
-        await _queueService.removeScheduledEntryForAppointment(id);
-        debugPrint("ApiService: Appointment $id deleted, removed from queue.");
-        return true;
-      }
-      return false;
+      await _dbHelper.deleteAppointment(id);
+      // If appointment is deleted, also remove its scheduled entry from the live queue
+      await _queueService.removeScheduledEntryForAppointment(id);
+      debugPrint("ApiService: Appointment $id deleted, removed from queue.");
+      return true;
     } catch (e) {
       debugPrint("ApiService: Error in deleteAppointment for $id: $e");
       throw Exception('Failed to delete appointment: $e');
@@ -693,12 +681,12 @@ class ApiService {
 
   static Future<void> initializeDatabaseForLan() async {
     try {
-      await _dbHelper.database; // Ensure database is initialized      // Initialize Shelf LAN server for database access
+      await _dbHelper.database; // Ensure database is initialized      // Initialize Enhanced Shelf LAN server for database access
       try {
-        await ShelfLanServer.initialize(_dbHelper);
-        debugPrint('Shelf LAN server initialized successfully');
+        await EnhancedShelfServer.initialize(_dbHelper);
+        debugPrint('Enhanced Shelf LAN server initialized successfully');
       } catch (e) {
-        debugPrint('Shelf LAN server initialization failed: $e');
+        debugPrint('Enhanced Shelf LAN server initialization failed: $e');
         // Continue execution even if this fails
       }
 

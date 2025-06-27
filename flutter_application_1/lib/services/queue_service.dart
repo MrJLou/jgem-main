@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -11,7 +12,6 @@ import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
-import 'enhanced_real_time_sync_service.dart';
 
 class QueueService {
   static final QueueService _instance = QueueService._internal();
@@ -19,18 +19,6 @@ class QueueService {
   QueueService._internal();
 
   final DatabaseHelper _dbHelper = DatabaseHelper();
-
-  // Helper method to notify real-time sync service of queue changes
-  Future<void> _notifyQueueChange(
-      String operation, Map<String, dynamic> data) async {
-    try {
-      // Use static method to trigger queue updates
-      EnhancedRealTimeSyncService.broadcastDatabaseChange('queue', operation, data);
-    } catch (e) {
-      debugPrint('Error notifying queue change: $e');
-      // Don't fail the main operation if real-time sync fails
-    }
-  }
 
   /// Get current active queue items from the database.
   /// By default, fetches 'waiting' and 'in_consultation' statuses.
@@ -104,13 +92,6 @@ class QueueService {
   /// This is useful for activating scheduled appointments.
   Future<bool> addPatientToQueue(ActivePatientQueueItem queueItem) async {
     try {
-      // The DatabaseHelper.addToActiveQueue method already handles the DB insertion.
-      // It returns the item, so we assume success if no exception.
-      final addedItem = await _dbHelper.addToActiveQueue(queueItem);
-
-      // Send real-time sync update
-      await _notifyQueueChange('queue_added', addedItem.toJson());
-
       if (kDebugMode) {
         print(
             'QueueService: Patient ${queueItem.patientName} (ID: ${queueItem.queueEntryId}) added to active queue via addPatientToQueue.');
@@ -155,9 +136,7 @@ class QueueService {
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
 
     if (result > 0) {
-      // Send real-time sync update
-      await _notifyQueueChange('queue_removed', updatedItem.toJson());
-
+      
       if (updatedItem.originalAppointmentId != null) {
         try {
           await ApiService.updateAppointmentStatus(
@@ -302,9 +281,6 @@ class QueueService {
               'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
         }
 
-        // Send real-time sync update
-        await _notifyQueueChange('queue_updated', updatedItem.toJson());
-
         // If the new status is 'served', create a medical record for history.
         if (newStatus.toLowerCase() == 'served') {
           try {
@@ -319,8 +295,7 @@ class QueueService {
           }
         }
 
-        // If it's a walk-in (no original appointment), create/update a corresponding Appointment record for history.
-        /*if (updatedItem.originalAppointmentId == null ||
+      if (updatedItem.originalAppointmentId == null ||
             updatedItem.originalAppointmentId!.isEmpty) {
           final walkInAppointmentId = 'walkin_${updatedItem.queueEntryId}';
           try {
@@ -387,7 +362,8 @@ class QueueService {
                   'QueueService: Error creating/updating historical appointment for walk-in: $e');
             }
           }
-        }*/
+        }
+        
         // ADDED: Propagate to original Appointment if exists
         else if (updatedItem.originalAppointmentId != null) {
           try {

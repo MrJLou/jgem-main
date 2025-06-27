@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:bcrypt/bcrypt.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_application_1/services/lan_session_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
@@ -123,13 +121,6 @@ class AuthService {
           username,
           'User logged out',
         );
-
-        // Notify LAN session service about logout
-        try {
-          await _notifySessionLogout(username);
-        } catch (e) {
-          debugPrint('Failed to notify session service of logout: $e');
-        }
       }
 
       if (kDebugMode) {
@@ -413,12 +404,6 @@ class AuthService {
       String username, String password,
       {bool forceLogoutExisting = false}) async {
     try {
-      // Check if user is already logged in elsewhere
-      if (LanSessionService.isUserLoggedIn(username) && !forceLogoutExisting) {
-        throw Exception(
-            'User is already logged in on another device. Please logout from the other device first.');
-      }
-
       // Proceed with normal authentication
       final auth = await DatabaseHelper().authenticateUser(username, password);
       if (auth != null && auth['user'] != null && auth['user'].role != null) {
@@ -431,33 +416,8 @@ class AuthService {
           accessLevel: auth['user'].role,
         );
 
-        // Register session if session service is running
-        debugPrint(
-            'AuthService: Checking if session service is running: ${LanSessionService.isServerRunning}');
-        if (LanSessionService.isServerRunning) {
-          try {
-            final deviceId = await getDeviceId();
-            final deviceName = await _getDeviceName();
-
-            debugPrint(
-                'AuthService: Registering session for $username on $deviceName (Device: $deviceId)');
-            await LanSessionService.registerUserSession(
-              username: username,
-              deviceId: deviceId,
-              deviceName: deviceName,
-              accessLevel: auth['user'].role,
-              forceLogoutExisting: forceLogoutExisting,
-            );
-            debugPrint('AuthService: Session registered successfully');
-          } catch (e) {
-            debugPrint('Failed to register session: $e');
-            // Don't fail login if session registration fails
-          }
-        } else {
-          debugPrint(
-              'AuthService: Session service not running, skipping session registration');
-        }
-
+        debugPrint('AuthService: User $username logged in successfully');
+        
         return auth;
       } else {
         throw Exception('Invalid credentials or user data missing');
@@ -475,20 +435,9 @@ class AuthService {
       }
 
       final username = await getCurrentUsername();
-      final deviceId = await getDeviceId();
-
       if (username == null) return false;
 
-      // Check if our session is still valid in the session service
-      if (LanSessionService.isServerRunning) {
-        final session = LanSessionService.getSessionByDevice(deviceId);
-        if (session == null || session.username != username) {
-          // Our session is no longer valid, force logout
-          await forceLogoutDueToSessionInvalidation();
-          return false;
-        }
-      }
-
+      // Simplified validation - just check if user is still logged in locally
       return true;
     } catch (e) {
       debugPrint('Error validating session: $e');
@@ -497,53 +446,4 @@ class AuthService {
   }
 
   // Get device name
-  static Future<String> _getDeviceName() async {
-    try {
-      if (Platform.isWindows) {
-        final result = await Process.run('hostname', []);
-        return result.stdout.toString().trim();
-      } else if (Platform.isLinux || Platform.isMacOS) {
-        final result = await Process.run('hostname', []);
-        return result.stdout.toString().trim();
-      }
-    } catch (e) {
-      debugPrint('Failed to get device name: $e');
-    }
-    return 'Unknown Device';
-  }
-
-  // Helper method to notify session service of logout
-  static Future<void> _notifySessionLogout(String username) async {
-    try {
-      // Get current device ID
-      final deviceId = await getDeviceId();
-
-      // End the session for this user/device
-      if (_getActiveSessionsStatic != null && _endSessionStatic != null) {
-        final activeSessions = _getActiveSessionsStatic!();
-        for (final session in activeSessions.values) {
-          if (session.username == username && session.deviceId == deviceId) {
-            await _endSessionStatic!(session.sessionId);
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error notifying session logout: $e');
-    }
-  }
-
-  // Static references to session service (to avoid circular imports)
-  static Map<String, dynamic> Function()? _getActiveSessionsStatic;
-  static Future<void> Function(String sessionId)? _endSessionStatic;
-
-  // Method to register session service callbacks
-  static void registerSessionCallbacks({
-    required Map<String, dynamic> Function() getActiveSessions,
-    required Future<void> Function(String sessionId) endSession,
-  }) {
-    _getActiveSessionsStatic = getActiveSessions;
-    _endSessionStatic = endSession;
-    debugPrint('Session callbacks registered with AuthService');
-  }
 }
