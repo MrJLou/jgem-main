@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'package:flutter_application_1/services/api_service.dart';
-import 'services/safe_auth_service.dart';
+import 'package:flutter_application_1/services/enhanced_auth_integration.dart';
+import 'services/authentication_manager.dart';
 import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
 import 'services/session_notification_service.dart';
@@ -68,8 +69,8 @@ void main() async {
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
   
-  // Initialize lightweight authentication to prevent crashes
-  await SafeAuthService.initialize();
+  // Initialize authentication manager instead of old session monitoring
+  await EnhancedAuthIntegration.initialize();
   
   debugPrint('Application initialized with simplified authentication');
 
@@ -127,17 +128,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   void initState() {
     super.initState();
 
-    _isLoggedInFuture = _checkLoginStatus();
-  }
-
-  Future<bool> _checkLoginStatus() async {
-    try {
-      // Use a simple timeout to prevent hanging
-      return await Future.delayed(const Duration(milliseconds: 500), () => false);
-    } catch (e) {
-      debugPrint('Login check failed: $e');
-      return false;
-    }
+    _isLoggedInFuture = AuthenticationManager.isLoggedIn();
   }
 
   @override

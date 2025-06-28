@@ -264,4 +264,51 @@ class UserDatabaseService {
     
     return false; 
   }
-} 
+
+  // Update user password only
+  Future<int> updateUserPassword(String userId, String hashedPassword) async {
+    final db = await _dbHelper.database;
+    late int result;
+    await db.transaction((txn) async {
+      result = await txn.update(
+        DatabaseHelper.tableUsers,
+        {'password': hashedPassword},
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      if (result > 0) {
+        await _dbHelper.logChange(DatabaseHelper.tableUsers, userId, 'update',
+            executor: txn);
+      }
+    });
+    return result;
+  }
+
+  // Update user security questions and answers
+  Future<int> updateUserSecurityQuestions(String userId, String question1,
+      String hashedAnswer1, String question2, String hashedAnswer2,
+      String question3, String hashedAnswer3) async {
+    final db = await _dbHelper.database;
+    late int result;
+    await db.transaction((txn) async {
+      result = await txn.update(
+        DatabaseHelper.tableUsers,
+        {
+          'securityQuestion1': question1,
+          'securityAnswer1': hashedAnswer1,
+          'securityQuestion2': question2,
+          'securityAnswer2': hashedAnswer2,
+          'securityQuestion3': question3,
+          'securityAnswer3': hashedAnswer3,
+        },
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      if (result > 0) {
+        await _dbHelper.logChange(DatabaseHelper.tableUsers, userId, 'update',
+            executor: txn);
+      }
+    });
+    return result;
+  }
+}

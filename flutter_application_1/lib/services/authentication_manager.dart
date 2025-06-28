@@ -54,17 +54,19 @@ class AuthenticationManager {
       final user = auth['user'] as User;
       debugPrint('AUTH_MANAGER: Credentials validated for user: $username');
       
-      // Check for existing sessions
-      final hasActiveSession = await EnhancedUserTokenService.hasActiveSession(username);
-      debugPrint('AUTH_MANAGER: Has active session: $hasActiveSession');
-      
-      if (hasActiveSession && !forceLogout) {
-        final activeSessions = await EnhancedUserTokenService.getActiveUserSessions(username);
-        debugPrint('AUTH_MANAGER: Throwing UserSessionConflictException - ${activeSessions.length} active sessions found');
-        throw UserSessionConflictException(
-          'User is already logged in on another device',
-          activeSessions,
-        );
+      // Check for existing sessions only if not forcing logout
+      if (!forceLogout) {
+        final hasActiveSession = await EnhancedUserTokenService.hasActiveSession(username);
+        debugPrint('AUTH_MANAGER: Has active session: $hasActiveSession');
+        
+        if (hasActiveSession) {
+          final activeSessions = await EnhancedUserTokenService.getActiveUserSessions(username);
+          debugPrint('AUTH_MANAGER: Throwing UserSessionConflictException - ${activeSessions.length} active sessions found');
+          throw UserSessionConflictException(
+            'User is already logged in on another device',
+            activeSessions,
+          );
+        }
       }
       
       // Create new session (this will invalidate existing ones if forceLogout is true)
@@ -212,10 +214,22 @@ class AuthenticationManager {
       
       final username = await getCurrentUsername();
       
-      // Invalidate current session
-      if (username != null) {
-        await EnhancedUserTokenService.invalidateAllUserSessions(username);
+      // Get current session token before clearing everything
+      final currentSessionToken = await EnhancedUserTokenService.getCurrentSessionToken();
+      
+      // Invalidate ONLY the current session, not all user sessions
+      if (currentSessionToken != null) {
+        await EnhancedUserTokenService.invalidateSession(currentSessionToken);
+        debugPrint('AUTH_MANAGER: Invalidated current session token');
       }
+      
+      // Clean up any stale sessions for this user
+      if (username != null) {
+        await EnhancedUserTokenService.cleanupUserSessions(username);
+      }
+      
+      // Clear current session info from SharedPreferences
+      await EnhancedUserTokenService.clearCurrentSessionInfo();
       
       // Clear local authentication state
       await _clearAuthenticationState();
@@ -228,15 +242,21 @@ class AuthenticationManager {
         final db = DatabaseHelper();
         await db.logUserActivity(
           username,
-          'User logged out',
+          'User logged out - session cleared',
         );
       }
       
-      debugPrint('AUTH_MANAGER: Logout completed');
+      debugPrint('AUTH_MANAGER: Logout completed successfully');
     } catch (e) {
       debugPrint('AUTH_MANAGER: Error during logout: $e');
       // Still clear local state even if other operations fail
       await _clearAuthenticationState();
+      // Force clear session info as fallback
+      try {
+        await EnhancedUserTokenService.clearCurrentSessionInfo();
+      } catch (clearError) {
+        debugPrint('AUTH_MANAGER: Error clearing session info: $clearError');
+      }
     }
   }
 

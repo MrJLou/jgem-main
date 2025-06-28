@@ -3,8 +3,7 @@ import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
-import '../services/auth_service.dart';
-import '../services/authentication_manager.dart';
+import '../services/enhanced_auth_integration.dart';
 import '../services/enhanced_user_token_service.dart';
 import 'forgot_password_screen.dart';
 
@@ -108,18 +107,18 @@ class LoginScreenState extends State<LoginScreen>
   Future<void> _checkExistingSession() async {
     setState(() => _isLoading = true);
     try {
-      final isLoggedIn = await AuthService.isLoggedIn();
+      final isLoggedIn = await EnhancedAuthIntegration.isLoggedIn();
 
       if (isLoggedIn && mounted) {
-        final credentials = await AuthService.getSavedCredentials();
-        if (credentials != null) {
+        final currentUser = await EnhancedAuthIntegration.getCurrentUser();
+        if (currentUser != null) {
           // Only navigate to dashboard if actually logged in
           if (mounted) {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(
                 builder: (context) => DashboardScreen(
-                  accessLevel: credentials['accessLevel'] ?? 'user',
+                  accessLevel: currentUser.role,
                 ),
               ),
               (route) =>
@@ -168,12 +167,21 @@ class LoginScreenState extends State<LoginScreen>
         // final username = _usernameController.text; // Already defined above        // Check rate limiting before attempting login
         // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
-        // Use enhanced session management login
-        final response = await AuthenticationManager.login(
+        // Use enhanced authentication integration
+        final response = await EnhancedAuthIntegration.login(
           username: username,
           password: _passwordController.text,
           forceLogout: false,
         );
+
+        // Check if login was successful
+        if (response['success'] == false) {
+          setState(() {
+            _errorMessage = response['message'] ?? 'Login failed';
+          });
+          _recordFailedLoginAttempt(username);
+          return;
+        }
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -182,7 +190,6 @@ class LoginScreenState extends State<LoginScreen>
             _errorMessage = 'Login failed: User role not found in response.';
           });
           _recordFailedLoginAttempt(username); // Record failed attempt
-          // await LoginRateLimiter.recordFailedAttempt(username); // COMMENTED OUT
           return;
         }
 
@@ -350,11 +357,19 @@ class LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = true);
       try {
         // Attempt login with force logout
-        final response = await AuthenticationManager.login(
+        final response = await EnhancedAuthIntegration.login(
           username: username,
           password: password,
           forceLogout: true,
         );
+
+        // Check if login was successful
+        if (response['success'] == false) {
+          setState(() {
+            _errorMessage = response['message'] ?? 'Login failed';
+          });
+          return;
+        }
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;

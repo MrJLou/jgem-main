@@ -165,6 +165,7 @@ class EnhancedUserTokenService {
   static Future<bool> hasActiveSession(String username) async {
     try {
       final activeSessions = await getActiveUserSessions(username);
+      debugPrint('ENHANCED_TOKEN_SERVICE: Active sessions for $username: ${activeSessions.length}');
       return activeSessions.isNotEmpty;
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error checking active session: $e');
@@ -202,18 +203,35 @@ class EnhancedUserTokenService {
         orderBy: 'created_at DESC',
       );
 
+      debugPrint('ENHANCED_TOKEN_SERVICE: Raw query result for $username: ${result.length} sessions');
+
       // Filter out actually expired sessions (database might have stale data)
       final validSessions = <Map<String, dynamic>>[];
+      final currentTime = DateTime.now();
+      
       for (final session in result) {
-        final expiryTime = DateTime.parse(session['expiresAt'] as String);
-        if (DateTime.now().isBefore(expiryTime)) {
-          validSessions.add(session);
-        } else {
-          // Clean up expired session
-          await invalidateSession(session['sessionToken'] as String);
+        try {
+          final expiryTime = DateTime.parse(session['expiresAt'] as String);
+          final isActive = (session['isActive'] as int) == 1;
+          
+          if (isActive && currentTime.isBefore(expiryTime)) {
+            validSessions.add(session);
+            debugPrint('ENHANCED_TOKEN_SERVICE: Valid session found for $username: ${session['deviceName']} (expires: ${session['expiresAt']})');
+          } else {
+            debugPrint('ENHANCED_TOKEN_SERVICE: Cleaning up invalid session for $username: active=$isActive, expired=${currentTime.isAfter(expiryTime)}');
+            // Clean up expired or inactive session
+            await invalidateSession(session['sessionToken'] as String);
+          }
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error processing session record: $e');
+          // If we can't parse the session, invalidate it
+          if (session['sessionToken'] != null) {
+            await invalidateSession(session['sessionToken'] as String);
+          }
         }
       }
       
+      debugPrint('ENHANCED_TOKEN_SERVICE: Valid sessions for $username: ${validSessions.length}');
       return validSessions;
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error getting active sessions: $e');
@@ -298,7 +316,7 @@ class EnhancedUserTokenService {
     try {
       final db = await _dbHelper.database;
       
-      await db.update(
+      final result = await db.update(
         DatabaseHelper.tableUserSessions,
         {
           'isActive': 0,
@@ -312,10 +330,15 @@ class EnhancedUserTokenService {
       final currentToken = await _getCurrentSessionToken();
       if (currentToken == sessionToken) {
         await _clearCurrentSessionInfo();
+        debugPrint('ENHANCED_TOKEN_SERVICE: Cleared local session info for invalidated token');
       }
 
-      await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionToken, 'update');
-      debugPrint('ENHANCED_TOKEN_SERVICE: Invalidated session token');
+      if (result > 0) {
+        await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionToken, 'update');
+        debugPrint('ENHANCED_TOKEN_SERVICE: Successfully invalidated session token');
+      } else {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Session token not found or already invalidated');
+      }
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error invalidating session: $e');
       rethrow;
@@ -364,19 +387,64 @@ class EnhancedUserTokenService {
       final db = await _dbHelper.database;
       final now = DateTime.now().toIso8601String();
       
-      await db.update(
-        DatabaseHelper.tableUserSessions,
-        {
-          'isActive': 0,
-          'invalidated_at': now,
-        },
-        where: 'expiresAt < ? AND isActive = 1',
-        whereArgs: [now],
+      // Get count of sessions to clean up
+      final countResult = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM ${DatabaseHelper.tableUserSessions} WHERE (expiresAt < ? OR isActive = 0) AND invalidated_at IS NULL',
+        [now],
       );
-
-      debugPrint('ENHANCED_TOKEN_SERVICE: Cleaned up expired sessions');
+      
+      final sessionsToClean = countResult.first['count'] as int;
+      
+      if (sessionsToClean > 0) {
+        // Mark expired sessions as invalidated
+        await db.update(
+          DatabaseHelper.tableUserSessions,
+          {
+            'isActive': 0,
+            'invalidated_at': now,
+          },
+          where: 'expiresAt < ? AND isActive = 1',
+          whereArgs: [now],
+        );
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Cleaned up $sessionsToClean expired sessions');
+      } else {
+        debugPrint('ENHANCED_TOKEN_SERVICE: No expired sessions to clean up');
+      }
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error cleaning up expired sessions: $e');
+    }
+  }
+
+  /// Deep cleanup for a specific user's sessions (used during logout)
+  static Future<void> cleanupUserSessions(String username) async {
+    try {
+      final db = await _dbHelper.database;
+      final now = DateTime.now().toIso8601String();
+      
+      // Get all sessions for the user that need cleanup
+      final sessionsToClean = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: 'username = ? AND (isActive = 0 OR expiresAt < ?)',
+        whereArgs: [username, now],
+      );
+      
+      if (sessionsToClean.isNotEmpty) {
+        // Mark them as properly invalidated
+        await db.update(
+          DatabaseHelper.tableUserSessions,
+          {
+            'isActive': 0,
+            'invalidated_at': now,
+          },
+          where: 'username = ? AND (isActive = 0 OR expiresAt < ?)',
+          whereArgs: [username, now],
+        );
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Cleaned up ${sessionsToClean.length} sessions for user: $username');
+      }
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error cleaning up user sessions: $e');
     }
   }
 
@@ -562,6 +630,21 @@ class EnhancedUserTokenService {
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error clearing session info: $e');
     }
+  }
+
+  /// Public method to clear current session info (used by AuthenticationManager)
+  static Future<void> clearCurrentSessionInfo() async {
+    await _clearCurrentSessionInfo();
+  }
+
+  /// Public method to get current session token (used by AuthenticationManager)
+  static Future<String?> getCurrentSessionToken() async {
+    return await _getCurrentSessionToken();
+  }
+
+  /// Public method to get current username (used by AuthenticationManager)
+  static Future<String?> getCurrentUsername() async {
+    return await _getCurrentUsername();
   }
 }
 

@@ -959,6 +959,17 @@ class DatabaseHelper {
     return userDbService.updateUser(user);
   }
 
+  Future<int> updateUserPassword(String userId, String hashedPassword) async {
+    return userDbService.updateUserPassword(userId, hashedPassword);
+  }
+
+  Future<int> updateUserSecurityQuestions(String userId, String question1,
+      String hashedAnswer1, String question2, String hashedAnswer2,
+      String question3, String hashedAnswer3) async {
+    return userDbService.updateUserSecurityQuestions(userId, question1,
+        hashedAnswer1, question2, hashedAnswer2, question3, hashedAnswer3);
+  }
+
   Future<int> deleteUser(String id) async {
     return userDbService.deleteUser(id);
   }
