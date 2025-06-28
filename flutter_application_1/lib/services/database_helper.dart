@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 35;
+  static const int _databaseVersion = 36;
 
   // Tables
   static const String tableUsers = 'users';
@@ -653,12 +653,16 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE $tableUserSessions (
         id TEXT PRIMARY KEY,
+        session_id TEXT,
         userId TEXT NOT NULL,
         username TEXT NOT NULL,
         deviceId TEXT NOT NULL,
         deviceName TEXT,
         loginTime TEXT NOT NULL,
         lastActivity TEXT NOT NULL,
+        created_at TEXT,
+        expires_at TEXT,
+        invalidated_at TEXT,
         ipAddress TEXT,
         isActive INTEGER DEFAULT 1 NOT NULL,
         sessionToken TEXT NOT NULL,
@@ -861,6 +865,30 @@ class DatabaseHelper {
           expiresAt TEXT NOT NULL,
           FOREIGN KEY (userId) REFERENCES $tableUsers (id) ON DELETE CASCADE
         )
+      ''');
+    }
+
+    if (oldVersion < 36) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 36: Adding session_id, created_at, expires_at, and invalidated_at columns to user_sessions table.");
+      
+      // Add new columns for enhanced token-based session management
+      await _addColumnIfNotExists(db, tableUserSessions, 'session_id', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'created_at', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'expires_at', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'invalidated_at', 'TEXT');
+      
+      // Update existing records to have proper structure
+      await db.execute('''
+        UPDATE $tableUserSessions 
+        SET created_at = COALESCE(loginTime, datetime('now')) 
+        WHERE created_at IS NULL
+      ''');
+      
+      await db.execute('''
+        UPDATE $tableUserSessions 
+        SET expires_at = COALESCE(expiresAt, datetime('now', '+1 hour')) 
+        WHERE expires_at IS NULL
       ''');
     }
 

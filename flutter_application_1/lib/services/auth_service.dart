@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:crypto/crypto.dart';
 import 'package:bcrypt/bcrypt.dart';
 import 'package:flutter/foundation.dart';
@@ -9,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
 import 'database_sync_client.dart';
 import 'session_notification_service.dart';
+import 'user_token_service.dart';
 import '../models/user.dart';
 import '../screens/login_screen.dart';
 
@@ -113,6 +113,11 @@ class AuthService {
       // Get username before clearing credentials
       final username = await _secureStorage.read(key: _usernameKey);
 
+      // Invalidate the session token in our token service
+      if (username != null) {
+        await UserTokenService.invalidateUserSessions(username);
+      }
+
       // Clear secure storage data
       await _secureStorage.delete(key: _authTokenKey);
       await _secureStorage.delete(key: _tokenExpiryKey);
@@ -135,12 +140,12 @@ class AuthService {
         final db = DatabaseHelper();
         await db.logUserActivity(
           username,
-          'User logged out',
+          'User logged out - session token invalidated',
         );
       }
 
       if (kDebugMode) {
-        print('Logout completed successfully - all credentials cleared');
+        print('Logout completed successfully - all credentials cleared and session token invalidated');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -298,6 +303,7 @@ class AuthService {
   }
 
   // Check if user is logged in and token is valid
+  // Check if user is logged in and token is valid
   static Future<bool> isLoggedIn() async {
     if (isDevMode) return true; // Always return true in dev mode
 
@@ -309,23 +315,25 @@ class AuthService {
     }
 
     if (isLoggedIn) {
-      // Double-check with secure storage and validate token expiry
-      final token = await _secureStorage.read(key: _authTokenKey);
-      final expiryTimeStr = await _secureStorage.read(key: _tokenExpiryKey);
+      // Get username and session token for validation
+      final username = await _secureStorage.read(key: _usernameKey);
+      final sessionToken = await _secureStorage.read(key: _authTokenKey);
 
-      if (token != null && expiryTimeStr != null) {
-        final expiryTime = int.parse(expiryTimeStr);
-        final currentTime = DateTime.now().millisecondsSinceEpoch;
-
-        if (currentTime < expiryTime) {
-          return true; // Token is valid
+      if (username != null && sessionToken != null) {
+        // Validate session token using our token service
+        final isValidSession = await UserTokenService.validateSessionToken(username, sessionToken);
+        
+        if (isValidSession) {
+          return true; // Session is valid
         } else {
-          // Token has expired, clean up
+          // Session is invalid or expired, clean up
           await clearCredentials();
+          debugPrint('AuthService: Session token validation failed for user: $username');
         }
       } else {
-        // Missing token or expiry, ensure logged out state is consistent
+        // Missing username or token, ensure logged out state is consistent
         await clearCredentials();
+        debugPrint('AuthService: Missing username or session token');
       }
     }
     return false;
@@ -440,59 +448,68 @@ class AuthService {
     try {
       final db = DatabaseHelper();
       
-      // First authenticate the user
+      // First authenticate the user credentials
       final auth = await db.authenticateUser(username, password);
       if (auth == null || auth['user'] == null || auth['user'].role == null) {
         throw Exception('Invalid credentials or user data missing');
       }
 
       final user = auth['user'];
-      final userId = user.id;
       final deviceId = await getDeviceId();
       
-      // Check for existing active sessions on other devices
-      final activeSessions = await db.getActiveUserSessions(userId, excludeDeviceId: deviceId);
+      // Check for existing active sessions using our token service
+      final hasActiveSession = await UserTokenService.hasActiveSession(username);
       
-      if (activeSessions.isNotEmpty && !forceLogoutExisting) {
+      if (hasActiveSession && !forceLogoutExisting) {
+        // Get session details for the exception
+        final activeSessionDetails = await UserTokenService.getActiveSessionDetails(username);
+        final activeSessions = activeSessionDetails != null ? [activeSessionDetails] : <Map<String, dynamic>>[];
+        
         // User is already logged in on another device
         throw SessionConflictException('User is already logged in on another device', activeSessions);
       }
       
-      if (forceLogoutExisting && activeSessions.isNotEmpty) {
-        // Force logout existing sessions
-        await db.invalidateUserSessions(userId, excludeDeviceId: deviceId);
+      if (forceLogoutExisting && hasActiveSession) {
+        // Get session details before invalidating
+        final activeSessionDetails = await UserTokenService.getActiveSessionDetails(username);
         
-        // Notify other devices about session invalidation via sync
-        await _notifySessionInvalidation(userId, activeSessions);
+        // Force logout existing sessions using our token service
+        await UserTokenService.invalidateUserSessions(username);
         
-        debugPrint('AuthService: Invalidated ${activeSessions.length} existing sessions for user $username');
+        // Notify other devices about session invalidation
+        if (activeSessionDetails != null) {
+          await _notifySessionInvalidation(user.id, [activeSessionDetails]);
+        }
+        
+        debugPrint('AuthService: Invalidated existing session for user $username');
       }
       
-      // Create new session
-      final sessionToken = auth['token'];
-      final expiresAt = DateTime.now().add(const Duration(minutes: _tokenValidityMinutes));
+      // Create new session token using our token service
+      final sessionToken = await UserTokenService.createUserSession(username, deviceId);
       
-      await db.createUserSession(
-        userId: userId,
-        username: username,
-        deviceId: deviceId,
-        deviceName: await _getDeviceName(),
-        sessionToken: sessionToken,
-        expiresAt: expiresAt,
-      );
-
       _currentUserRole = user.role;
 
-      // Save to SharedPreferences
+      // Save credentials with the new session token
       await saveLoginCredentials(
         token: sessionToken,
         username: username,
         accessLevel: user.role,
       );
 
-      debugPrint('AuthService: User $username logged in successfully');
+      // Log the successful login
+      await db.logUserActivity(
+        username,
+        'User logged in with session management',
+        details: 'Device ID: $deviceId, Force logout: $forceLogoutExisting',
+      );
+
+      debugPrint('AuthService: User $username logged in successfully with session token');
       
-      return auth;
+      // Return the auth response with our session token
+      return {
+        'token': sessionToken,
+        'user': user,
+      };
     } catch (e) {
       if (e is SessionConflictException) {
         rethrow; // Preserve the session conflict exception
@@ -541,28 +558,6 @@ class AuthService {
       }
     } catch (e) {
       debugPrint('Error notifying session invalidation: $e');
-    }
-  }
-
-  /// Get device name for session tracking
-  static Future<String> _getDeviceName() async {
-    try {
-      if (!kIsWeb) {
-        if (Platform.isWindows) {
-          return 'Windows Device';
-        } else if (Platform.isAndroid) {
-          return 'Android Device';
-        } else if (Platform.isIOS) {
-          return 'iOS Device';
-        } else if (Platform.isMacOS) {
-          return 'macOS Device';
-        } else if (Platform.isLinux) {
-          return 'Linux Device';
-        }
-      }
-      return 'Web Browser';
-    } catch (e) {
-      return 'Unknown Device';
     }
   }
 
