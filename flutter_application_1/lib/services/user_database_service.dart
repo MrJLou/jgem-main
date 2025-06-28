@@ -197,14 +197,15 @@ class UserDatabaseService {
   }
 
   // Update the resetPassword method
-  Future<bool> resetPassword(String username, String securityQuestion,
+  Future<bool> resetPassword(String username, String securityQuestionKey,
       String securityAnswer, String newPassword) async {
     final db = await _dbHelper.database;
 
+    // First, get the user by username only
     final List<Map<String, dynamic>> users = await db.query(
       DatabaseHelper.tableUsers,
-      where: 'username = ? AND securityQuestion1 = ?', 
-      whereArgs: [username, securityQuestion],
+      where: 'username = ?', 
+      whereArgs: [username],
     );
 
     if (users.isEmpty) {
@@ -212,12 +213,36 @@ class UserDatabaseService {
     }
 
     final user = User.fromJson(users.first);
+    
     bool isAnswerCorrect = false;
+    String? hashedAnswerToVerify;
+    String? questionToCheck;
 
-    if (user.securityQuestion1 == securityQuestion) {
-         isAnswerCorrect = AuthService.verifySecurityAnswer(securityAnswer, user.securityAnswer1 ?? '');
-    } 
-    // Add checks for securityQuestion2 & securityAnswer2, securityQuestion3 & securityAnswer3 if needed.
+    // Determine which security question and answer to verify based on the key
+    switch (securityQuestionKey) {
+      case 'securityQuestion1':
+        questionToCheck = user.securityQuestion1;
+        hashedAnswerToVerify = user.securityAnswer1;
+        break;
+      case 'securityQuestion2':
+        questionToCheck = user.securityQuestion2;
+        hashedAnswerToVerify = user.securityAnswer2;
+        break;
+      case 'securityQuestion3':
+        questionToCheck = user.securityQuestion3;
+        hashedAnswerToVerify = user.securityAnswer3;
+        break;
+      default:
+        return false; // Invalid security question key
+    }
+
+    // Verify that the question exists and the answer is correct
+    if (questionToCheck != null && 
+        questionToCheck.isNotEmpty && 
+        hashedAnswerToVerify != null && 
+        hashedAnswerToVerify.isNotEmpty) {
+      isAnswerCorrect = AuthService.verifySecurityAnswer(securityAnswer, hashedAnswerToVerify);
+    }
 
     if (!isAnswerCorrect) {
       return false; 
@@ -236,6 +261,7 @@ class UserDatabaseService {
       await _dbHelper.logChange(DatabaseHelper.tableUsers, user.id, 'update'); // user.id is non-nullable String
       return true;
     }
+    
     return false; 
   }
 } 

@@ -907,10 +907,10 @@ class DatabaseHelper {
     return userDbService.authenticateUser(username, password);
   }
 
-  Future<bool> resetPassword(String username, String securityQuestion,
+  Future<bool> resetPassword(String username, String securityQuestionKey,
       String securityAnswer, String newPassword) async {
     return userDbService.resetPassword(
-        username, securityQuestion, securityAnswer, newPassword);
+        username, securityQuestionKey, securityAnswer, newPassword);
   }
 
   // PATIENT MANAGEMENT METHODS (Delegating to PatientDatabaseService)

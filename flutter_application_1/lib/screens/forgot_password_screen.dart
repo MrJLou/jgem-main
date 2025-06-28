@@ -73,6 +73,8 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       _errorMessage = null;
       _userQuestionMap = {};
       _selectedQuestionKey = null;
+      // Clear the security answer when fetching new questions
+      _securityAnswerController.clear();
     });
     try {
       final userDetails =
@@ -163,7 +165,7 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         } else {
           setState(() {
             _errorMessage =
-                'Password reset failed. Please check your information.';
+                'Password reset failed. Please check your security answer and try again.';
           });
         }
       } catch (e) {
@@ -372,6 +374,9 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                   onChanged: (value) {
                                     setState(() {
                                       _selectedQuestionKey = value;
+                                      // Clear the security answer when question changes
+                                      _securityAnswerController.clear();
+                                      _errorMessage = null;
                                     });
                                   },
                                   decoration: InputDecoration(
