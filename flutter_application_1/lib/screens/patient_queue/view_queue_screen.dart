@@ -498,13 +498,13 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.8),
+                  color: Colors.green.withAlpha(50),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 12,
                       height: 12,
                       child: CircularProgressIndicator(
@@ -512,10 +512,10 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
                       'Syncing...',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ],
                 ),
@@ -524,7 +524,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.7),
+                  color: Colors.blue.withAlpha(50),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -538,8 +538,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         actions: [
           // Sync indicator
           if (_showSyncIndicator)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -551,7 +551,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4),
                   Text(
                     'Syncing...',
                     style: TextStyle(color: Colors.white, fontSize: 12),
@@ -566,7 +566,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
               child: Center(
                 child: Text(
                   'Last sync: $_lastSyncTime',
-                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                  style: const TextStyle(color: Colors.white70, fontSize: 10),
                 ),
               ),
             ),

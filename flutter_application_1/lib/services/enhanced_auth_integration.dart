@@ -282,6 +282,7 @@ class EnhancedLoginIntegration {
         }
         
         // Show default session conflict dialog
+        if (!context.mounted) return false;
         final shouldForceLogin = await _showSessionConflictDialog(context, activeSessions);
         
         if (shouldForceLogin) {

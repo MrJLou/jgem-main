@@ -69,8 +69,12 @@ class AppointmentDatabaseService {
     
     // Log successful appointment update for debugging
     if (kDebugMode && result > 0) {
-      print('AppointmentDatabaseService: Successfully updated appointment ${appointmentMap['id']}');
-      print('AppointmentDatabaseService: Appointment update should trigger real-time sync to connected devices');
+      if (kDebugMode) {
+        print('AppointmentDatabaseService: Successfully updated appointment ${appointmentMap['id']}');
+      }
+      if (kDebugMode) {
+        print('AppointmentDatabaseService: Appointment update should trigger real-time sync to connected devices');
+      }
     }
     
     return result;
@@ -89,8 +93,12 @@ class AppointmentDatabaseService {
     
     // Log successful status update for debugging
     if (kDebugMode && result > 0) {
-      print('AppointmentDatabaseService: Successfully updated appointment $id status to $status');
-      print('AppointmentDatabaseService: Status update should trigger real-time sync to connected devices');
+      if (kDebugMode) {
+        print('AppointmentDatabaseService: Successfully updated appointment $id status to $status');
+      }
+      if (kDebugMode) {
+        print('AppointmentDatabaseService: Status update should trigger real-time sync to connected devices');
+      }
     }
     
     return result;

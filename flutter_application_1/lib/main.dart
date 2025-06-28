@@ -14,6 +14,7 @@ import 'screens/analytics/analytics_hub_screen.dart';
 import 'services/database_sync_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'services/cross_device_session_monitor.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,8 +69,21 @@ void main() async {
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
   
-  // Initialize authentication manager instead of old session monitoring
+  // Set up session sync listener for cross-device session management
+  DatabaseSyncClient.syncUpdates.listen((update) {
+    if (update['type'] == 'session_invalidated' || 
+        (update['type'] == 'remote_change_applied' && 
+         update['change']?['table'] == 'user_sessions')) {
+      debugPrint('Session change detected from network: ${update['type']}');
+      // The AuthenticationManager will handle session validation during its monitoring
+    }
+  });
+  
+  // Initialize authentication manager and cross-device session monitoring
   await EnhancedAuthIntegration.initialize();
+  
+  // Initialize cross-device session monitor for real-time session tracking
+  await CrossDeviceSessionMonitor.initialize();
   
   debugPrint('Application initialized with simplified authentication');
 

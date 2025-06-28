@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'database_helper.dart';
+import 'database_sync_client.dart';
+import 'enhanced_shelf_lan_server.dart';
 
 /// Enhanced Token-based Authentication Service
 /// 
@@ -107,6 +109,19 @@ class EnhancedUserTokenService {
       await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionId, 'insert');
       
       debugPrint('ENHANCED_TOKEN_SERVICE: Created new session for user: $username on device: $deviceId');
+      
+      // Broadcast new session creation to other devices
+      await _broadcastSessionCreation(username, sessionToken, deviceId, deviceName ?? await _getDeviceName());
+      
+      // Force immediate sync of session table to all connected devices
+      if (EnhancedShelfServer.isRunning) {
+        try {
+          await EnhancedShelfServer.forceSyncTable('user_sessions');
+          debugPrint('ENHANCED_TOKEN_SERVICE: Forced immediate session sync to all devices');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error forcing session sync: $e');
+        }
+      }
       
       return sessionToken;
     } catch (e) {
@@ -286,6 +301,13 @@ class EnhancedUserTokenService {
         whereClause += ' AND deviceId != ?';
         whereArgs.add(deviceId);
       }
+
+      // Get the sessions that will be invalidated for broadcasting
+      final sessionsToInvalidate = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: whereClause,
+        whereArgs: whereArgs,
+      );
       
       await db.update(
         DatabaseHelper.tableUserSessions,
@@ -303,6 +325,10 @@ class EnhancedUserTokenService {
       }
 
       await _dbHelper.logChange(DatabaseHelper.tableUserSessions, username, 'update');
+      
+      // Broadcast session invalidation to all connected devices
+      await _broadcastSessionInvalidation(username, sessionsToInvalidate);
+      
       debugPrint('ENHANCED_TOKEN_SERVICE: Invalidated sessions for user: $username');
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error invalidating user sessions: $e');
@@ -646,6 +672,173 @@ class EnhancedUserTokenService {
   /// Public method to get current username (used by AuthenticationManager)
   static Future<String?> getCurrentUsername() async {
     return await _getCurrentUsername();
+  }
+
+  // ============== LAN SYNC BROADCASTING METHODS ==============
+
+  /// Broadcast session invalidation to all connected devices via LAN sync
+  static Future<void> _broadcastSessionInvalidation(String username, List<Map<String, dynamic>> invalidatedSessions) async {
+    try {
+      // Prepare session invalidation data for broadcast
+      final invalidationData = {
+        'type': 'session_invalidation',
+        'username': username,
+        'timestamp': DateTime.now().toIso8601String(),
+        'invalidated_sessions': invalidatedSessions.map((session) => {
+          'session_id': session['id'],
+          'device_id': session['deviceId'],
+          'device_name': session['deviceName'],
+          'session_token': session['sessionToken'],
+        }).toList(),
+        'action': 'logout_user',
+      };
+
+      debugPrint('ENHANCED_TOKEN_SERVICE: Broadcasting session invalidation for user: $username to ${invalidatedSessions.length} sessions');
+
+      // Broadcast via LAN server if running
+      if (EnhancedShelfServer.isRunning) {
+        EnhancedShelfServer.announceToClients(
+          'Session invalidated for user: $username',
+          type: 'session_invalidation',
+        );
+        
+        // Broadcast the session invalidation details
+        EnhancedShelfServer.announceToClients(
+          jsonEncode(invalidationData),
+          type: 'session_update'
+        );
+        
+        // Use reflection to access private broadcast method or implement public one
+        try {
+          // Force sync the user_sessions table to all clients
+          await EnhancedShelfServer.forceSyncTable('user_sessions');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error syncing user_sessions table: $e');
+        }
+      }
+
+      // Broadcast via sync client to other servers
+      try {
+        DatabaseSyncClient.broadcastMessage({
+          'type': 'database_change',
+          'change': {
+            'table': 'user_sessions',
+            'operation': 'update',
+            'recordId': username,
+            'data': invalidationData,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'session_manager',
+          },
+        });
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting via sync client: $e');
+      }
+
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session invalidation broadcasted successfully');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting session invalidation: $e');
+    }
+  }
+
+  /// Broadcast new session creation to all connected devices
+  static Future<void> _broadcastSessionCreation(String username, String sessionToken, String deviceId, String deviceName) async {
+    try {
+      final sessionData = {
+        'type': 'session_creation',
+        'username': username,
+        'session_token': sessionToken,
+        'device_id': deviceId,
+        'device_name': deviceName,
+        'timestamp': DateTime.now().toIso8601String(),
+        'action': 'new_login',
+      };
+
+      debugPrint('ENHANCED_TOKEN_SERVICE: Broadcasting new session creation for user: $username on device: $deviceName');
+
+      // Broadcast via LAN server if running
+      if (EnhancedShelfServer.isRunning) {
+        EnhancedShelfServer.announceToClients(
+          'New login detected for user: $username on device: $deviceName',
+          type: 'session_creation',
+        );
+        
+        // Force sync the user_sessions table to all clients
+        try {
+          await EnhancedShelfServer.forceSyncTable('user_sessions');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error syncing user_sessions table: $e');
+        }
+      }
+
+      // Broadcast via sync client to other servers
+      try {
+        DatabaseSyncClient.broadcastMessage({
+          'type': 'database_change',
+          'change': {
+            'table': 'user_sessions',
+            'operation': 'insert',
+            'recordId': sessionToken,
+            'data': sessionData,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'session_manager',
+          },
+        });
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting via sync client: $e');
+      }
+
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session creation broadcasted successfully');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting session creation: $e');
+    }
+  }
+
+  /// Force refresh session data from connected devices
+  static Future<void> refreshSessionDataFromNetwork() async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Refreshing session data from network');
+      
+      // Trigger sync of user_sessions table from all connected servers
+      if (DatabaseSyncClient.isConnected) {
+        DatabaseSyncClient.broadcastMessage({
+          'type': 'request_table_sync',
+          'table': 'user_sessions',
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+      }
+      
+      // Clean up any expired sessions after sync
+      await cleanupExpiredSessions();
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session data refresh completed');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error refreshing session data: $e');
+    }
+  }
+
+  /// Check for session conflicts across the network before login
+  static Future<bool> checkNetworkSessionConflicts(String username) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Checking network-wide session conflicts for user: $username');
+      
+      // First refresh data from network
+      await refreshSessionDataFromNetwork();
+      
+      // Then check for active sessions
+      final activeSessions = await getActiveUserSessions(username);
+      
+      if (activeSessions.isNotEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Network session conflict detected for $username: ${activeSessions.length} active sessions');
+        return true;
+      }
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: No network session conflicts for user: $username');
+      return false;
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error checking network session conflicts: $e');
+      // Return false to allow login if we can't check network state
+      return false;
+    }
   }
 }
 

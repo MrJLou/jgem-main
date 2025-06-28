@@ -6,7 +6,7 @@ import '../services/enhanced_auth_integration.dart';
 /// This demonstrates how to migrate your existing login screen to use
 /// the new enhanced authentication system.
 class EnhancedLoginScreen extends StatefulWidget {
-  const EnhancedLoginScreen({Key? key}) : super(key: key);
+  const EnhancedLoginScreen({super.key});
 
   @override
   State<EnhancedLoginScreen> createState() => _EnhancedLoginScreenState();
@@ -166,20 +166,28 @@ class _EnhancedLoginScreenState extends State<EnhancedLoginScreen> {
         );
 
         if (result['success'] == true) {
-          Navigator.of(context).pushReplacementNamed('/dashboard');
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/dashboard');
+          }
         } else {
-          setState(() {
-            _errorMessage = result['message'] ?? 'Force login failed';
-          });
+          if (mounted) {
+            setState(() {
+              _errorMessage = result['message'] ?? 'Force login failed';
+            });
+          }
         }
       } catch (e) {
-        setState(() {
-          _errorMessage = 'Force login failed: $e';
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Force login failed: $e';
+          });
+        }
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
@@ -341,9 +349,11 @@ class _EnhancedLoginScreenState extends State<EnhancedLoginScreen> {
                   child: ElevatedButton(
                     onPressed: () async {
                       final stats = await EnhancedAuthIntegration.getSessionStatistics();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Active Sessions: ${stats['activeSessions']}')),
-                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Active Sessions: ${stats['activeSessions']}')),
+                        );
+                      }
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                     child: const Text('Session Stats'),
@@ -354,9 +364,11 @@ class _EnhancedLoginScreenState extends State<EnhancedLoginScreen> {
                   child: ElevatedButton(
                     onPressed: () async {
                       await EnhancedAuthIntegration.cleanupExpiredSessions();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Expired sessions cleaned up')),
-                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Expired sessions cleaned up')),
+                        );
+                      }
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                     child: const Text('Cleanup'),

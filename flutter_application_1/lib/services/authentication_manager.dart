@@ -56,12 +56,15 @@ class AuthenticationManager {
       
       // Check for existing sessions only if not forcing logout
       if (!forceLogout) {
-        final hasActiveSession = await EnhancedUserTokenService.hasActiveSession(username);
-        debugPrint('AUTH_MANAGER: Has active session: $hasActiveSession');
+        // First refresh session data from network to get the latest state
+        await EnhancedUserTokenService.refreshSessionDataFromNetwork();
         
-        if (hasActiveSession) {
+        // Check for network-wide session conflicts
+        final hasNetworkConflict = await EnhancedUserTokenService.checkNetworkSessionConflicts(username);
+        
+        if (hasNetworkConflict) {
           final activeSessions = await EnhancedUserTokenService.getActiveUserSessions(username);
-          debugPrint('AUTH_MANAGER: Throwing UserSessionConflictException - ${activeSessions.length} active sessions found');
+          debugPrint('AUTH_MANAGER: Throwing UserSessionConflictException - ${activeSessions.length} active sessions found across network');
           throw UserSessionConflictException(
             'User is already logged in on another device',
             activeSessions,

@@ -404,6 +404,16 @@ class DatabaseSyncClient {
             'timestamp': DateTime.now().toIso8601String(),
             'source': 'remote_sync',
           });
+        } else if (table == 'user_sessions') {
+          _syncUpdates.add({
+            'type': 'session_change_immediate',
+            'table': table,
+            'operation': operation,
+            'recordId': recordId,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'remote_sync',
+            'data': data,
+          });
         }
         
         // Add general change notification

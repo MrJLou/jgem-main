@@ -20,7 +20,9 @@ class EnhancedLoginIntegration {
   }) async {
     try {
       // Show loading
-      _showLoadingDialog(context);
+      if (context.mounted) {
+        _showLoadingDialog(context);
+      }
       
       // Attempt login
       final response = await AuthenticationManager.login(
@@ -30,30 +32,38 @@ class EnhancedLoginIntegration {
       );
       
       // Hide loading dialog
-      Navigator.of(context).pop();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       
       if (response['success'] == true) {
         final user = response['user'];
         
         // Show success message
-        _showSuccessMessage(context, 'Login successful!');
+        if (context.mounted) {
+          _showSuccessMessage(context, 'Login successful!');
+        }
         
         // Navigate to dashboard
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              accessLevel: user.role,
+        if (context.mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                accessLevel: user.role,
+              ),
             ),
-          ),
-          (route) => false,
-        );
+            (route) => false,
+          );
+        }
       }
     } on UserSessionConflictException catch (e) {
       // Hide loading dialog
-      Navigator.of(context).pop();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       
-      if (showForceLoginDialog) {
+      if (showForceLoginDialog && context.mounted) {
         // Show session conflict dialog
         await _showSessionConflictDialog(
           context: context,
@@ -61,14 +71,18 @@ class EnhancedLoginIntegration {
           password: password,
           activeSessions: e.activeSessions,
         );
-      } else {
+      } else if (context.mounted) {
         _showErrorMessage(context, 'User is already logged in on another device');
       }
     } catch (e) {
       // Hide loading dialog
-      Navigator.of(context).pop();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       
-      _showErrorMessage(context, 'Login failed: ${e.toString()}');
+      if (context.mounted) {
+        _showErrorMessage(context, 'Login failed: ${e.toString()}');
+      }
     }
   }
 
@@ -147,7 +161,7 @@ class EnhancedLoginIntegration {
       ),
     );
 
-    if (shouldForceLogin == true) {
+    if (shouldForceLogin == true && context.mounted) {
       // Perform force login
       await performForceLogin(
         context: context,
@@ -165,7 +179,9 @@ class EnhancedLoginIntegration {
   }) async {
     try {
       // Show loading
-      _showLoadingDialog(context, message: 'Logging out other devices...');
+      if (context.mounted) {
+        _showLoadingDialog(context, message: 'Logging out other devices...');
+      }
       
       // Login with force logout
       final response = await AuthenticationManager.login(
@@ -175,33 +191,43 @@ class EnhancedLoginIntegration {
       );
       
       // Hide loading dialog
-      Navigator.of(context).pop();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       
       if (response['success'] == true) {
         final user = response['user'];
         
         // Show success message
-        _showSuccessMessage(
-          context, 
-          'Login successful! Other device has been logged out.'
-        );
+        if (context.mounted) {
+          _showSuccessMessage(
+            context, 
+            'Login successful! Other device has been logged out.'
+          );
+        }
         
         // Navigate to dashboard
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              accessLevel: user.role,
+        if (context.mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(
+                accessLevel: user.role,
+              ),
             ),
-          ),
-          (route) => false,
-        );
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       // Hide loading dialog
-      Navigator.of(context).pop();
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       
-      _showErrorMessage(context, 'Force login failed: ${e.toString()}');
+      if (context.mounted) {
+        _showErrorMessage(context, 'Force login failed: ${e.toString()}');
+      }
     }
   }
 
@@ -229,23 +255,35 @@ class EnhancedLoginIntegration {
   /// Logout with proper cleanup
   static Future<void> performLogout(BuildContext context) async {
     try {
-      _showLoadingDialog(context, message: 'Logging out...');
+      if (context.mounted) {
+        _showLoadingDialog(context, message: 'Logging out...');
+      }
       
       await AuthenticationManager.logout();
       
-      Navigator.of(context).pop(); // Hide loading
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Hide loading
+      }
       
       // Navigate to login screen
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
       
-      _showSuccessMessage(context, 'Logged out successfully');
+      if (context.mounted) {
+        _showSuccessMessage(context, 'Logged out successfully');
+      }
     } catch (e) {
-      Navigator.of(context).pop(); // Hide loading
-      _showErrorMessage(context, 'Logout failed: ${e.toString()}');
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Hide loading
+      }
+      if (context.mounted) {
+        _showErrorMessage(context, 'Logout failed: ${e.toString()}');
+      }
     }
   }
 
@@ -278,35 +316,39 @@ class EnhancedLoginIntegration {
   }
 
   static void _showSuccessMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message)),
-          ],
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    }
   }
 
   static void _showErrorMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message)),
-          ],
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
+      );
+    }
   }
 }
 

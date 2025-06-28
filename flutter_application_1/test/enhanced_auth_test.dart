@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/services/enhanced_user_token_service.dart';
 import 'package:flutter_application_1/services/authentication_manager.dart';
@@ -32,7 +33,9 @@ void main() {
         
         expect(token, isNotNull);
         expect(token.length, greaterThan(32)); // Token should be substantial length
-        print('✅ Session token created successfully: ${token.substring(0, 8)}...');
+        if (kDebugMode) {
+          print('✅ Session token created successfully: ${token.substring(0, 8)}...');
+        }
       } catch (e) {
         fail('Failed to create session token: $e');
       }
@@ -59,7 +62,9 @@ void main() {
       } on UserSessionConflictException catch (e) {
         expect(e.message, contains('already logged in'));
         expect(e.activeSessions, isNotEmpty);
-        print('✅ Session conflict detected correctly');
+        if (kDebugMode) {
+          print('✅ Session conflict detected correctly');
+        }
       }
     });
 
@@ -94,7 +99,9 @@ void main() {
       final isToken2Valid = await EnhancedUserTokenService.validateSessionToken(username, token2);
       expect(isToken2Valid, isTrue);
       
-      print('✅ Force logout working correctly');
+      if (kDebugMode) {
+        print('✅ Force logout working correctly');
+      }
     });
 
     test('should validate session tokens correctly', () async {
@@ -118,7 +125,9 @@ void main() {
       final isValidWrongToken = await EnhancedUserTokenService.validateSessionToken(username, 'wrongtoken');
       expect(isValidWrongToken, isFalse);
       
-      print('✅ Token validation working correctly');
+      if (kDebugMode) {
+        print('✅ Token validation working correctly');
+      }
     });
 
     test('should invalidate sessions correctly', () async {
@@ -141,7 +150,9 @@ void main() {
       final isValidAfter = await EnhancedUserTokenService.validateSessionToken(username, token);
       expect(isValidAfter, isFalse);
       
-      print('✅ Session invalidation working correctly');
+      if (kDebugMode) {
+        print('✅ Session invalidation working correctly');
+      }
     });
 
     test('should get active sessions for user', () async {
@@ -163,7 +174,9 @@ void main() {
       expect(sessionsAfter.first['username'], equals(username));
       expect(sessionsAfter.first['deviceName'], equals('Test Device'));
       
-      print('✅ Active sessions retrieval working correctly');
+      if (kDebugMode) {
+        print('✅ Active sessions retrieval working correctly');
+      }
     });
 
     test('should get session statistics', () async {
@@ -187,9 +200,15 @@ void main() {
       expect(stats['activeSessions'], greaterThanOrEqualTo(1));
       expect(stats['activeUsers'], greaterThanOrEqualTo(1));
       
-      print('✅ Session statistics working correctly');
-      print('   Active Sessions: ${stats['activeSessions']}');
-      print('   Active Users: ${stats['activeUsers']}');
+      if (kDebugMode) {
+        print('✅ Session statistics working correctly');
+      }
+      if (kDebugMode) {
+        print('   Active Sessions: ${stats['activeSessions']}');
+      }
+      if (kDebugMode) {
+        print('   Active Users: ${stats['activeUsers']}');
+      }
     });
 
     test('should handle AuthenticationManager login flow', () async {
@@ -204,7 +223,9 @@ void main() {
         fail('Should have thrown an exception for invalid credentials');
       } catch (e) {
         expect(e.toString(), contains('Invalid username or password'));
-        print('✅ AuthenticationManager correctly handles invalid credentials');
+        if (kDebugMode) {
+          print('✅ AuthenticationManager correctly handles invalid credentials');
+        }
       }
     });
 
@@ -216,57 +237,87 @@ void main() {
       
       // Should not throw any errors
       expect(stats, isNotNull);
-      print('✅ Session cleanup completed without errors');
+      if (kDebugMode) {
+        print('✅ Session cleanup completed without errors');
+      }
     });
   });
 }
 
 /// Helper function to run manual tests in development
 void runManualTests() async {
-  print('🧪 Running manual tests for Enhanced Authentication System...\n');
+  if (kDebugMode) {
+    print('🧪 Running manual tests for Enhanced Authentication System...\n');
+  }
   
   try {
     // Test 1: Token generation
-    print('Test 1: Token Generation');
+    if (kDebugMode) {
+      print('Test 1: Token Generation');
+    }
     final token = await EnhancedUserTokenService.createUserSession(
       username: 'manual_test_user',
       deviceName: 'Manual Test Device',
     );
-    print('✅ Generated token: ${token.substring(0, 8)}...\n');
+    if (kDebugMode) {
+      print('✅ Generated token: ${token.substring(0, 8)}...\n');
+    }
     
     // Test 2: Token validation
-    print('Test 2: Token Validation');
+    if (kDebugMode) {
+      print('Test 2: Token Validation');
+    }
     final isValid = await EnhancedUserTokenService.validateSessionToken('manual_test_user', token);
-    print('✅ Token validation: $isValid\n');
+    if (kDebugMode) {
+      print('✅ Token validation: $isValid\n');
+    }
     
     // Test 3: Session conflict
-    print('Test 3: Session Conflict Detection');
+    if (kDebugMode) {
+      print('Test 3: Session Conflict Detection');
+    }
     try {
       await EnhancedUserTokenService.createUserSession(
         username: 'manual_test_user',
         deviceName: 'Another Device',
         forceLogout: false,
       );
-      print('❌ Should have detected session conflict');
+      if (kDebugMode) {
+        print('❌ Should have detected session conflict');
+      }
     } on UserSessionConflictException {
-      print('✅ Session conflict detected correctly\n');
+      if (kDebugMode) {
+        print('✅ Session conflict detected correctly\n');
+      }
     }
     
     // Test 4: Statistics
-    print('Test 4: Session Statistics');
+    if (kDebugMode) {
+      print('Test 4: Session Statistics');
+    }
     final stats = await EnhancedUserTokenService.getSessionStatistics();
-    print('✅ Statistics: ${stats['activeSessions']} active sessions\n');
+    if (kDebugMode) {
+      print('✅ Statistics: ${stats['activeSessions']} active sessions\n');
+    }
     
     // Test 5: Cleanup
-    print('Test 5: Session Cleanup');
+    if (kDebugMode) {
+      print('Test 5: Session Cleanup');
+    }
     await EnhancedUserTokenService.invalidateSession(token);
     final isValidAfter = await EnhancedUserTokenService.validateSessionToken('manual_test_user', token);
-    print('✅ Token invalidated: ${!isValidAfter}\n');
+    if (kDebugMode) {
+      print('✅ Token invalidated: ${!isValidAfter}\n');
+    }
     
-    print('🎉 All manual tests completed successfully!');
+    if (kDebugMode) {
+      print('🎉 All manual tests completed successfully!');
+    }
     
   } catch (e) {
-    print('❌ Manual test failed: $e');
+    if (kDebugMode) {
+      print('❌ Manual test failed: $e');
+    }
   }
 }
 
