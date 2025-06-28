@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
 import 'database_sync_client.dart';
 import 'session_notification_service.dart';
-import 'user_token_service.dart';
+import 'enhanced_user_token_service.dart';
 import '../models/user.dart';
 import '../screens/login_screen.dart';
 
@@ -115,7 +115,7 @@ class AuthService {
 
       // Invalidate the session token in our token service
       if (username != null) {
-        await UserTokenService.invalidateUserSessions(username);
+        await EnhancedUserTokenService.invalidateAllUserSessions(username);
       }
 
       // Clear secure storage data
@@ -321,7 +321,7 @@ class AuthService {
 
       if (username != null && sessionToken != null) {
         // Validate session token using our token service
-        final isValidSession = await UserTokenService.validateSessionToken(username, sessionToken);
+        final isValidSession = await EnhancedUserTokenService.validateSessionToken(username, sessionToken);
         
         if (isValidSession) {
           return true; // Session is valid
@@ -458,34 +458,36 @@ class AuthService {
       final deviceId = await getDeviceId();
       
       // Check for existing active sessions using our token service
-      final hasActiveSession = await UserTokenService.hasActiveSession(username);
+      final hasActiveSession = await EnhancedUserTokenService.hasActiveSession(username);
       
       if (hasActiveSession && !forceLogoutExisting) {
         // Get session details for the exception
-        final activeSessionDetails = await UserTokenService.getActiveSessionDetails(username);
-        final activeSessions = activeSessionDetails != null ? [activeSessionDetails] : <Map<String, dynamic>>[];
+        final activeSessionDetails = await EnhancedUserTokenService.getActiveUserSessions(username);
         
         // User is already logged in on another device
-        throw SessionConflictException('User is already logged in on another device', activeSessions);
+        throw SessionConflictException('User is already logged in on another device', activeSessionDetails);
       }
       
       if (forceLogoutExisting && hasActiveSession) {
         // Get session details before invalidating
-        final activeSessionDetails = await UserTokenService.getActiveSessionDetails(username);
+        final activeSessionDetails = await EnhancedUserTokenService.getActiveUserSessions(username);
         
         // Force logout existing sessions using our token service
-        await UserTokenService.invalidateUserSessions(username);
+        await EnhancedUserTokenService.invalidateAllUserSessions(username);
         
         // Notify other devices about session invalidation
-        if (activeSessionDetails != null) {
-          await _notifySessionInvalidation(user.id, [activeSessionDetails]);
+        if (activeSessionDetails.isNotEmpty) {
+          await _notifySessionInvalidation(user.id, activeSessionDetails);
         }
         
         debugPrint('AuthService: Invalidated existing session for user $username');
       }
       
       // Create new session token using our token service
-      final sessionToken = await UserTokenService.createUserSession(username, deviceId);
+      final sessionToken = await EnhancedUserTokenService.createUserSession(
+        username: username,
+        deviceName: deviceId,
+      );
       
       _currentUserRole = user.role;
 
