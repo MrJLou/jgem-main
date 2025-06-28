@@ -525,7 +525,8 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-      );
+      )
+    );
   }
 
   Widget _buildTextField({
