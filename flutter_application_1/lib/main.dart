@@ -11,7 +11,6 @@ import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
-import 'screens/auth_screen.dart';
 import 'services/database_sync_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -97,17 +96,13 @@ class PatientRecordManagementApp extends StatelessWidget {
       ),
       home: const _AuthWrapper(), // Changed to auth wrapper
       routes: {
-        '/auth': (context) => const AuthScreen(),
         '/login': (context) => const LoginScreen(),
         '/dashboard': (context) => const DashboardScreen(
               accessLevel: 'admin',
             ), // Add route for DashboardScreen
         '/analytics-hub': (context) => const AnalyticsHubScreen(),
         '/laboratory-hub': (context) =>
-            const LaboratoryHubScreen(), // Provide default accessLevel
-        // '/lan-connection': (context) => const LanServerConnectionScreen(),
-        // '/lan-client': (context) => const LanClientConnectionScreen(),
-        // '/lan-diagnostics': (context) => const LanConnectionDiagnosticsScreen(),
+            const LaboratoryHubScreen(), 
       },
       debugShowCheckedModeBanner: false,
     );

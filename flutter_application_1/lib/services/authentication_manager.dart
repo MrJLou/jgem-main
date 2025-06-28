@@ -119,13 +119,17 @@ class AuthenticationManager {
       // Verify session is still valid
       final username = prefs.getString(_usernameKey);
       if (username == null) {
-        await logout();
+        // Clear state without calling full logout to prevent loops
+        await _clearAuthenticationState();
         return false;
       }
       
       final isSessionValid = await EnhancedUserTokenService.isCurrentSessionValid();
       if (!isSessionValid) {
-        await logout();
+        debugPrint('AUTH_MANAGER: Session invalid during isLoggedIn check');
+        // Clear state without calling full logout to prevent loops
+        await _clearAuthenticationState();
+        await EnhancedUserTokenService.clearCurrentSessionInfo();
         return false;
       }
       
@@ -135,7 +139,8 @@ class AuthenticationManager {
       return true;
     } catch (e) {
       debugPrint('AUTH_MANAGER: Error checking login status: $e');
-      await logout(); // Clean up on error
+      // Clear state without calling full logout to prevent loops
+      await _clearAuthenticationState();
       return false;
     }
   }
@@ -212,6 +217,9 @@ class AuthenticationManager {
     try {
       debugPrint('AUTH_MANAGER: Starting logout process');
       
+      // Stop session monitoring FIRST to prevent loops
+      stopSessionMonitoring();
+      
       final username = await getCurrentUsername();
       
       // Get current session token before clearing everything
@@ -234,9 +242,6 @@ class AuthenticationManager {
       // Clear local authentication state
       await _clearAuthenticationState();
       
-      // Stop session monitoring
-      stopSessionMonitoring();
-      
       // Log logout activity
       if (username != null) {
         final db = DatabaseHelper();
@@ -251,6 +256,8 @@ class AuthenticationManager {
       debugPrint('AUTH_MANAGER: Error during logout: $e');
       // Still clear local state even if other operations fail
       await _clearAuthenticationState();
+      // Ensure monitoring is stopped
+      stopSessionMonitoring();
       // Force clear session info as fallback
       try {
         await EnhancedUserTokenService.clearCurrentSessionInfo();
@@ -289,13 +296,16 @@ class AuthenticationManager {
     try {
       debugPrint('AUTH_MANAGER: Handling session invalidation from another device');
       
+      // Stop session monitoring FIRST to prevent loops
+      stopSessionMonitoring();
+      
       final username = await getCurrentUsername();
       
       // Clear local authentication state
       await _clearAuthenticationState();
       
-      // Stop session monitoring
-      stopSessionMonitoring();
+      // Clear session info
+      await EnhancedUserTokenService.clearCurrentSessionInfo();
       
       // Show notification to user
       SessionNotificationService.showSessionInvalidatedNotification();
@@ -317,6 +327,8 @@ class AuthenticationManager {
       debugPrint('AUTH_MANAGER: Session invalidation handling completed');
     } catch (e) {
       debugPrint('AUTH_MANAGER: Error handling session invalidation: $e');
+      // Ensure monitoring is stopped even on error
+      stopSessionMonitoring();
     }
   }
 
@@ -328,16 +340,30 @@ class AuthenticationManager {
     
     _isMonitoring = true;
     _sessionMonitorTimer = Timer.periodic(
-      const Duration(minutes: 10), // Reduced frequency from 5 to 10 minutes to prevent overload
+      const Duration(hours: 1), // Changed to hourly to prevent infinite loops
       (timer) async {
         try {
           if (!_isMonitoring) {
             timer.cancel();
             return;
           }
+          
+          // First check if user is supposed to be logged in
+          final prefs = await SharedPreferences.getInstance();
+          final isLoggedIn = prefs.getBool(_isLoggedInKey) ?? false;
+          
+          if (!isLoggedIn) {
+            // User is not supposed to be logged in, stop monitoring
+            debugPrint('AUTH_MANAGER: User not logged in, stopping session monitoring');
+            stopSessionMonitoring();
+            return;
+          }
+          
           final isValid = await EnhancedUserTokenService.isCurrentSessionValid();
           if (!isValid) {
             debugPrint('AUTH_MANAGER: Session validation failed during monitoring');
+            // Stop monitoring before handling invalidation to prevent loops
+            stopSessionMonitoring();
             await handleSessionInvalidation();
           }
         } catch (e) {
@@ -347,7 +373,7 @@ class AuthenticationManager {
       },
     );
     
-    debugPrint('AUTH_MANAGER: Session monitoring started (10 min intervals)');
+    debugPrint('AUTH_MANAGER: Session monitoring started (1 hour intervals)');
   }
 
   /// Stop session monitoring
@@ -473,16 +499,15 @@ class AuthenticationManager {
       );
       
       // Check if user is logged in and start monitoring if needed
-      final isUserLoggedIn = await isLoggedIn().timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          debugPrint('AUTH_MANAGER: Login check timed out, assuming not logged in');
-          return false;
-        },
-      );
+      // Use a simple check without triggering full validation to avoid loops
+      final prefs = await SharedPreferences.getInstance();
+      final isUserLoggedIn = prefs.getBool(_isLoggedInKey) ?? false;
       
       if (isUserLoggedIn) {
+        debugPrint('AUTH_MANAGER: User appears to be logged in, starting session monitoring');
         startSessionMonitoring();
+      } else {
+        debugPrint('AUTH_MANAGER: User not logged in, skipping session monitoring');
       }
       
       debugPrint('AUTH_MANAGER: Authentication manager initialized');

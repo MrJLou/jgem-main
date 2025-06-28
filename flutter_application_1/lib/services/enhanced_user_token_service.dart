@@ -132,7 +132,8 @@ class EnhancedUserTokenService {
       );
 
       if (result.isEmpty) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: No active session found for user: $username');
+        // Only log if we expect a session to exist (reduce noise for logged out users)
+        debugPrint('ENHANCED_TOKEN_SERVICE: No active session found for user: $username (token validation)');
         return false;
       }
 
