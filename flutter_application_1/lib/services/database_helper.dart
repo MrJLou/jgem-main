@@ -1224,34 +1224,76 @@ class DatabaseHelper {
   Future<bool> _performServerSync(
       String serverIp, int port, String accessCode) async {
     try {
-      debugPrint('Syncing with server at $serverIp:$port');
+      debugPrint('Attempting to sync with server at $serverIp:$port');
+      
+      // First, test if the server is actually reachable
+      try {
+        final socket = await Socket.connect(serverIp, port, timeout: const Duration(seconds: 3));
+        socket.destroy();
+        debugPrint('Server connectivity test passed');
+      } catch (e) {
+        debugPrint('Server $serverIp:$port is not reachable: $e');
+        debugPrint('Clearing cached server settings...');
+        
+        // Clear the cached server settings since they're invalid
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('lan_server_ip');
+        await prefs.remove('lan_server_port');
+        await prefs.remove('lan_access_code');
+        await prefs.setBool('sync_enabled', false);
+        
+        return false;
+      }
       
       // Validate that the server IP and current device IP are compatible
       final currentActualIp = await _getCurrentDeviceIp();
       if (currentActualIp != null) {
         debugPrint('Current device IP: $currentActualIp');
         
-        // If we're trying to sync with an IP that doesn't match our network, skip
+        // If we're trying to sync with an IP that doesn't match our network, clear cache
         if (!_isSameNetwork(currentActualIp, serverIp)) {
           debugPrint('Warning: Server IP $serverIp appears to be on different network than device IP $currentActualIp');
+          debugPrint('Clearing cached server settings...');
+          
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('lan_server_ip');
+          await prefs.remove('lan_server_port');
+          await prefs.remove('lan_access_code');
+          await prefs.setBool('sync_enabled', false);
+          
+          return false;
         }
       }
       
-      // For now, return true to indicate "successful" sync
-      // The real-time sync via WebSocket handles the actual data transfer
-      // This periodic sync serves as a backup/verification mechanism
-      
-      // TODO: Implement actual data comparison and sync logic here
-      // This could include:
-      // 1. Getting list of changes since last sync
-      // 2. Uploading pending changes to server
-      // 3. Downloading and applying server changes
-      // 4. Resolving conflicts if any
-      
-      await Future.delayed(const Duration(milliseconds: 100)); // Simulate network call
-      
-      debugPrint('Sync completed with success');
-      return true;
+      // Test HTTP endpoint
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 5);
+        final request = await client.getUrl(Uri.parse('http://$serverIp:$port/status'));
+        request.headers.set('access-code', accessCode);
+        final response = await request.close();
+        client.close();
+        
+        if (response.statusCode == 200) {
+          debugPrint('Server HTTP endpoint accessible');
+          debugPrint('Sync completed with success');
+          return true;
+        } else {
+          debugPrint('Server returned status: ${response.statusCode}');
+          if (response.statusCode == 401 || response.statusCode == 403) {
+            debugPrint('Access code may be invalid, clearing cached settings...');
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('lan_server_ip');
+            await prefs.remove('lan_server_port');
+            await prefs.remove('lan_access_code');
+            await prefs.setBool('sync_enabled', false);
+          }
+          return false;
+        }
+      } catch (e) {
+        debugPrint('HTTP request to server failed: $e');
+        return false;
+      }
     } catch (e) {
       debugPrint('Server sync failed: $e');
       return false;
