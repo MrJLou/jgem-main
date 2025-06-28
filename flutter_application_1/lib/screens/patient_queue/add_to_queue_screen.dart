@@ -434,9 +434,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     'category': service.category ?? 'Uncategorized',
                     'price': service.defaultPrice ?? 0.0,
                   })
-              .toList();          // Walk-in patients are added directly to the queue and do not create a separate appointment record.
-          // This keeps walk-ins distinct from scheduled appointments.
-          await widget.queueService.addPatientDataToQueue({
+              .toList();          // Walk-in patients are added ONLY to the queue and do NOT create appointment records.
+          // This keeps walk-ins completely separate from scheduled appointments.
+          // Queue and appointments are now completely independent systems.
+          final addedPatient = await widget.queueService.addPatientDataToQueue({
             'patientName': finalPatientNameToUse,
             'patientId':
                 finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
@@ -453,6 +454,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             'doctorName': _isLaboratoryOnly ? 'Laboratory Only' : _selectedDoctor?.fullName,
             'isLaboratoryOnly': _isLaboratoryOnly, // NEW: Flag for laboratory-only entries
           });
+
+          // Log the queue addition for debugging
+          if (kDebugMode) {
+            print('Patient added to queue only (not appointments): ${addedPatient.patientName}');
+          }
 
           // ---- Increment service usage count ----
           if (_selectedServices.isNotEmpty) {

@@ -75,4 +75,4 @@ Write-Host ""
 Write-Host "🔄 If your IP changed from a different address to the one shown above:" -ForegroundColor Blue
 Write-Host "   - Restart your LAN server in the app" -ForegroundColor White
 Write-Host "   - Update all client devices with the new IP" -ForegroundColor White
-Write-Host "   - The app has 'Refresh Network Interfaces' and 'Update IP' features" -ForegroundColor White
+Write-Host "   - The app has Refresh Network Interfaces and Update IP features" -ForegroundColor White

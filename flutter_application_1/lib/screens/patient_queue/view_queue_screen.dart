@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../models/appointment.dart';
@@ -9,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
 import '../../services/btree_queue_manager.dart';
 import '../../services/database_sync_client.dart';
+import '../../services/database_helper.dart';
 import 'add_to_queue_screen.dart';
 import 'dart:async';
 
@@ -98,6 +100,9 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     
     // Setup search listener
     _searchController.addListener(_onSearchChanged);
+    
+    // Setup real-time sync listener for database changes
+    _setupSyncListener();
 
     // Listen to real-time sync updates from DatabaseSyncClient
     _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
@@ -886,6 +891,70 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           ),
         );
       }
+    }
+  }
+
+  // Setup real-time sync listener for database changes
+  void _setupSyncListener() {
+    // Listen for real-time sync updates from DatabaseSyncClient
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((update) {
+      if (!mounted) return;
+      
+      final table = update['table'] as String?;
+      final operation = update['operation'] as String?;
+      
+      // Handle queue table changes
+      if (table == DatabaseHelper.tableActivePatientQueue) {
+        debugPrint('ViewQueueScreen: Received sync update for queue table: $operation');
+        _handleQueueSyncUpdate(update);
+      }
+      
+      // Handle appointments table changes
+      if (table == DatabaseHelper.tableAppointments) {
+        debugPrint('ViewQueueScreen: Received sync update for appointments table: $operation');
+        _handleAppointmentSyncUpdate(update);
+      }
+    });
+  }
+
+  void _handleQueueSyncUpdate(Map<String, dynamic> update) {
+    if (!mounted) return;
+    
+    // Refresh queue data when changes are detected
+    if (_tabController.index == 0) {
+      // Currently viewing live queue tab
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadLiveQueue();
+          if (kDebugMode) {
+            print('ViewQueueScreen: Live queue refreshed due to sync update');
+          }
+        }
+      });
+    }
+    
+    // Also refresh B-Tree if initialized
+    if (_queueManager.isInitialized) {
+      _queueManager.refresh().catchError((e) {
+        debugPrint('Error refreshing B-Tree after sync update: $e');
+      });
+    }
+  }
+
+  void _handleAppointmentSyncUpdate(Map<String, dynamic> update) {
+    if (!mounted) return;
+    
+    // Refresh appointment data when changes are detected
+    if (_tabController.index == 1) {
+      // Currently viewing scheduled appointments tab
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadAppointmentsForSelectedDate();
+          if (kDebugMode) {
+            print('ViewQueueScreen: Appointments refreshed due to sync update');
+          }
+        }
+      });
     }
   }
 

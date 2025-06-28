@@ -34,15 +34,14 @@ void main() {
       expect(serverStarted, isTrue);
       expect(EnhancedShelfServer.isRunning, isTrue);
       
-      final connectionInfo = EnhancedShelfServer.getConnectionInfo();
-      expect(connectionInfo['isRunning'], isTrue);
+      final connectionInfo = await EnhancedShelfServer.getConnectionInfo();
       expect(connectionInfo['port'], equals(8080));
       expect(connectionInfo['accessCode'], isNotNull);
     });
 
     test('Client can connect to host server', () async {
       // Get host connection details
-      final connectionInfo = EnhancedShelfServer.getConnectionInfo();
+      final connectionInfo = await EnhancedShelfServer.getConnectionInfo();
       final accessCode = connectionInfo['accessCode'] as String;
       
       // Initialize client
@@ -170,8 +169,8 @@ void main() {
       final status = SocketService.getConnectionStatus();
       expect(status['isInitialized'], isTrue);
       
-      final hostInfo = SocketService.getHostConnectionInfo();
-      expect(hostInfo['isRunning'], isTrue);
+      final hostInfo = await SocketService.getHostConnectionInfo();
+      expect(hostInfo['serverIp'], isNotNull);
       
       expect(SocketService.isHosting, isTrue);
       expect(SocketService.isConnected, isTrue);
@@ -204,7 +203,7 @@ void main() {
       await dbHelper1.insertPatient(offlinePatient);
       
       // Reconnect client
-      final connectionInfo = EnhancedShelfServer.getConnectionInfo();
+      final connectionInfo = await EnhancedShelfServer.getConnectionInfo();
       final accessCode = connectionInfo['accessCode'] as String;
       
       final reconnected = await DatabaseSyncClient.connectToServer(

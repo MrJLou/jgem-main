@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -85,7 +84,16 @@ class QueueService {
           patientData['originalAppointmentId']?.toString() ?? '',
     );
 
-    return await _dbHelper.addToActiveQueue(newItem);
+    // Add to database - this will automatically trigger sync notifications via logChange
+    final addedItem = await _dbHelper.addToActiveQueue(newItem);
+    
+    // Log successful queue addition for debugging
+    if (kDebugMode) {
+      print('QueueService: Successfully added ${addedItem.patientName} to queue (ID: ${addedItem.queueEntryId}, Queue #${addedItem.queueNumber})');
+      print('QueueService: Queue addition should trigger real-time sync to connected devices');
+    }
+    
+    return addedItem;
   }
 
   /// Adds a pre-constructed ActivePatientQueueItem object to the active queue.
@@ -295,74 +303,13 @@ class QueueService {
           }
         }
 
-      if (updatedItem.originalAppointmentId == null ||
-            updatedItem.originalAppointmentId!.isEmpty) {
-          final walkInAppointmentId = 'walkin_${updatedItem.queueEntryId}';
-          try {
-            Appointment? existingAppointment = await _dbHelper
-                .appointmentDbService
-                .getAppointmentById(walkInAppointmentId);
-
-            if (existingAppointment == null) {
-              // Create if it's a significant status and doesn't exist yet
-              if (newStatus == 'in_consultation' ||
-                  newStatus == 'served' ||
-                  newStatus == 'done') {
-                final newAppointment = Appointment(
-                  id: walkInAppointmentId,
-                  patientId: updatedItem.patientId!,
-                  date: updatedItem.arrivalTime,
-                  time: TimeOfDay.fromDateTime(updatedItem.arrivalTime),
-                  doctorId: updatedItem.doctorId ?? 'unknown_doctor_id',
-                  consultationType:
-                      updatedItem.conditionOrPurpose ?? 'Walk-in Consultation',
-                  status: newStatus == 'served' ? 'Completed' : 'In Consultation',
-                  notes: 'Generated from walk-in queue.',
-                  isWalkIn: true,
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
-                  selectedServices: updatedItem.selectedServices ?? [],
-                  totalPrice: updatedItem.totalPrice ?? 0.0,
-                  paymentStatus: updatedItem.paymentStatus,
-                  consultationStartedAt: updatedItem.consultationStartedAt,
-                  servedAt: updatedItem.servedAt,
-                );
-                await _dbHelper.appointmentDbService
-                    .insertAppointment(newAppointment);
-                if (kDebugMode) {
-                  print(
-                      'QueueService: Created historical appointment record $walkInAppointmentId for walk-in patient.');
-                }
-              }
-            } else {
-              // Update the existing appointment record for the walk-in
-              final updatedAppointment = existingAppointment.copyWith(
-                status: newStatus == 'served'
-                    ? 'Completed'
-                    : (newStatus == 'in_consultation'
-                        ? 'In Consultation'
-                        : existingAppointment.status),
-                consultationStartedAt: updatedItem.consultationStartedAt,
-                servedAt: updatedItem.servedAt,
-                paymentStatus: updatedItem.paymentStatus,
-                totalPrice: updatedItem.totalPrice ?? existingAppointment.totalPrice,
-                selectedServices: updatedItem.selectedServices ?? existingAppointment.selectedServices,
-                updatedAt: DateTime.now(),
-              );
-              await _dbHelper.appointmentDbService
-                  .updateAppointment(updatedAppointment);
-              if (kDebugMode) {
-                print(
-                    'QueueService: Updated historical appointment record $walkInAppointmentId for walk-in patient.');
-              }
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              print(
-                  'QueueService: Error creating/updating historical appointment for walk-in: $e');
-            }
-          }
-        }
+      // NO LONGER CREATING APPOINTMENT RECORDS FOR WALK-IN PATIENTS
+      // Queue and appointment systems are now completely separate
+      // Walk-in patients exist only in the queue system, not in appointments
+      
+      if (kDebugMode) {
+        print('QueueService: Status updated for ${updatedItem.isWalkIn ? "walk-in" : "scheduled"} patient ${updatedItem.patientName} to $newStatus');
+      }
         
         // ADDED: Propagate to original Appointment if exists
         else if (updatedItem.originalAppointmentId != null) {

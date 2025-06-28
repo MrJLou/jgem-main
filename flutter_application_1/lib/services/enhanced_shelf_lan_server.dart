@@ -73,6 +73,9 @@ class EnhancedShelfServer {
     try {
       _currentPort = port;
       
+      // Detect server IP BEFORE starting the server
+      final detectedIp = await _getActualServerIp();
+      
       // Set up database change callback for this server
       DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       
@@ -86,12 +89,26 @@ class EnhancedShelfServer {
           .addMiddleware(_lanOnlyMiddleware())
           .addHandler(router.call);
 
-      // Start HTTP server
+      // Start HTTP server on all interfaces (0.0.0.0)
       _server = await shelf_io.serve(handler, '0.0.0.0', port);
       _isRunning = true;
       
-      debugPrint('Enhanced Shelf Server started on port $port with integrated WebSocket support');
-      debugPrint('Access code: $_accessCode');
+      // Enhanced startup logging
+      debugPrint('');
+      debugPrint('🚀 === ENHANCED SHELF SERVER STARTED ===');
+      debugPrint('✓ Server running on port: $port');
+      debugPrint('✓ Server IP for clients: $detectedIp');
+      debugPrint('✓ Access code: $_accessCode');
+      debugPrint('✓ WebSocket endpoint: /ws');
+      debugPrint('✓ Full WebSocket URL: ws://$detectedIp:$port/ws');
+      debugPrint('✓ HTTP API URL: http://$detectedIp:$port');
+      debugPrint('');
+      debugPrint('📱 For client devices to connect:');
+      debugPrint('   Server IP: $detectedIp');
+      debugPrint('   Port: $port');
+      debugPrint('   Access Code: $_accessCode');
+      debugPrint('==========================================');
+      debugPrint('');
       
       return true;
     } catch (e) {
@@ -388,18 +405,22 @@ class EnhancedShelfServer {
     };
   }
 
-  /// Check if IP is in LAN range
+  /// Check if IP is in LAN range (enhanced for your network)
   static bool _isLanIp(String ip) {
     if (ip == 'localhost') return true;
     if (ip == '127.0.0.1' || ip == '::1') return true;
     
+    // Your specific network ranges
+    if (ip.startsWith('192.168.68.')) return true; // Your current network
+    
+    // Standard private network ranges
     final lanRanges = [
-      '192.168.',
-      '10.',
+      '192.168.',   // Class C private networks
+      '10.',        // Class A private networks
       '172.16.', '172.17.', '172.18.', '172.19.',
       '172.20.', '172.21.', '172.22.', '172.23.',
       '172.24.', '172.25.', '172.26.', '172.27.',
-      '172.28.', '172.29.', '172.30.', '172.31.',
+      '172.28.', '172.29.', '172.30.', '172.31.',  // Class B private networks
     ];
     
     return lanRanges.any((range) => ip.startsWith(range));
@@ -578,27 +599,111 @@ class EnhancedShelfServer {
   }
 
   /// Get connection information for sharing with other devices
-  static Map<String, dynamic> getConnectionInfo() {
+  static Future<Map<String, dynamic>> getConnectionInfo() async {
     if (!_isRunning || _accessCode == null) {
       return {'error': 'Server is not running'};
     }
 
+    // Always get fresh IP address
+    final actualServerIp = await _getActualServerIp() ?? 'localhost';
+
     return {
-      'serverIp': _allowedIpRanges.isNotEmpty ? '${_allowedIpRanges.first}.100' : 'localhost',
+      'serverIp': actualServerIp,
       'port': _currentPort,
       'webSocketEndpoint': '/ws',
       'accessCode': _accessCode,
       'timestamp': DateTime.now().toIso8601String(),
       'webSocketIntegrated': true,
       'activeConnections': _activeWebSocketConnections.length,
+      'webSocketUrl': 'ws://$actualServerIp:$_currentPort/ws',
+      'httpUrl': 'http://$actualServerIp:$_currentPort',
       'instructions': [
         '1. Open the Patient Management app on your device',
         '2. Go to "LAN Client Connection"',
-        '3. Enter the server details above',
-        '4. HTTP Port: $_currentPort, WebSocket Endpoint: ws://[SERVER_IP]:$_currentPort/ws',
-        '5. Tap "Connect to Server"',
+        '3. Enter the server details above:',
+        '   - Server IP: $actualServerIp',
+        '   - Port: $_currentPort',
+        '   - Access Code: $_accessCode',
+        '4. Tap "Connect to Server"',
+      ],
+      'troubleshooting': [
+        'Ensure both devices are on the same WiFi network',
+        'Check that firewall is not blocking port $_currentPort',
+        'Verify the IP address has not changed',
+        'Make sure the server is running before connecting',
       ],
     };
+  }
+
+  /// Get the actual server IP address with improved detection
+  static Future<String?> _getActualServerIp() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      final validIps = <Map<String, String>>[];
+      
+      debugPrint('=== IP Detection Debug ===');
+      
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (address.type == InternetAddressType.IPv4) {
+            final ip = address.address;
+            final interfaceName = interface.name;
+            
+            debugPrint('Found IPv4: $ip on $interfaceName');
+            
+            if (_isLanIp(ip) && !ip.startsWith('127.') && !address.isLoopback) {
+              validIps.add({
+                'ip': ip,
+                'interface': interfaceName,
+                'priority': _getIpPriority(ip).toString(),
+              });
+              debugPrint('✓ Valid LAN IP: $ip on interface: $interfaceName (priority: ${_getIpPriority(ip)})');
+            } else {
+              debugPrint('✗ Skipped IP: $ip (not suitable for LAN)');
+            }
+          }
+        }
+      }
+      
+      debugPrint('Found ${validIps.length} valid LAN IPs');
+      
+      if (validIps.isNotEmpty) {
+        // Sort by priority (higher number = higher priority)
+        validIps.sort((a, b) => int.parse(b['priority']!) - int.parse(a['priority']!));
+        
+        final selectedIp = validIps.first['ip']!;
+        final selectedInterface = validIps.first['interface']!;
+        
+        debugPrint('=== SELECTED IP ===');
+        debugPrint('✓ Primary LAN IP: $selectedIp');
+        debugPrint('✓ Interface: $selectedInterface');
+        debugPrint('✓ Clients should connect to: $selectedIp:$_currentPort');
+        debugPrint('==================');
+        
+        return selectedIp;
+      }
+      
+      // Fallback to localhost if no LAN IP found
+      debugPrint('❌ No LAN IP found, using localhost');
+      debugPrint('NOTE: Clients will not be able to connect from other devices!');
+      return 'localhost';
+    } catch (e) {
+      debugPrint('Error getting server IP: $e');
+      return 'localhost';
+    }
+  }
+
+  /// Get IP priority for selection (higher = better)
+  static int _getIpPriority(String ip) {
+    // Prioritize based on common network patterns
+    if (ip.startsWith('192.168.68.')) return 100; // Your specific network
+    if (ip.startsWith('172.30.')) return 95;       // Corporate network pattern
+    if (ip.startsWith('192.168.1.')) return 90;    // Common home network
+    if (ip.startsWith('192.168.0.')) return 85;    // Common home network
+    if (ip.startsWith('192.168.')) return 80;      // Other 192.168.x.x networks
+    if (ip.startsWith('10.')) return 70;           // Class A private networks
+    if (ip.startsWith('172.')) return 60;          // Other Class B private networks
+    return 10; // Other IPs (lowest priority)
   }
 
   /// Handle WebSocket connections for real-time sync

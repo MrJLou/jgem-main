@@ -1226,6 +1226,17 @@ class DatabaseHelper {
     try {
       debugPrint('Syncing with server at $serverIp:$port');
       
+      // Validate that the server IP and current device IP are compatible
+      final currentActualIp = await _getCurrentDeviceIp();
+      if (currentActualIp != null) {
+        debugPrint('Current device IP: $currentActualIp');
+        
+        // If we're trying to sync with an IP that doesn't match our network, skip
+        if (!_isSameNetwork(currentActualIp, serverIp)) {
+          debugPrint('Warning: Server IP $serverIp appears to be on different network than device IP $currentActualIp');
+        }
+      }
+      
       // For now, return true to indicate "successful" sync
       // The real-time sync via WebSocket handles the actual data transfer
       // This periodic sync serves as a backup/verification mechanism
@@ -1244,6 +1255,55 @@ class DatabaseHelper {
     } catch (e) {
       debugPrint('Server sync failed: $e');
       return false;
+    }
+  }
+
+  // Get current device IP
+  Future<String?> _getCurrentDeviceIp() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (address.type == InternetAddressType.IPv4) {
+            final ip = address.address;
+            if (ip.startsWith('192.168.') && !ip.startsWith('127.')) {
+              return ip;
+            }
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting current device IP: $e');
+      return null;
+    }
+  }
+
+  // Check if two IPs are on the same network
+  bool _isSameNetwork(String ip1, String ip2) {
+    final parts1 = ip1.split('.');
+    final parts2 = ip2.split('.');
+    
+    if (parts1.length >= 3 && parts2.length >= 3) {
+      // Check if first 3 octets match (same subnet)
+      return parts1[0] == parts2[0] && 
+             parts1[1] == parts2[1] && 
+             parts1[2] == parts2[2];
+    }
+    return false;
+  }
+
+  // Clear stale sync settings (useful for troubleshooting)
+  Future<void> clearSyncSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lan_server_ip');
+      await prefs.remove('lan_server_port');
+      await prefs.remove('lan_access_code');
+      debugPrint('Cleared stale sync settings');
+    } catch (e) {
+      debugPrint('Error clearing sync settings: $e');
     }
   }
 

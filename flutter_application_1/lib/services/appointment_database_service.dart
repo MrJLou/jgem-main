@@ -40,6 +40,13 @@ class AppointmentDatabaseService {
 
       await db.insert(DatabaseHelper.tableAppointments, appointmentMap);
       await _dbHelper.logChange(DatabaseHelper.tableAppointments, appointmentMap['id'], 'insert');
+      
+      // Log successful appointment creation for debugging
+      if (kDebugMode) {
+        print('AppointmentDatabaseService: Successfully created appointment ${appointmentMap['id']} for ${appointmentMap['patientName']}');
+        print('AppointmentDatabaseService: Appointment creation should trigger real-time sync to connected devices');
+      }
+      
       return Appointment.fromMap(appointmentMap);
     } catch (e) {
       debugPrint('Error in insertAppointment: $e');
@@ -59,6 +66,13 @@ class AppointmentDatabaseService {
     );
 
     await _dbHelper.logChange(DatabaseHelper.tableAppointments, appointmentMap['id'], 'update');
+    
+    // Log successful appointment update for debugging
+    if (kDebugMode && result > 0) {
+      print('AppointmentDatabaseService: Successfully updated appointment ${appointmentMap['id']}');
+      print('AppointmentDatabaseService: Appointment update should trigger real-time sync to connected devices');
+    }
+    
     return result;
   }
 
@@ -72,6 +86,13 @@ class AppointmentDatabaseService {
     );
 
     await _dbHelper.logChange(DatabaseHelper.tableAppointments, id, 'update');
+    
+    // Log successful status update for debugging
+    if (kDebugMode && result > 0) {
+      print('AppointmentDatabaseService: Successfully updated appointment $id status to $status');
+      print('AppointmentDatabaseService: Status update should trigger real-time sync to connected devices');
+    }
+    
     return result;
   }
 
