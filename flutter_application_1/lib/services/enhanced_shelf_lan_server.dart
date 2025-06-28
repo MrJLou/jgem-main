@@ -747,12 +747,15 @@ class EnhancedShelfServer {
   }
 
   /// Handle incoming WebSocket messages
+  /// Handle incoming WebSocket messages
   static void _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) {
     final type = data['type'] as String?;
+    debugPrint('Received WebSocket message: $type');
     
     try {
       switch (type) {
         case 'ping':
+          debugPrint('Handling ping request');
           // Respond to ping with pong
           webSocket.sink.add(jsonEncode({
             'type': 'pong',
@@ -762,6 +765,8 @@ class EnhancedShelfServer {
           break;
           
         case 'request_full_sync':
+        case 'request_sync':  // Handle both message types for compatibility
+          debugPrint('Client requested full sync');
           // Send full database sync to this client
           _sendWebSocketFullSync(webSocket);
           break;
@@ -811,8 +816,14 @@ class EnhancedShelfServer {
           debugPrint('Received acknowledgment for: $ackId');
           break;
           
+        case 'pong':
+          // Handle pong response from client (to our ping)
+          debugPrint('Received pong from client');
+          break;
+          
         default:
           debugPrint('Unknown WebSocket message type: $type');
+          debugPrint('Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong');
           _sendWebSocketError(webSocket, 'Unknown message type: $type');
       }
     } catch (e) {
@@ -843,7 +854,7 @@ class EnhancedShelfServer {
       }
       
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services'];
+      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'active_patient_queue'];
       
       final syncData = <String, dynamic>{};
       
@@ -942,7 +953,13 @@ class EnhancedShelfServer {
           case 'update':
             if (recordData != null) {
               try {
-                final rowsAffected = await db.update(table, recordData, where: 'id = ?', whereArgs: [recordId]);
+                String whereColumn = 'id';
+                // Handle special cases for tables with different primary key columns
+                if (table == 'active_patient_queue') {
+                  whereColumn = 'queueEntryId';
+                }
+                
+                final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
                 debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
               } catch (e) {
                 debugPrint('Error applying WebSocket update: $e');
@@ -951,7 +968,13 @@ class EnhancedShelfServer {
             break;
           case 'delete':
             try {
-              final rowsAffected = await db.delete(table, where: 'id = ?', whereArgs: [recordId]);
+              String whereColumn = 'id';
+              // Handle special cases for tables with different primary key columns
+              if (table == 'active_patient_queue') {
+                whereColumn = 'queueEntryId';
+              }
+              
+              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);
               debugPrint('Successfully applied WebSocket delete: $table.$recordId (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying WebSocket delete: $e');

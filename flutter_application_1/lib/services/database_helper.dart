@@ -439,7 +439,7 @@ class DatabaseHelper {
         cancelledAt TEXT,
         cancellationReason TEXT,
         notes TEXT,
-        isWalkIn INTEGER DEFAULT 0,
+        isWalkIn INTEGER DEFAULT 0 NOT NULL,
         createdAt TEXT,
         updatedAt TEXT,
         FOREIGN KEY (patientId) REFERENCES $tablePatients(id) ON DELETE CASCADE,
@@ -1346,6 +1346,20 @@ class DatabaseHelper {
       debugPrint('Cleared stale sync settings');
     } catch (e) {
       debugPrint('Error clearing sync settings: $e');
+    }
+  }
+
+  // Enhanced method to clear all sync settings including sync enabled flag
+  Future<void> clearAllSyncSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lan_server_ip');
+      await prefs.remove('lan_server_port');
+      await prefs.remove('lan_access_code');
+      await prefs.setBool('sync_enabled', false);
+      debugPrint('All sync settings cleared (including sync_enabled flag)');
+    } catch (e) {
+      debugPrint('Error clearing all sync settings: $e');
     }
   }
 

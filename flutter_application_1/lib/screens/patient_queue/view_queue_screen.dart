@@ -84,6 +84,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   
   // Stream subscription for real-time sync updates
   StreamSubscription? _syncSubscription;
+  Timer? _periodicRefreshTimer;
 
   @override
   void initState() {
@@ -106,14 +107,57 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
 
     // Listen to real-time sync updates from DatabaseSyncClient
     _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
-      // Check if this is a queue-related update
-      if (updateEvent['type'] == 'remote_change_applied' || 
-          updateEvent['type'] == 'database_change') {
-        final change = updateEvent['change'] as Map<String, dynamic>?;
-        if (change != null && change['table'] == 'active_patient_queue') {
-          // Refresh live queue data on queue updates
+      if (!mounted) return;
+      
+      // Handle different types of sync events
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'active_patient_queue' || 
+                                change['table'] == 'appointments')) {
+            // Refresh current tab data on queue/appointment updates
+            _refreshCurrentTabData();
+          }
+          break;
+          
+        case 'ui_refresh_requested':
+          // Periodic UI refresh from sync client
           _refreshCurrentTabData();
-        }
+          break;
+          
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+          // Immediate queue refresh
+          _refreshCurrentTabData();
+          break;
+          
+        case 'appointment_change_immediate':
+          // Immediate appointment refresh
+          if (_tabController.index == 1) {
+            _loadAppointmentsForSelectedDate();
+          }
+          break;
+          
+        case 'table_sync':
+        case 'table_sync_completed':
+          final tableName = updateEvent['table'] as String?;
+          if (tableName == 'active_patient_queue' || tableName == 'appointments') {
+            _refreshCurrentTabData();
+          }
+          break;
+          
+        case 'full_sync_completed':
+          // Complete refresh after full sync
+          _refreshCurrentTabData();
+          break;
+      }
+    });
+
+    // Start periodic refresh timer (every 2 seconds for real-time updates)
+    _periodicRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (mounted) {
+        _refreshCurrentTabData();
       }
     });
   }
@@ -124,6 +168,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     _tabController.dispose();
     _searchController.dispose();
     _syncSubscription?.cancel();
+    _periodicRefreshTimer?.cancel(); // Cancel periodic refresh timer
     super.dispose();
   }
 

@@ -11,6 +11,8 @@ import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
 import 'screens/auth_screen.dart';
 import 'services/database_sync_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +28,9 @@ void main() async {
   }
 
   await ApiService.initializeDatabaseForLan();
+
+  // Clear any stale sync settings that might cause connection to non-existent servers
+  await _clearStaleSyncSettings();
 
   // Initialize database helper
   final dbHelper = DatabaseHelper();
@@ -116,5 +121,43 @@ class _AuthWrapperState extends State<_AuthWrapper> {
         return const LoginScreen();
       },
     );
+  }
+}
+
+// Clear any stale sync settings that might cause connection to non-existent servers
+Future<void> _clearStaleSyncSettings() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Get current stored sync settings
+    final serverIp = prefs.getString('lan_server_ip');
+    final serverPort = prefs.get('lan_server_port');
+    
+    if (serverIp != null) {
+      debugPrint('Found cached sync settings: $serverIp:$serverPort');
+      
+      // Test if the server is still reachable
+      try {
+        final port = serverPort is int ? serverPort : (serverPort is String ? int.tryParse(serverPort) ?? 8080 : 8080);
+        final socket = await Socket.connect(serverIp, port, timeout: const Duration(seconds: 3));
+        socket.destroy();
+        debugPrint('Cached server is still reachable - keeping settings');
+      } catch (e) {
+        debugPrint('Cached server $serverIp:$serverPort is no longer reachable: $e');
+        debugPrint('Clearing stale sync settings...');
+        
+        // Clear the stale settings
+        await prefs.remove('lan_server_ip');
+        await prefs.remove('lan_server_port');
+        await prefs.remove('lan_access_code');
+        await prefs.setBool('sync_enabled', false);
+        
+        debugPrint('Stale sync settings cleared');
+      }
+    } else {
+      debugPrint('No cached sync settings found');
+    }
+  } catch (e) {
+    debugPrint('Error checking/clearing sync settings: $e');
   }
 }

@@ -8,6 +8,7 @@ import '../../models/appointment.dart';
 import '../../models/active_patient_queue_item.dart';
 import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
+import '../../services/database_sync_client.dart';
 import 'dashboard_welcome_section.dart';
 import 'dashboard_metrics_section.dart';
 import 'dashboard_doctors_section.dart';
@@ -25,7 +26,8 @@ class LiveQueueDashboardView extends StatefulWidget {
   LiveQueueDashboardViewState createState() => LiveQueueDashboardViewState();
 }
 
-class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateTime _calendarSelectedDate = DateTime.now();
+class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
+  DateTime _calendarSelectedDate = DateTime.now();
   DateTime _calendarFocusedDay = DateTime.now();
   List<Appointment> _allAppointmentsForCalendar = [];
   List<Appointment> _dailyAppointmentsForDisplay = [];
@@ -36,6 +38,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
   bool _isLoadingQueueAndAppointments = true;
   
   Timer? _refreshTimer;
+  StreamSubscription? _syncSubscription;
 
   @override
   void initState() {
@@ -49,21 +52,62 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
     _loadAppointments().then((_) {
       _loadCombinedQueueData(_calendarSelectedDate);
     });
-      // Set up periodic refresh every 15 seconds to catch payment updates quickly
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    
+    // Set up periodic refresh every 10 seconds for better responsiveness
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       if (mounted) {
         _loadCombinedQueueData(_calendarSelectedDate);
       }
     });
+    
+    // Set up sync listener for real-time updates
+    _setupSyncListener();
     
     if (kDebugMode) {
       print('DEBUG: LiveQueueDashboardView initState END');
     }
   }
 
+  /// Setup sync listener for real-time updates
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle different types of sync events
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'active_patient_queue' || 
+                                change['table'] == 'appointments')) {
+            // Refresh data on queue/appointment updates
+            _loadCombinedQueueData(_calendarSelectedDate);
+          }
+          break;
+          
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+          // Immediate queue refresh
+          _loadCombinedQueueData(_calendarSelectedDate);
+          break;
+          
+        case 'appointment_change_immediate':
+          // Immediate appointment refresh
+          _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
+          break;
+          
+        case 'ui_refresh_requested':
+          // Periodic UI refresh from sync client
+          _loadCombinedQueueData(_calendarSelectedDate);
+          break;
+      }
+    });
+  }
+
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 
@@ -333,7 +377,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
     }
   }
 
-  static String _getDisplayStatus(String status) {
+  String _getDisplayStatus(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
       case 'in_consultation': return 'In Consultation';

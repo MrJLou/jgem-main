@@ -7,6 +7,7 @@ import 'database_helper.dart';
 import '../models/active_patient_queue_item.dart';
 import '../models/appointment.dart';
 import 'auth_service.dart';
+import 'database_sync_client.dart'; // Added for sync triggering
 import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
@@ -86,6 +87,9 @@ class QueueService {
 
     // Add to database - this will automatically trigger sync notifications via logChange
     final addedItem = await _dbHelper.addToActiveQueue(newItem);
+    
+    // Trigger immediate sync to notify connected devices
+    _triggerImmediateSync();
     
     // Log successful queue addition for debugging
     if (kDebugMode) {
@@ -844,6 +848,32 @@ class QueueService {
     if (kDebugMode) {
       print(
           'Successfully created a medical record for served patient: ${item.patientName}');
+    }
+  }
+
+  /// Trigger immediate sync to notify connected devices of queue changes
+  void _triggerImmediateSync() {
+    // Use DatabaseSyncClient to trigger queue refresh
+    DatabaseSyncClient.triggerQueueRefresh();
+    
+    // Also request full sync for real-time updates
+    DatabaseSyncClient.forceQueueRefresh();
+    
+    if (kDebugMode) {
+      print('QueueService: Triggered immediate sync notification');
+    }
+  }
+
+  /// Enhanced refresh method for external callers
+  static void refreshAllQueues() {
+    // Trigger sync through DatabaseSyncClient
+    DatabaseSyncClient.forceQueueRefresh();
+    
+    // Also trigger appointment refresh since they're related
+    DatabaseSyncClient.triggerAppointmentRefresh();
+    
+    if (kDebugMode) {
+      print('QueueService: Triggered comprehensive queue and appointment refresh');
     }
   }
 }
