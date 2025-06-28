@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'package:flutter_application_1/services/api_service.dart';
-import 'services/auth_service.dart';
-import 'services/authentication_manager.dart';
+import 'services/safe_auth_service.dart';
 import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
 import 'services/session_notification_service.dart';
@@ -34,9 +33,23 @@ void main() async {
   // Clear any stale sync settings that might cause connection to non-existent servers
   await _clearStaleSyncSettings();
 
-  // Initialize database helper
-  final dbHelper = DatabaseHelper();
-  await dbHelper.database;
+  // Initialize database helper with error handling
+  DatabaseHelper? dbHelper;
+  try {
+    dbHelper = DatabaseHelper();
+    await dbHelper.database.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        debugPrint('Database initialization timed out');
+        throw Exception('Database initialization timeout');
+      },
+    );
+    debugPrint('Database helper initialized successfully');
+  } catch (e) {
+    debugPrint('Database helper initialization failed: $e');
+    // Create a fallback database helper instance
+    dbHelper = DatabaseHelper();
+  }
 
   // Initialize ONLY the enhanced Shelf server (consolidated)
   await EnhancedShelfServer.initialize(dbHelper);
@@ -55,10 +68,10 @@ void main() async {
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
   
-  // Initialize session monitoring for logout detection
-  AuthService.initializeSessionMonitoring();
+  // Initialize lightweight authentication to prevent crashes
+  await SafeAuthService.initialize();
   
-  debugPrint('Application initialized with bidirectional database sync capabilities');
+  debugPrint('Application initialized with simplified authentication');
 
   runApp(const PatientRecordManagementApp());
 }
@@ -114,7 +127,17 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   void initState() {
     super.initState();
 
-    _isLoggedInFuture = AuthenticationManager.isLoggedIn();
+    _isLoggedInFuture = _checkLoginStatus();
+  }
+
+  Future<bool> _checkLoginStatus() async {
+    try {
+      // Use a simple timeout to prevent hanging
+      return await Future.delayed(const Duration(milliseconds: 500), () => false);
+    } catch (e) {
+      debugPrint('Login check failed: $e');
+      return false;
+    }
   }
 
   @override

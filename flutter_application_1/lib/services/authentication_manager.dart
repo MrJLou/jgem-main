@@ -308,9 +308,13 @@ class AuthenticationManager {
     
     _isMonitoring = true;
     _sessionMonitorTimer = Timer.periodic(
-      const Duration(minutes: 5), // Check every 5 minutes
+      const Duration(minutes: 10), // Reduced frequency from 5 to 10 minutes to prevent overload
       (timer) async {
         try {
+          if (!_isMonitoring) {
+            timer.cancel();
+            return;
+          }
           final isValid = await EnhancedUserTokenService.isCurrentSessionValid();
           if (!isValid) {
             debugPrint('AUTH_MANAGER: Session validation failed during monitoring');
@@ -318,11 +322,12 @@ class AuthenticationManager {
           }
         } catch (e) {
           debugPrint('AUTH_MANAGER: Error during session monitoring: $e');
+          // Don't crash the app if session monitoring fails
         }
       },
     );
     
-    debugPrint('AUTH_MANAGER: Session monitoring started');
+    debugPrint('AUTH_MANAGER: Session monitoring started (10 min intervals)');
   }
 
   /// Stop session monitoring
@@ -439,17 +444,31 @@ class AuthenticationManager {
     try {
       debugPrint('AUTH_MANAGER: Initializing authentication manager');
       
-      // Clean up expired sessions on startup
-      await cleanupExpiredSessions();
+      // Clean up expired sessions on startup with timeout
+      await cleanupExpiredSessions().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('AUTH_MANAGER: Session cleanup timed out, continuing...');
+        },
+      );
       
       // Check if user is logged in and start monitoring if needed
-      if (await isLoggedIn()) {
+      final isUserLoggedIn = await isLoggedIn().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('AUTH_MANAGER: Login check timed out, assuming not logged in');
+          return false;
+        },
+      );
+      
+      if (isUserLoggedIn) {
         startSessionMonitoring();
       }
       
       debugPrint('AUTH_MANAGER: Authentication manager initialized');
     } catch (e) {
       debugPrint('AUTH_MANAGER: Error initializing authentication manager: $e');
+      // Don't rethrow - allow app to continue even if auth init fails
     }
   }
 
