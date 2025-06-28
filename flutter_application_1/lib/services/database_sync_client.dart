@@ -346,10 +346,25 @@ class DatabaseSyncClient {
           case 'insert':
             if (data != null) {
               try {
+                // Always use INSERT OR REPLACE for all inserts to handle conflicts
                 await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
                 debugPrint('Successfully applied remote insert: $table.$recordId');
               } catch (e) {
                 debugPrint('Error applying remote insert: $e');
+                // If insert fails, try update as fallback
+                try {
+                  String whereColumn = 'id';
+                  if (table == 'active_patient_queue') {
+                    whereColumn = 'queueEntryId';
+                  } else if (table == 'user_sessions') {
+                    whereColumn = 'id';
+                  }
+                  
+                  final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+                } catch (updateError) {
+                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                }
               }
             }
             break;
@@ -360,10 +375,20 @@ class DatabaseSyncClient {
                 // Handle special cases for tables with different primary key columns
                 if (table == 'active_patient_queue') {
                   whereColumn = 'queueEntryId';
+                } else if (table == 'user_sessions') {
+                  whereColumn = 'id';
                 }
                 
                 final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
-                debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
+                
+                // If no rows were affected, try inserting the record
+                if (rowsAffected == 0) {
+                  debugPrint('No rows updated, attempting insert for $table.$recordId');
+                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                } else {
+                  debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
+                }
               } catch (e) {
                 debugPrint('Error applying remote update: $e');
               }
@@ -375,6 +400,8 @@ class DatabaseSyncClient {
               // Handle special cases for tables with different primary key columns
               if (table == 'active_patient_queue') {
                 whereColumn = 'queueEntryId';
+              } else if (table == 'user_sessions') {
+                whereColumn = 'id';
               }
               
               final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);
@@ -414,6 +441,18 @@ class DatabaseSyncClient {
             'source': 'remote_sync',
             'data': data,
           });
+          
+          // Additional session validation for authentication integrity
+          if (operation == 'insert' || operation == 'update') {
+            Future.delayed(const Duration(seconds: 1), () {
+              _syncUpdates.add({
+                'type': 'auth_conflict_check_needed',
+                'timestamp': DateTime.now().toIso8601String(),
+                'reason': 'session_${operation}_detected',
+                'sessionId': recordId,
+              });
+            });
+          }
         }
         
         // Add general change notification
@@ -450,13 +489,51 @@ class DatabaseSyncClient {
       DatabaseHelper.clearDatabaseChangeCallback();
       
       try {
-        // Clear existing data for this table
-        await db.delete(tableName);
+        // For user_sessions table, use selective merge instead of clearing all data
+        if (tableName == 'user_sessions') {
+          debugPrint('Performing selective merge for user_sessions table');
+          
+          // Insert or replace each session record individually
+          for (final record in tableData) {
+            final recordMap = record as Map<String, dynamic>;
+            
+            try {
+              // Use INSERT OR REPLACE to handle potential duplicate keys
+              await db.insert(
+                tableName, 
+                recordMap,
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
+            } catch (e) {
+              debugPrint('Error syncing session record ${recordMap['id']}: $e');
+              // Try updating if insert fails
+              try {
+                await db.update(
+                  tableName,
+                  recordMap,
+                  where: 'id = ?',
+                  whereArgs: [recordMap['id']],
+                );
+              } catch (updateError) {
+                debugPrint('Both insert and update failed for session ${recordMap['id']}: $updateError');
+              }
+            }
+          }
+        } else {
+          // For other tables, use the normal clear and insert approach
+          await db.delete(tableName);
 
-        // Insert new data
-        for (final record in tableData) {
-          final recordMap = record as Map<String, dynamic>;
-          await db.insert(tableName, recordMap);
+          // Insert new data using INSERT OR REPLACE to handle duplicates
+          for (final record in tableData) {
+            final recordMap = record as Map<String, dynamic>;
+            
+            // Use INSERT OR REPLACE to handle potential duplicate keys
+            await db.insert(
+              tableName, 
+              recordMap,
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
         }
 
         debugPrint('Table sync completed for $tableName (${tableData.length} records)');
@@ -468,6 +545,28 @@ class DatabaseSyncClient {
           'recordCount': tableData.length,
           'timestamp': DateTime.now().toIso8601String(),
         });
+        
+        // Special handling for user_sessions table sync
+        if (tableName == 'user_sessions') {
+          _syncUpdates.add({
+            'type': 'session_table_synced',
+            'table': tableName,
+            'recordCount': tableData.length,
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          
+          // Trigger session validation after sync
+          _syncUpdates.add({
+            'type': 'session_sync_validation_needed',
+            'table': tableName,
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          
+          // Also check for authentication conflicts immediately
+          Future.delayed(const Duration(seconds: 1), () {
+            _checkAuthenticationConflicts();
+          });
+        }
       } finally {
         // Re-enable change callback
         DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
@@ -832,5 +931,21 @@ class DatabaseSyncClient {
     _periodicSyncTimer = null;
     _queueRefreshTimer = null;
     debugPrint('Stopped periodic sync timers');
+  }
+
+  /// Check for authentication conflicts after session sync
+  static void _checkAuthenticationConflicts() {
+    try {
+      // Notify about potential authentication conflicts
+      _syncUpdates.add({
+        'type': 'auth_conflict_check_needed',
+        'timestamp': DateTime.now().toIso8601String(),
+        'reason': 'session_table_sync_completed',
+      });
+      
+      debugPrint('DatabaseSyncClient: Triggered authentication conflict check after session sync');
+    } catch (e) {
+      debugPrint('DatabaseSyncClient: Error checking authentication conflicts: $e');
+    }
   }
 }

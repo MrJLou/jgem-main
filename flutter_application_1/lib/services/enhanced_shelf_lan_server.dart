@@ -543,22 +543,50 @@ class EnhancedShelfServer {
         final id = recordMap['id'];
         
         if (id != null) {
-          // Check if record exists
-          final existing = await db.query(table, where: 'id = ?', whereArgs: [id]);
-          
-          if (existing.isNotEmpty) {
-            // Update existing record
-            await db.update(table, recordMap, where: 'id = ?', whereArgs: [id]);
-            updatedCount++;
-          } else {
-            // Insert new record
-            await db.insert(table, recordMap);
-            insertedCount++;
+          try {
+            // Use INSERT OR REPLACE to handle conflicts gracefully
+            await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+            
+            // Check if this was an insert or update
+            final existing = await db.query(table, where: 'id = ?', whereArgs: [id], limit: 1);
+            if (existing.isNotEmpty) {
+              final existingRecord = existing.first;
+              final isUpdate = existingRecord.toString() != recordMap.toString();
+              if (isUpdate) {
+                updatedCount++;
+              } else {
+                insertedCount++;
+              }
+            } else {
+              insertedCount++;
+            }
+          } catch (e) {
+            debugPrint('Error syncing record $id in table $table: $e');
+            // Try alternative approach with explicit update/insert
+            try {
+              final existing = await db.query(table, where: 'id = ?', whereArgs: [id]);
+              
+              if (existing.isNotEmpty) {
+                // Update existing record
+                await db.update(table, recordMap, where: 'id = ?', whereArgs: [id]);
+                updatedCount++;
+              } else {
+                // Insert new record
+                await db.insert(table, recordMap);
+                insertedCount++;
+              }
+            } catch (fallbackError) {
+              debugPrint('Fallback sync also failed for $id: $fallbackError');
+            }
           }
         } else {
           // Insert record without ID (let database generate)
-          await db.insert(table, recordMap);
-          insertedCount++;
+          try {
+            await db.insert(table, recordMap);
+            insertedCount++;
+          } catch (e) {
+            debugPrint('Error inserting record without ID: $e');
+          }
         }
       }
       
@@ -949,12 +977,28 @@ class EnhancedShelfServer {
           case 'insert':
             if (recordData != null) {
               try {
+                // Use INSERT OR REPLACE to handle potential conflicts
                 await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
                 // Log the change to trigger sync notifications
                 await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
                 debugPrint('Successfully applied WebSocket insert: $table.$recordId');
               } catch (e) {
                 debugPrint('Error applying WebSocket insert: $e');
+                // If insert fails, try update as fallback
+                try {
+                  String whereColumn = 'id';
+                  if (table == 'active_patient_queue') {
+                    whereColumn = 'queueEntryId';
+                  } else if (table == 'user_sessions') {
+                    whereColumn = 'id';
+                  }
+                  
+                  final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+                } catch (updateError) {
+                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                }
               }
             }
             break;
@@ -965,12 +1009,23 @@ class EnhancedShelfServer {
                 // Handle special cases for tables with different primary key columns
                 if (table == 'active_patient_queue') {
                   whereColumn = 'queueEntryId';
+                } else if (table == 'user_sessions') {
+                  whereColumn = 'id';
                 }
                 
                 final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
-                // Log the change to trigger sync notifications
-                await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
-                debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+                
+                // If no rows were affected, try inserting the record
+                if (rowsAffected == 0) {
+                  debugPrint('No rows updated, attempting insert for $table.$recordId');
+                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                } else {
+                  // Log the change to trigger sync notifications
+                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                  debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+                }
               } catch (e) {
                 debugPrint('Error applying WebSocket update: $e');
               }
@@ -982,6 +1037,8 @@ class EnhancedShelfServer {
               // Handle special cases for tables with different primary key columns
               if (table == 'active_patient_queue') {
                 whereColumn = 'queueEntryId';
+              } else if (table == 'user_sessions') {
+                whereColumn = 'id';
               }
               
               final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);

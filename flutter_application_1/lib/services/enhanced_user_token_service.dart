@@ -798,13 +798,20 @@ class EnhancedUserTokenService {
     try {
       debugPrint('ENHANCED_TOKEN_SERVICE: Refreshing session data from network');
       
-      // Trigger sync of user_sessions table from all connected servers
       if (DatabaseSyncClient.isConnected) {
+        // Request immediate sync of user_sessions table
         DatabaseSyncClient.broadcastMessage({
-          'type': 'request_table_sync',
+          'type': 'force_table_sync',
           'table': 'user_sessions',
           'timestamp': DateTime.now().toIso8601String(),
         });
+        
+        // Also request a manual sync
+        await DatabaseSyncClient.manualSync();
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Requested session table sync from network');
+      } else {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Not connected to network, skipping remote sync');
       }
       
       // Clean up any expired sessions after sync
@@ -821,14 +828,40 @@ class EnhancedUserTokenService {
     try {
       debugPrint('ENHANCED_TOKEN_SERVICE: Checking network-wide session conflicts for user: $username');
       
-      // First refresh data from network
+      // Wait a bit to ensure any recent sync operations complete
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Force a complete sync of session data from network
       await refreshSessionDataFromNetwork();
       
-      // Then check for active sessions
-      final activeSessions = await getActiveUserSessions(username);
+      // Wait for sync to complete
+      await Future.delayed(const Duration(seconds: 2));
       
-      if (activeSessions.isNotEmpty) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: Network session conflict detected for $username: ${activeSessions.length} active sessions');
+      // Clean up any expired sessions first
+      await cleanupExpiredSessions();
+      
+      // Check for active sessions excluding current device
+      final activeSessions = await getActiveUserSessions(
+        username, 
+        excludeCurrentDevice: false // Check all devices including current
+      );
+      
+      // Also check for sessions from other devices specifically
+      final otherDeviceSessions = await getActiveUserSessions(
+        username,
+        excludeCurrentDevice: true
+      );
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session check results for $username:');
+      debugPrint('  - Total active sessions: ${activeSessions.length}');
+      debugPrint('  - Other device sessions: ${otherDeviceSessions.length}');
+      
+      // If there are sessions from other devices, that's a conflict
+      if (otherDeviceSessions.isNotEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Network session conflict detected for $username: ${otherDeviceSessions.length} active sessions on other devices');
+        for (final session in otherDeviceSessions) {
+          debugPrint('  - Session on device: ${session['deviceName']} (${session['deviceId']}) - expires: ${session['expiresAt']}');
+        }
         return true;
       }
       

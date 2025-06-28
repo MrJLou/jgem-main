@@ -85,10 +85,36 @@ class CrossDeviceSessionMonitor {
           _handleSessionTableChange(update);
           break;
           
+        case 'session_table_synced':
+          debugPrint('CROSS_DEVICE_MONITOR: Session table sync completed');
+          _checkCurrentSessionValidity();
+          break;
+          
+        case 'session_sync_validation_needed':
+          debugPrint('CROSS_DEVICE_MONITOR: Session sync validation needed');
+          Future.delayed(const Duration(seconds: 2), () {
+            _checkCurrentSessionValidity();
+          });
+          break;
+          
+        case 'table_sync_completed':
+          if (update['table'] == 'user_sessions') {
+            debugPrint('CROSS_DEVICE_MONITOR: User sessions table sync completed');
+            _checkCurrentSessionValidity();
+          }
+          break;
+          
         case 'force_table_sync':
           if (update['table'] == 'user_sessions') {
             _requestSessionRefresh();
           }
+          break;
+          
+        case 'auth_conflict_check_needed':
+          debugPrint('CROSS_DEVICE_MONITOR: Authentication conflict check requested');
+          Future.delayed(const Duration(seconds: 2), () {
+            _checkForAuthenticationConflicts();
+          });
           break;
       }
     } catch (e) {
@@ -102,12 +128,26 @@ class CrossDeviceSessionMonitor {
     
     final operation = change['operation'] as String?;
     final recordId = change['recordId'] as String?;
+    final table = change['table'] as String?;
     
-    debugPrint('CROSS_DEVICE_MONITOR: Session table change detected: $operation for $recordId');
+    debugPrint('CROSS_DEVICE_MONITOR: Session table change detected: $operation for $recordId on table $table');
     
-    // If a session was invalidated, check if it affects current user
-    if (operation == 'update') {
-      _checkCurrentSessionValidity();
+    // Always check session validity when user_sessions table changes
+    if (table == 'user_sessions') {
+      switch (operation) {
+        case 'insert':
+          debugPrint('CROSS_DEVICE_MONITOR: New session created, checking for conflicts');
+          _checkCurrentSessionValidity();
+          break;
+        case 'update':
+          debugPrint('CROSS_DEVICE_MONITOR: Session updated, validating current session');
+          _checkCurrentSessionValidity();
+          break;
+        case 'delete':
+          debugPrint('CROSS_DEVICE_MONITOR: Session deleted, checking current session');
+          _checkCurrentSessionValidity();
+          break;
+      }
     }
   }
   
@@ -211,5 +251,45 @@ class CrossDeviceSessionMonitor {
       'hasSyncSubscription': _syncSubscription != null,
       'timestamp': DateTime.now().toIso8601String(),
     };
+  }
+  
+  /// Check for authentication conflicts after session sync
+  static Future<void> _checkForAuthenticationConflicts() async {
+    try {
+      // Only check if we have an active session
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping conflict check');
+        return;
+      }
+      
+      // Get current username
+      final username = await AuthenticationManager.getCurrentUsername();
+      if (username == null) {
+        debugPrint('CROSS_DEVICE_MONITOR: No current username, skipping conflict check');
+        return;
+      }
+      
+      // Check for session conflicts after the sync
+      final hasConflicts = await EnhancedUserTokenService.checkNetworkSessionConflicts(username);
+      
+      if (hasConflicts) {
+        debugPrint('CROSS_DEVICE_MONITOR: Authentication conflict detected after sync');
+        
+        // Get the current session to see if it's still valid
+        final isCurrentSessionValid = await EnhancedUserTokenService.isCurrentSessionValid();
+        
+        if (!isCurrentSessionValid) {
+          debugPrint('CROSS_DEVICE_MONITOR: Current session is no longer valid, triggering logout');
+          await AuthenticationManager.handleSessionInvalidation();
+        } else {
+          debugPrint('CROSS_DEVICE_MONITOR: Current session is still valid despite conflicts');
+        }
+      } else {
+        debugPrint('CROSS_DEVICE_MONITOR: No authentication conflicts detected');
+      }
+    } catch (e) {
+      debugPrint('CROSS_DEVICE_MONITOR: Error checking authentication conflicts: $e');
+    }
   }
 }
