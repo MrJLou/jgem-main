@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/database_sync_client.dart';
 // import '../services/auth_service.dart'; // AuthService.hashSecurityAnswer is no longer called here
 import 'login_screen.dart';
+import 'dart:async';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -152,6 +154,9 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
         if (!mounted) return;
         if (success) {
+          // Trigger sync for user/password changes across all devices
+          DatabaseSyncClient.triggerUserPasswordSync();
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Password reset successfully! Please login'),

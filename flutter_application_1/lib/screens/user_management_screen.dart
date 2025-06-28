@@ -3,6 +3,8 @@ import '../models/user.dart';
 import '../services/database_helper.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/database_sync_client.dart';
+import 'dart:async';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -17,6 +19,7 @@ class UserManagementScreenState extends State<UserManagementScreen> {
   bool _isAddingUser = false;
   final _formKey = GlobalKey<FormState>();
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
@@ -59,6 +62,50 @@ class UserManagementScreenState extends State<UserManagementScreen> {
     _selectedSecurityQuestion3 =
         _securityQuestions.length > 2 ? _securityQuestions[2] : '';
     _loadUsers();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle user and user activity log changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'users' || 
+                                change['table'] == 'user_activity_log')) {
+            // Refresh user list when user data changes
+            _loadUsers();
+          }
+          break;
+        case 'user_password_change_immediate':
+          // Immediate refresh for password reset changes
+          _loadUsers();
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh for user updates
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) {
+            _loadUsers();
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _usernameController.dispose();
+    _fullNameController.dispose();
+    _passwordController.dispose();
+    _emailController.dispose();
+    _contactNumberController.dispose();
+    _securityAnswer1Controller.dispose();
+    _securityAnswer2Controller.dispose();
+    _securityAnswer3Controller.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUsers() async {

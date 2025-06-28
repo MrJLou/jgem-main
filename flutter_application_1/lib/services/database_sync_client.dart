@@ -652,18 +652,14 @@ class DatabaseSyncClient {
       if (_isConnected && _wsChannel != null) {
         _requestQueueSync();
         _requestAppointmentSync(); // Also sync appointments
+        _requestUserAndPasswordSync(); // Also sync user/password changes
       } else {
         // Even when not connected, trigger UI refresh for local changes
         _broadcastUIRefresh();
       }
     });
     
-    // Start immediate UI refresh timer every 2 seconds for real-time responsiveness
-    _queueRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _broadcastUIRefresh();
-    });
-    
-    debugPrint('Started enhanced periodic sync: queue/appointment sync every 30s, UI refresh every 2s');
+    debugPrint('Started enhanced periodic sync: queue/appointment/user sync every 30s');
   }
 
   /// Request specific queue table sync
@@ -688,12 +684,33 @@ class DatabaseSyncClient {
     }
   }
 
+  /// Request user/password changes sync
+  static void _requestUserAndPasswordSync() {
+    if (_isConnected && _wsChannel != null) {
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'users',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'user_activity_log',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'patient_history',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+    }
+  }
+
   /// Broadcast UI refresh event
   static void _broadcastUIRefresh() {
     _syncUpdates.add({
       'type': 'ui_refresh_requested',
       'timestamp': DateTime.now().toIso8601String(),
-      'tables': ['active_patient_queue', 'appointments'],
+      'tables': ['active_patient_queue', 'appointments', 'users', 'user_activity_log', 'patient_history', 'patient_bills', 'payments'],
       'source': 'periodic_refresh',
     });
   }
@@ -741,6 +758,21 @@ class DatabaseSyncClient {
     // Also request immediate sync if connected
     if (_isConnected && _wsChannel != null) {
       _requestAppointmentSync();
+    }
+  }
+
+  /// Trigger immediate refresh for user/password changes
+  static void triggerUserPasswordSync() {
+    _syncUpdates.add({
+      'type': 'user_password_change_immediate',
+      'table': 'users',
+      'timestamp': DateTime.now().toIso8601String(),
+      'source': 'password_reset_operation',
+    });
+    
+    // Also request immediate sync if connected
+    if (_isConnected && _wsChannel != null) {
+      _requestUserAndPasswordSync();
     }
   }
 

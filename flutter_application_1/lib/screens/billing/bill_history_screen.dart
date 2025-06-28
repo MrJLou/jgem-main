@@ -4,7 +4,9 @@ import 'package:collection/collection.dart';
 import '../../models/patient.dart';
 import '../../models/patient_bill.dart';
 import '../../services/database_helper.dart';
+import '../../services/database_sync_client.dart';
 import '../payment/payment_screen.dart';
+import 'dart:async';
 
 class BillHistoryScreen extends StatefulWidget {
   const BillHistoryScreen({super.key});
@@ -16,11 +18,44 @@ class BillHistoryScreen extends StatefulWidget {
 class _BillHistoryScreenState extends State<BillHistoryScreen> {
   late Future<Map<String, List<PatientBill>>> _groupedBillsFuture;
   final DatabaseHelper _dbHelper = DatabaseHelper();
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     _groupedBillsFuture = _loadAndGroupUnpaidBills();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle billing changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'patient_bills' || 
+                                change['table'] == 'payments')) {
+            // Refresh bills when billing data changes
+            _refreshBills();
+          }
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh for billing updates
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) {
+            _refreshBills();
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<Map<String, List<PatientBill>>> _loadAndGroupUnpaidBills() async {

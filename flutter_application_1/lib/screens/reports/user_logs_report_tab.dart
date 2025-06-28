@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/logs/user_logs_print_preview_screen.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
+import 'package:flutter_application_1/services/database_sync_client.dart';
+import 'dart:async';
 
 class UserLogsReportTab extends StatefulWidget {
   const UserLogsReportTab({super.key});
@@ -13,11 +15,43 @@ class UserLogsReportTab extends StatefulWidget {
 class _UserLogsReportTabState extends State<UserLogsReportTab> {
   List<Map<String, dynamic>> _logs = [];
   bool _isLoading = true;
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     _fetchLogs();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle user activity log changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'user_activity_log') {
+            // Refresh logs when user activity changes
+            _fetchLogs();
+          }
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) {
+            _fetchLogs();
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchLogs() async {

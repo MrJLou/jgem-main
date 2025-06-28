@@ -1537,14 +1537,22 @@ To view live changes in DB Browser:
     // Create timestamp in UTC+8
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
 
-    await db.insert(DatabaseHelper.tableUserActivityLog, {
+    final activityData = {
       'userId': userId,
       'actionDescription': actionDescription,
       'targetRecordId': targetRecordId,
       'targetTable': targetTable,
       'timestamp': now.toIso8601String(),
       'details': details,
-    });
+    };
+
+    final insertResult = await db.insert(DatabaseHelper.tableUserActivityLog, activityData);
+    
+    // Trigger sync for user activity logs
+    if (insertResult > 0) {
+      await logChange(DatabaseHelper.tableUserActivityLog, insertResult.toString(), 'insert', data: activityData);
+      debugPrint('DatabaseHelper: User activity logged for $userId - sync notification sent');
+    }
   }
 
   // Create indexes (helper method)
@@ -2433,6 +2441,7 @@ To view live changes in DB Browser:
           where: 'id = ?',
           whereArgs: [billDbId],
         );
+        await logChange(tablePatientBills, billDbId, 'update', executor: txn);
         debugPrint(
             'DATABASE_HELPER: Found existing unpaid bill $invoiceNumber. Updating status to Paid.');
       } else {
@@ -2457,6 +2466,7 @@ To view live changes in DB Browser:
               'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
         };
         await txn.insert(tablePatientBills, billData);
+        await logChange(tablePatientBills, billDbId, 'insert', executor: txn);
 
         // Insert bill items
         for (var itemJson in billItemsJson) {
@@ -2513,6 +2523,7 @@ To view live changes in DB Browser:
         'notes': paymentNotes ?? 'Payment for Invoice #$invoiceNumber',
       };
       await txn.insert(tablePayments, paymentData);
+      await logChange(tablePayments, paymentReferenceNumber, 'insert', executor: txn);
 
       debugPrint(
           'DATABASE_HELPER: Successfully recorded payment $paymentReferenceNumber for invoice $invoiceNumber.');

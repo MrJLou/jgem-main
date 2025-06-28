@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/database_helper.dart';
+import '../../services/database_sync_client.dart';
+import 'dart:async';
 
 class TransactionHistoryScreen extends StatefulWidget {
   const TransactionHistoryScreen({super.key});
@@ -18,11 +20,54 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   bool _isLoading = false;
   bool _hasSearched = false;
   String? _errorMessage;
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadRecentTransactions();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle payment/billing changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'payments' || 
+                                change['table'] == 'patient_bills')) {
+            // Refresh transactions when payments or bills change
+            if (_hasSearched) {
+              _searchTransactions();
+            } else {
+              _loadRecentTransactions();
+            }
+          }
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh for transaction updates
+          if (DateTime.now().millisecondsSinceEpoch % 30000 < 2000) {
+            if (_hasSearched) {
+              _searchTransactions();
+            } else {
+              _loadRecentTransactions();
+            }
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _patientIdController.dispose();
+    _invoiceController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecentTransactions() async {
