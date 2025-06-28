@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
+import 'services/authentication_manager.dart';
 import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
 import 'services/session_notification_service.dart';
@@ -113,7 +114,7 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   void initState() {
     super.initState();
 
-    _isLoggedInFuture = AuthService.isLoggedIn();
+    _isLoggedInFuture = AuthenticationManager.isLoggedIn();
   }
 
   @override

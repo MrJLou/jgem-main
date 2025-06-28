@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/login_screen.dart';
@@ -42,7 +41,7 @@ class AuthenticationManager {
     bool forceLogout = false,
   }) async {
     try {
-      debugPrint('AUTH_MANAGER: Starting login for user: $username');
+      debugPrint('AUTH_MANAGER: Starting login for user: $username, forceLogout: $forceLogout');
       
       // First authenticate credentials
       final db = DatabaseHelper();
@@ -53,12 +52,15 @@ class AuthenticationManager {
       }
       
       final user = auth['user'] as User;
+      debugPrint('AUTH_MANAGER: Credentials validated for user: $username');
       
       // Check for existing sessions
       final hasActiveSession = await EnhancedUserTokenService.hasActiveSession(username);
+      debugPrint('AUTH_MANAGER: Has active session: $hasActiveSession');
       
       if (hasActiveSession && !forceLogout) {
         final activeSessions = await EnhancedUserTokenService.getActiveUserSessions(username);
+        debugPrint('AUTH_MANAGER: Throwing UserSessionConflictException - ${activeSessions.length} active sessions found');
         throw UserSessionConflictException(
           'User is already logged in on another device',
           activeSessions,
@@ -66,6 +68,7 @@ class AuthenticationManager {
       }
       
       // Create new session (this will invalidate existing ones if forceLogout is true)
+      debugPrint('AUTH_MANAGER: Creating new session with forceLogout: $forceLogout');
       final sessionToken = await EnhancedUserTokenService.createUserSession(
         username: username,
         forceLogout: forceLogout,

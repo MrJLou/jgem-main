@@ -4,6 +4,8 @@ import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/auth_service.dart';
+import '../services/authentication_manager.dart';
+import '../services/enhanced_user_token_service.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -167,8 +169,11 @@ class LoginScreenState extends State<LoginScreen>
         // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
         // Use enhanced session management login
-        final response = await AuthService.loginWithSessionManagement(
-            username, _passwordController.text);
+        final response = await AuthenticationManager.login(
+          username: username,
+          password: _passwordController.text,
+          forceLogout: false,
+        );
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -187,12 +192,8 @@ class LoginScreenState extends State<LoginScreen>
         // Reset login attempts for this user on successful login
         _loginAttempts.remove(username);
 
-        // Save credentials after successful login
-        await AuthService.saveLoginCredentials(
-          token: response['token'],
-          username: username,
-          accessLevel: userRole,
-        );
+        // Note: Credentials are already saved by AuthenticationManager.login()
+        // No need to call AuthService.saveLoginCredentials() as it conflicts with the new system
 
         // Navigate to dashboard and remove all previous routes
         if (mounted) {
@@ -208,7 +209,8 @@ class LoginScreenState extends State<LoginScreen>
         }
       } catch (e) {
         // Check for session conflict (user already logged in on another device)
-        if (e.toString().contains('SessionConflictException') || 
+        if (e is UserSessionConflictException || 
+            e.toString().contains('UserSessionConflictException') ||
             e.toString().contains('already logged in on another device')) {
           await _handleSessionConflict(username, _passwordController.text);
           return;
@@ -348,9 +350,11 @@ class LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = true);
       try {
         // Attempt login with force logout
-        final response = await AuthService.loginWithSessionManagement(
-            username, password,
-            forceLogoutExisting: true);
+        final response = await AuthenticationManager.login(
+          username: username,
+          password: password,
+          forceLogout: true,
+        );
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -364,12 +368,8 @@ class LoginScreenState extends State<LoginScreen>
         // Reset login attempts for this user on successful login
         _loginAttempts.remove(username);
 
-        // Save credentials after successful login
-        await AuthService.saveLoginCredentials(
-          token: response['token'],
-          username: username,
-          accessLevel: userRole,
-        );
+        // Note: Credentials are already saved by AuthenticationManager.login()
+        // No need to call AuthService.saveLoginCredentials() as it conflicts with the new system
 
         // Show success message
         if (mounted) {
