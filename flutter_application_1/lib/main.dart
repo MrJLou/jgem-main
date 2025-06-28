@@ -4,6 +4,7 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'services/auth_service.dart';
 import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
+import 'services/session_notification_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -53,6 +54,9 @@ void main() async {
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
   
+  // Initialize session monitoring for logout detection
+  AuthService.initializeSessionMonitoring();
+  
   debugPrint('Application initialized with bidirectional database sync capabilities');
 
   runApp(const PatientRecordManagementApp());
@@ -61,10 +65,17 @@ void main() async {
 class PatientRecordManagementApp extends StatelessWidget {
   const PatientRecordManagementApp({super.key});
 
+  // Create a global navigator key for session notifications
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   @override // Added missing override annotation
   Widget build(BuildContext context) {
+    // Initialize session notification service with navigator key
+    SessionNotificationService.initialize(navigatorKey);
+    
     return MaterialApp(
       title: 'Patient Record Management',
+      navigatorKey: navigatorKey, // Add navigator key for notifications
       theme: ThemeData(
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,

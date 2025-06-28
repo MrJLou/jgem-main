@@ -207,9 +207,9 @@ class LoginScreenState extends State<LoginScreen>
           );
         }
       } catch (e) {
-        // Check if user is already logged in elsewhere
-        if (e.toString().contains('already logged in') ||
-            e.toString().contains('logged in on another device')) {
+        // Check for session conflict (user already logged in on another device)
+        if (e.toString().contains('SessionConflictException') || 
+            e.toString().contains('already logged in on another device')) {
           await _handleSessionConflict(username, _passwordController.text);
           return;
         }
@@ -295,9 +295,33 @@ class LoginScreenState extends State<LoginScreen>
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('User Already Logged In'),
-          content: const Text(
-              'This user is already logged in on another device. Do you want to log out the existing session and continue?'),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('Account Already Active'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This account is currently logged in on another device.',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Do you want to log out from the other device and continue on this device?',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '⚠️ The other device will be automatically logged out.',
+                style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -305,8 +329,12 @@ class LoginScreenState extends State<LoginScreen>
                 Navigator.of(dialogContext).pop(false);
               },
             ),
-            TextButton(
-              child: const Text('Force Logout'),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Force Login'),
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
@@ -342,6 +370,23 @@ class LoginScreenState extends State<LoginScreen>
           username: username,
           accessLevel: userRole,
         );
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text('Successfully logged in. Other device has been logged out.'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
 
         // Navigate to dashboard and remove all previous routes
         if (mounted) {

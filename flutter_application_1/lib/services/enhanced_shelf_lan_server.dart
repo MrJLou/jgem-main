@@ -821,9 +821,15 @@ class EnhancedShelfServer {
           debugPrint('Received pong from client');
           break;
           
+        case 'session_invalidated':
+          // Handle session invalidation message and broadcast to all clients
+          debugPrint('Received session invalidation message from client');
+          _broadcastToAllClients(jsonEncode(data));
+          break;
+          
         default:
           debugPrint('Unknown WebSocket message type: $type');
-          debugPrint('Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong');
+          debugPrint('Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong, session_invalidated');
           _sendWebSocketError(webSocket, 'Unknown message type: $type');
       }
     } catch (e) {

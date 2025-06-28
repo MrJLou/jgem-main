@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 34;
+  static const int _databaseVersion = 35;
 
   // Tables
   static const String tableUsers = 'users';
@@ -56,6 +56,7 @@ class DatabaseHelper {
   static const String tableSyncLog = 'sync_log';
   static const String tablePatientQueue = 'patient_queue';
   static const String tableActivePatientQueue = 'active_patient_queue';
+  static const String tableUserSessions = 'user_sessions';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -648,6 +649,25 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Table $tableActivePatientQueue created');
 
+    // User Sessions table (for session management and concurrent login detection)
+    await db.execute('''
+      CREATE TABLE $tableUserSessions (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        username TEXT NOT NULL,
+        deviceId TEXT NOT NULL,
+        deviceName TEXT,
+        loginTime TEXT NOT NULL,
+        lastActivity TEXT NOT NULL,
+        ipAddress TEXT,
+        isActive INTEGER DEFAULT 1 NOT NULL,
+        sessionToken TEXT NOT NULL,
+        expiresAt TEXT NOT NULL,
+        FOREIGN KEY (userId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table $tableUserSessions created');
+
     // Create admin user by default
     await _createDefaultAdmin(db);
 
@@ -823,6 +843,27 @@ class DatabaseHelper {
           db, tableMedicalRecords, 'selectedServices', 'TEXT');
     }
 
+    if (oldVersion < 35) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 35: Creating user_sessions table for session management.");
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableUserSessions (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          username TEXT NOT NULL,
+          deviceId TEXT NOT NULL,
+          deviceName TEXT,
+          loginTime TEXT NOT NULL,
+          lastActivity TEXT NOT NULL,
+          ipAddress TEXT,
+          isActive INTEGER DEFAULT 1 NOT NULL,
+          sessionToken TEXT NOT NULL,
+          expiresAt TEXT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+
     debugPrint(
         "DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
@@ -911,6 +952,136 @@ class DatabaseHelper {
       String securityAnswer, String newPassword) async {
     return userDbService.resetPassword(
         username, securityQuestionKey, securityAnswer, newPassword);
+  }
+
+  // SESSION MANAGEMENT METHODS
+  
+  /// Create a new user session when user logs in
+  Future<String> createUserSession({
+    required String userId,
+    required String username,
+    required String deviceId,
+    String? deviceName,
+    String? ipAddress,
+    required String sessionToken,
+    required DateTime expiresAt,
+  }) async {
+    final db = await database;
+    final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}_$userId';
+    final now = DateTime.now().toIso8601String();
+    
+    await db.insert(tableUserSessions, {
+      'id': sessionId,
+      'userId': userId,
+      'username': username,
+      'deviceId': deviceId,
+      'deviceName': deviceName ?? 'Unknown Device',
+      'loginTime': now,
+      'lastActivity': now,
+      'ipAddress': ipAddress,
+      'isActive': 1,
+      'sessionToken': sessionToken,
+      'expiresAt': expiresAt.toIso8601String(),
+    });
+    
+    await logChange(tableUserSessions, sessionId, 'insert');
+    return sessionId;
+  }
+
+  /// Check if user has active sessions on other devices
+  Future<List<Map<String, dynamic>>> getActiveUserSessions(String userId, {String? excludeDeviceId}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    String query = '''
+      SELECT * FROM $tableUserSessions 
+      WHERE userId = ? AND isActive = 1 AND expiresAt > ?
+    ''';
+    List<dynamic> args = [userId, now];
+    
+    if (excludeDeviceId != null) {
+      query += ' AND deviceId != ?';
+      args.add(excludeDeviceId);
+    }
+    
+    return await db.rawQuery(query, args);
+  }
+
+  /// Invalidate all sessions for a user (except optionally one device)
+  Future<void> invalidateUserSessions(String userId, {String? excludeDeviceId}) async {
+    final db = await database;
+    
+    String query = 'UPDATE $tableUserSessions SET isActive = 0 WHERE userId = ?';
+    List<dynamic> args = [userId];
+    
+    if (excludeDeviceId != null) {
+      query += ' AND deviceId != ?';
+      args.add(excludeDeviceId);
+    }
+    
+    await db.rawUpdate(query, args);
+    await logChange(tableUserSessions, userId, 'update');
+  }
+
+  /// Update session activity timestamp
+  Future<void> updateSessionActivity(String sessionId) async {
+    final db = await database;
+    await db.update(
+      tableUserSessions,
+      {'lastActivity': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  /// Invalidate specific session
+  Future<void> invalidateSession(String sessionId) async {
+    final db = await database;
+    await db.update(
+      tableUserSessions,
+      {'isActive': 0},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+    await logChange(tableUserSessions, sessionId, 'update');
+  }
+
+  /// Clean up expired sessions
+  Future<void> cleanupExpiredSessions() async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    await db.delete(
+      tableUserSessions,
+      where: 'expiresAt < ? OR isActive = 0',
+      whereArgs: [now],
+    );
+  }
+
+  /// Get session details by session ID
+  Future<Map<String, dynamic>?> getSession(String sessionId) async {
+    final db = await database;
+    final result = await db.query(
+      tableUserSessions,
+      where: 'id = ? AND isActive = 1',
+      whereArgs: [sessionId],
+    );
+    
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  /// Check if a session exists and is valid
+  Future<bool> isSessionValid(String sessionId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    final result = await db.query(
+      tableUserSessions,
+      where: 'id = ? AND isActive = 1 AND expiresAt > ?',
+      whereArgs: [sessionId, now],
+    );
+    
+    return result.isNotEmpty;
   }
 
   // PATIENT MANAGEMENT METHODS (Delegating to PatientDatabaseService)

@@ -227,6 +227,22 @@ class DatabaseSyncClient {
           }
           break;
 
+        case 'session_invalidated':
+          // Handle session invalidation from another device
+          debugPrint('Received session invalidation notification');
+          try {
+            // Call AuthService to handle the invalidation
+            // We'll create a simple mechanism to notify the app
+            _syncUpdates.add({
+              'type': 'session_invalidated',
+              'data': data,
+              'timestamp': DateTime.now().toIso8601String(),
+            });
+          } catch (e) {
+            debugPrint('Error handling session invalidation: $e');
+          }
+          break;
+
         default:
           debugPrint('Unknown message type: $type');
           debugPrint('Full message data: $data');
@@ -774,6 +790,29 @@ class DatabaseSyncClient {
     if (_isConnected && _wsChannel != null) {
       _requestUserAndPasswordSync();
     }
+  }
+
+  /// Broadcast a custom message to all connected devices
+  static void broadcastMessage(Map<String, dynamic> message) {
+    if (_isConnected && _wsChannel != null) {
+      try {
+        _wsChannel!.sink.add(jsonEncode(message));
+        debugPrint('Broadcasting message: ${message['type']}');
+      } catch (e) {
+        debugPrint('Error broadcasting message: $e');
+      }
+    } else {
+      debugPrint('Cannot broadcast message - not connected to server');
+    }
+  }
+
+  /// Handle session invalidation messages
+  static void handleSessionInvalidation(Map<String, dynamic> data) {
+    _syncUpdates.add({
+      'type': 'session_invalidated',
+      'data': data,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
   }
 
   /// Stop periodic sync timers

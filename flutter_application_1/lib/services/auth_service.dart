@@ -1,11 +1,27 @@
 import 'dart:convert';
-import 'package:bcrypt/bcrypt.dart';
+import 'dart:io' show Platform;
 import 'package:crypto/crypto.dart';
+import 'package:bcrypt/bcrypt.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
-import '../models/user.dart'; // Import the User model
+import 'database_sync_client.dart';
+import 'session_notification_service.dart';
+import '../models/user.dart';
+import '../screens/login_screen.dart';
+
+/// Custom exception for session conflicts
+class SessionConflictException implements Exception {
+  final String message;
+  final List<Map<String, dynamic>> activeSessions;
+  
+  SessionConflictException(this.message, this.activeSessions);
+  
+  @override
+  String toString() => 'SessionConflictException: $message';
+}
 
 class AuthService {
   static const bool isDevMode = false; // Set to false for production
@@ -161,9 +177,27 @@ class AuthService {
         );
       }
 
+      // Navigate to login screen
+      await _navigateToLogin();
+
       debugPrint('Force logout completed due to session invalidation');
     } catch (e) {
       debugPrint('Error during force logout: $e');
+    }
+  }
+
+  /// Navigate to login screen
+  static Future<void> _navigateToLogin() async {
+    try {
+      final context = SessionNotificationService.getCurrentContext();
+      if (context != null) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error navigating to login: $e');
     }
   }
 
@@ -404,25 +438,65 @@ class AuthService {
       String username, String password,
       {bool forceLogoutExisting = false}) async {
     try {
-      // Proceed with normal authentication
-      final auth = await DatabaseHelper().authenticateUser(username, password);
-      if (auth != null && auth['user'] != null && auth['user'].role != null) {
-        _currentUserRole = auth['user'].role;
-
-        // Save to SharedPreferences
-        await saveLoginCredentials(
-          token: auth['token'],
-          username: username,
-          accessLevel: auth['user'].role,
-        );
-
-        debugPrint('AuthService: User $username logged in successfully');
-        
-        return auth;
-      } else {
+      final db = DatabaseHelper();
+      
+      // First authenticate the user
+      final auth = await db.authenticateUser(username, password);
+      if (auth == null || auth['user'] == null || auth['user'].role == null) {
         throw Exception('Invalid credentials or user data missing');
       }
+
+      final user = auth['user'];
+      final userId = user.id;
+      final deviceId = await getDeviceId();
+      
+      // Check for existing active sessions on other devices
+      final activeSessions = await db.getActiveUserSessions(userId, excludeDeviceId: deviceId);
+      
+      if (activeSessions.isNotEmpty && !forceLogoutExisting) {
+        // User is already logged in on another device
+        throw SessionConflictException('User is already logged in on another device', activeSessions);
+      }
+      
+      if (forceLogoutExisting && activeSessions.isNotEmpty) {
+        // Force logout existing sessions
+        await db.invalidateUserSessions(userId, excludeDeviceId: deviceId);
+        
+        // Notify other devices about session invalidation via sync
+        await _notifySessionInvalidation(userId, activeSessions);
+        
+        debugPrint('AuthService: Invalidated ${activeSessions.length} existing sessions for user $username');
+      }
+      
+      // Create new session
+      final sessionToken = auth['token'];
+      final expiresAt = DateTime.now().add(const Duration(minutes: _tokenValidityMinutes));
+      
+      await db.createUserSession(
+        userId: userId,
+        username: username,
+        deviceId: deviceId,
+        deviceName: await _getDeviceName(),
+        sessionToken: sessionToken,
+        expiresAt: expiresAt,
+      );
+
+      _currentUserRole = user.role;
+
+      // Save to SharedPreferences
+      await saveLoginCredentials(
+        token: sessionToken,
+        username: username,
+        accessLevel: user.role,
+      );
+
+      debugPrint('AuthService: User $username logged in successfully');
+      
+      return auth;
     } catch (e) {
+      if (e is SessionConflictException) {
+        rethrow; // Preserve the session conflict exception
+      }
       throw Exception('Failed to login: $e');
     }
   }
@@ -442,6 +516,93 @@ class AuthService {
     } catch (e) {
       debugPrint('Error validating session: $e');
       return false;
+    }
+  }
+
+  /// Notify other devices about session invalidation
+  static Future<void> _notifySessionInvalidation(String userId, List<Map<String, dynamic>> invalidatedSessions) async {
+    try {
+      // Broadcast session invalidation to other devices via the sync client
+      for (final session in invalidatedSessions) {
+        DatabaseSyncClient.broadcastMessage({
+          'type': 'session_invalidated',
+          'userId': userId,
+          'deviceId': session['deviceId'],
+          'sessionId': session['id'],
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        
+        // Also log the activity for audit trail
+        final db = DatabaseHelper();
+        await db.logUserActivity(
+          session['username'] ?? 'unknown',
+          'Session invalidated - logged out from another device (Session: ${session['id']})',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error notifying session invalidation: $e');
+    }
+  }
+
+  /// Get device name for session tracking
+  static Future<String> _getDeviceName() async {
+    try {
+      if (!kIsWeb) {
+        if (Platform.isWindows) {
+          return 'Windows Device';
+        } else if (Platform.isAndroid) {
+          return 'Android Device';
+        } else if (Platform.isIOS) {
+          return 'iOS Device';
+        } else if (Platform.isMacOS) {
+          return 'macOS Device';
+        } else if (Platform.isLinux) {
+          return 'Linux Device';
+        }
+      }
+      return 'Web Browser';
+    } catch (e) {
+      return 'Unknown Device';
+    }
+  }
+
+  /// Handle session invalidation from another device
+  static Future<void> handleSessionInvalidationFromOtherDevice(Map<String, dynamic> data) async {
+    try {
+      final deviceId = await getDeviceId();
+      final targetDeviceId = data['deviceId'];
+      
+      // Check if this invalidation is for this device
+      if (targetDeviceId == deviceId) {
+        debugPrint('Session invalidated by another device, logging out...');
+        
+        // Show notification to user
+        SessionNotificationService.showSessionInvalidatedNotification();
+        
+        // Force logout after a short delay to allow notification to show
+        await Future.delayed(const Duration(milliseconds: 500));
+        await forceLogoutDueToSessionInvalidation();
+      }
+    } catch (e) {
+      debugPrint('Error handling session invalidation: $e');
+    }
+  }
+
+  /// Initialize session monitoring
+  static void initializeSessionMonitoring() {
+    try {
+      // Listen for session invalidation events from the sync client
+      DatabaseSyncClient.syncUpdates.listen((event) {
+        if (event['type'] == 'session_invalidated') {
+          final data = event['data'] as Map<String, dynamic>?;
+          if (data != null) {
+            handleSessionInvalidationFromOtherDevice(data);
+          }
+        }
+      });
+      debugPrint('Session monitoring initialized');
+    } catch (e) {
+      debugPrint('Error initializing session monitoring: $e');
     }
   }
 
