@@ -944,6 +944,8 @@ class EnhancedShelfServer {
             if (recordData != null) {
               try {
                 await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                // Log the change to trigger sync notifications
+                await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
                 debugPrint('Successfully applied WebSocket insert: $table.$recordId');
               } catch (e) {
                 debugPrint('Error applying WebSocket insert: $e');
@@ -960,6 +962,8 @@ class EnhancedShelfServer {
                 }
                 
                 final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
+                // Log the change to trigger sync notifications
+                await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
                 debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
               } catch (e) {
                 debugPrint('Error applying WebSocket update: $e');
@@ -975,6 +979,8 @@ class EnhancedShelfServer {
               }
               
               final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);
+              // Log the change to trigger sync notifications
+              await _dbHelper!.logChange(table, recordId, 'delete');
               debugPrint('Successfully applied WebSocket delete: $table.$recordId (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying WebSocket delete: $e');

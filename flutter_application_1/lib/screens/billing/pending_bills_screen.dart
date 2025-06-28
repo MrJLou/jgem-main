@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +12,7 @@ import '../../models/active_patient_queue_item.dart';
 import '../../models/patient.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_helper.dart';
+import '../../services/database_sync_client.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/queue_service.dart';
 import '../payment/payment_screen.dart';
@@ -35,11 +37,39 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   bool _hasSearched = false;
   String? _errorMessage;
   DateTimeRange? _selectedDateRange;
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadAllPendingBills();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle queue changes that might affect billing status
+      switch (updateEvent['type']) {
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+        case 'remote_change_applied':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'active_patient_queue') {
+            // Refresh bills if a queue status change might affect billing
+            _loadAllPendingBills();
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    _patientIdController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAllPendingBills() async {

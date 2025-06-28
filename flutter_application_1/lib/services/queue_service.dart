@@ -293,6 +293,9 @@ class QueueService {
               'QueueService: Successfully updated patient $queueEntryId to status $newStatus');
         }
 
+        // Trigger immediate sync to notify all connected devices
+        _triggerImmediateSync();
+
         // If the new status is 'served', create a medical record for history.
         if (newStatus.toLowerCase() == 'served') {
           try {
@@ -353,6 +356,10 @@ class QueueService {
             }
           }
         }
+        
+        // Trigger immediate sync notification
+        _triggerImmediateSync();
+        
         return true;
       } else {
         if (kDebugMode) {

@@ -647,8 +647,8 @@ class DatabaseSyncClient {
     _periodicSyncTimer?.cancel();
     _queueRefreshTimer?.cancel();
     
-    // Start periodic sync check every 2 seconds for queue updates (more frequent)
-    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+    // Start periodic sync check every 30 seconds for normal updates
+    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (_isConnected && _wsChannel != null) {
         _requestQueueSync();
         _requestAppointmentSync(); // Also sync appointments
@@ -658,12 +658,12 @@ class DatabaseSyncClient {
       }
     });
     
-    // Start UI refresh timer every 1 second for immediate responsiveness
-    _queueRefreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    // Start immediate UI refresh timer every 2 seconds for real-time responsiveness
+    _queueRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       _broadcastUIRefresh();
     });
     
-    debugPrint('Started enhanced periodic sync: queue/appointment sync every 2s, UI refresh every 1s');
+    debugPrint('Started enhanced periodic sync: queue/appointment sync every 30s, UI refresh every 2s');
   }
 
   /// Request specific queue table sync

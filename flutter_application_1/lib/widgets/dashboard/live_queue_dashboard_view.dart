@@ -39,6 +39,11 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   
   Timer? _refreshTimer;
   StreamSubscription? _syncSubscription;
+  
+  // Sync status indicator
+  bool _showSyncIndicator = false;
+  String _lastSyncTime = 'Never';
+  Timer? _syncIndicatorTimer;
 
   @override
   void initState() {
@@ -53,8 +58,8 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
       _loadCombinedQueueData(_calendarSelectedDate);
     });
     
-    // Set up periodic refresh every 10 seconds for better responsiveness
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    // Set up periodic refresh every 30 seconds for background updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _loadCombinedQueueData(_calendarSelectedDate);
       }
@@ -80,25 +85,30 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           final change = updateEvent['change'] as Map<String, dynamic>?;
           if (change != null && (change['table'] == 'active_patient_queue' || 
                                 change['table'] == 'appointments')) {
-            // Refresh data on queue/appointment updates
+            // Show sync activity and refresh data immediately
+            _showSyncActivity();
             _loadCombinedQueueData(_calendarSelectedDate);
           }
           break;
           
         case 'queue_change_immediate':
         case 'force_queue_refresh':
-          // Immediate queue refresh
+          // Immediate queue refresh with sync indicator
+          _showSyncActivity();
           _loadCombinedQueueData(_calendarSelectedDate);
           break;
           
         case 'appointment_change_immediate':
-          // Immediate appointment refresh
+          // Immediate appointment refresh with sync indicator  
+          _showSyncActivity();
           _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
           break;
           
         case 'ui_refresh_requested':
-          // Periodic UI refresh from sync client
-          _loadCombinedQueueData(_calendarSelectedDate);
+          // Periodic UI refresh from sync client - less frequent refresh
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) { // Only refresh every minute on this event
+            _loadCombinedQueueData(_calendarSelectedDate);
+          }
           break;
       }
     });
@@ -108,6 +118,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   void dispose() {
     _refreshTimer?.cancel();
     _syncSubscription?.cancel();
+    _syncIndicatorTimer?.cancel(); // Cancel sync indicator timer
     super.dispose();
   }
 
@@ -336,6 +347,9 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
 
     try {
       bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);      if (success) {
+        // Trigger immediate sync to all connected devices
+        DatabaseSyncClient.triggerQueueRefresh();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -343,7 +357,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
               backgroundColor: Colors.green,
             ),
           );
-          // Reload both appointments and queue data to reflect changes
+          // Reload both appointments and queue data to reflect changes immediately
           _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
         }
       } else {
@@ -411,6 +425,39 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Sync Status Indicator
+                if (_showSyncIndicator)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.green[300]!),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16.0,
+                          height: 16.0,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
+                          ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        Text(
+                          'Syncing... Last: $_lastSyncTime',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 12.0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const DashboardWelcomeSection(),
                 const DashboardMetricsSection(),
                 const DashboardDoctorsSection(),
@@ -471,5 +518,25 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         ),
       ],
     );
+  }
+
+  // Sync activity methods
+  void _showSyncActivity() {
+    if (mounted) {
+      setState(() {
+        _showSyncIndicator = true;
+        _lastSyncTime = DateFormat('HH:mm:ss').format(DateTime.now());
+      });
+      
+      // Hide the indicator after 2 seconds
+      _syncIndicatorTimer?.cancel();
+      _syncIndicatorTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _showSyncIndicator = false;
+          });
+        }
+      });
+    }
   }
 }

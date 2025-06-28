@@ -85,6 +85,11 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   // Stream subscription for real-time sync updates
   StreamSubscription? _syncSubscription;
   Timer? _periodicRefreshTimer;
+  
+  // Sync status indicator
+  bool _showSyncIndicator = false;
+  String _lastSyncTime = 'Never';
+  Timer? _syncIndicatorTimer;
 
   @override
   void initState() {
@@ -116,7 +121,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           final change = updateEvent['change'] as Map<String, dynamic>?;
           if (change != null && (change['table'] == 'active_patient_queue' || 
                                 change['table'] == 'appointments')) {
-            // Refresh current tab data on queue/appointment updates
+            // Show sync indicator and refresh immediately
+            _showSyncActivity();
             _refreshCurrentTabData();
           }
           break;
@@ -128,12 +134,14 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           
         case 'queue_change_immediate':
         case 'force_queue_refresh':
-          // Immediate queue refresh
+          // Immediate queue refresh with sync indicator
+          _showSyncActivity();
           _refreshCurrentTabData();
           break;
           
         case 'appointment_change_immediate':
-          // Immediate appointment refresh
+          // Immediate appointment refresh with sync indicator
+          _showSyncActivity();
           if (_tabController.index == 1) {
             _loadAppointmentsForSelectedDate();
           }
@@ -154,8 +162,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       }
     });
 
-    // Start periodic refresh timer (every 2 seconds for real-time updates)
-    _periodicRefreshTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+    // Start periodic refresh timer (every 30 seconds for background updates)
+    _periodicRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _refreshCurrentTabData();
       }
@@ -169,6 +177,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     _searchController.dispose();
     _syncSubscription?.cancel();
     _periodicRefreshTimer?.cancel(); // Cancel periodic refresh timer
+    _syncIndicatorTimer?.cancel(); // Cancel sync indicator timer
     super.dispose();
   }
 
@@ -291,6 +300,12 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       }
       
       if (success) {
+        // Show sync activity immediately
+        _showSyncActivity();
+        
+        // Trigger immediate sync to all connected devices
+        DatabaseSyncClient.triggerQueueRefresh();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -471,12 +486,90 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          'Patient Queue & Appointments',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Row(
+          children: [
+            const Text(
+              'Patient Queue & Appointments',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            const Spacer(),
+            // Sync status indicator
+            if (_showSyncIndicator)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Syncing...',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Last sync: $_lastSyncTime',
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+          ],
         ),
         backgroundColor: Colors.teal[700],
         actions: [
+          // Sync indicator
+          if (_showSyncIndicator)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Syncing...',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          // Last sync time display (when not actively syncing)
+          if (!_showSyncIndicator && _lastSyncTime != 'Never')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Center(
+                child: Text(
+                  'Last sync: $_lastSyncTime',
+                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+              ),
+            ),
           // Debug menu for B-Tree performance
           if (_queueManager.isInitialized)
             PopupMenuButton<String>(
@@ -1524,6 +1617,26 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     } catch (e) {
       debugPrint('Error adding patient through B-Tree: $e');
       return false;
+    }
+  }
+
+  // Sync activity methods
+  void _showSyncActivity() {
+    if (mounted) {
+      setState(() {
+        _showSyncIndicator = true;
+        _lastSyncTime = DateFormat('HH:mm:ss').format(DateTime.now());
+      });
+      
+      // Hide the indicator after 2 seconds
+      _syncIndicatorTimer?.cancel();
+      _syncIndicatorTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _showSyncIndicator = false;
+          });
+        }
+      });
     }
   }
 }

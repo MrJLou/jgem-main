@@ -1772,6 +1772,17 @@ To view live changes in DB Browser:
     await db.insert(DatabaseHelper.tableActivePatientQueue, item.toJson());
     await logChange(
         DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
+    
+    debugPrint('DatabaseHelper: Patient added to queue ${item.queueEntryId} - sync notification sent');
+    
+    // Trigger immediate sync to notify all connected devices
+    await _notifyDatabaseChange(
+      DatabaseHelper.tableActivePatientQueue, 
+      'insert', 
+      item.queueEntryId, 
+      data: item.toJson()
+    );
+    
     return item;
   }
 
@@ -1786,6 +1797,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, queueEntryId, 'delete');
+      debugPrint('DatabaseHelper: Patient removed from queue $queueEntryId - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'delete', 
+        queueEntryId, 
+        data: {'queueEntryId': queueEntryId}
+      );
     }
     return result;
   }
@@ -1803,6 +1823,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, queueEntryId, 'update');
+      debugPrint('DatabaseHelper: Queue status updated for $queueEntryId to $newStatus - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'update', 
+        queueEntryId, 
+        data: {'status': newStatus, 'queueEntryId': queueEntryId}
+      );
     }
     return result;
   }
@@ -1819,6 +1848,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'update');
+      debugPrint('DatabaseHelper: Queue item updated for ${item.queueEntryId} - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'update', 
+        item.queueEntryId, 
+        data: item.toJson()
+      );
     }
     return result;
   }
