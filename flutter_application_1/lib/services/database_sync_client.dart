@@ -346,9 +346,40 @@ class DatabaseSyncClient {
           case 'insert':
             if (data != null) {
               try {
-                // Always use INSERT OR REPLACE for all inserts to handle conflicts
-                await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                debugPrint('Successfully applied remote insert: $table.$recordId');
+                // Special handling for user_sessions table to prevent duplicates
+                if (table == 'user_sessions') {
+                  // Check if session already exists by sessionToken to prevent duplicates
+                  if (data['sessionToken'] != null) {
+                    final existing = await db.query(
+                      table,
+                      where: 'sessionToken = ?',
+                      whereArgs: [data['sessionToken']],
+                    );
+                    
+                    if (existing.isNotEmpty) {
+                      // Update existing session instead of creating duplicate
+                      final rowsAffected = await db.update(
+                        table, 
+                        data, 
+                        where: 'sessionToken = ?', 
+                        whereArgs: [data['sessionToken']]
+                      );
+                      debugPrint('Updated existing session instead of duplicate insert: $table.$recordId (rows affected: $rowsAffected)');
+                    } else {
+                      // Insert new session
+                      await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                      debugPrint('Successfully applied remote session insert: $table.$recordId');
+                    }
+                  } else {
+                    // Fallback to normal insert if no sessionToken
+                    await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                    debugPrint('Successfully applied remote insert: $table.$recordId');
+                  }
+                } else {
+                  // Always use INSERT OR REPLACE for all other inserts to handle conflicts
+                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  debugPrint('Successfully applied remote insert: $table.$recordId');
+                }
               } catch (e) {
                 debugPrint('Error applying remote insert: $e');
                 // If insert fails, try update as fallback
@@ -397,15 +428,24 @@ class DatabaseSyncClient {
           case 'delete':
             try {
               String whereColumn = 'id';
+              String whereValue = recordId;
+              
               // Handle special cases for tables with different primary key columns
               if (table == 'active_patient_queue') {
                 whereColumn = 'queueEntryId';
               } else if (table == 'user_sessions') {
-                whereColumn = 'id';
+                // For user_sessions, try to use sessionToken if available in the data
+                if (data != null && data['sessionToken'] != null) {
+                  whereColumn = 'sessionToken';
+                  whereValue = data['sessionToken'];
+                  debugPrint('Using sessionToken for session deletion: $whereValue');
+                } else {
+                  whereColumn = 'id';
+                }
               }
               
-              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);
-              debugPrint('Successfully applied remote delete: $table.$recordId (rows affected: $rowsAffected)');
+              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
+              debugPrint('Successfully applied remote delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying remote delete: $e');
             }
@@ -443,7 +483,7 @@ class DatabaseSyncClient {
           });
           
           // Additional session validation for authentication integrity
-          if (operation == 'insert' || operation == 'update') {
+          if (operation == 'insert' || operation == 'update' || operation == 'delete') {
             Future.delayed(const Duration(seconds: 1), () {
               _syncUpdates.add({
                 'type': 'auth_conflict_check_needed',
@@ -498,25 +538,44 @@ class DatabaseSyncClient {
             final recordMap = record as Map<String, dynamic>;
             
             try {
-              // Use INSERT OR REPLACE to handle potential duplicate keys
-              await db.insert(
-                tableName, 
-                recordMap,
-                conflictAlgorithm: ConflictAlgorithm.replace,
-              );
+              // For user_sessions, use the sessionToken as the unique identifier if available
+              // This prevents duplicate sessions for the same user/device combination
+              if (recordMap['sessionToken'] != null) {
+                // First check if a session with this token already exists
+                final existingSession = await db.query(
+                  tableName,
+                  where: 'sessionToken = ?',
+                  whereArgs: [recordMap['sessionToken']],
+                );
+                
+                if (existingSession.isNotEmpty) {
+                  // Update existing session record
+                  await db.update(
+                    tableName,
+                    recordMap,
+                    where: 'sessionToken = ?',
+                    whereArgs: [recordMap['sessionToken']],
+                  );
+                  debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                } else {
+                  // Insert new session record
+                  await db.insert(
+                    tableName, 
+                    recordMap,
+                    conflictAlgorithm: ConflictAlgorithm.replace,
+                  );
+                  debugPrint('Inserted new session: ${recordMap['sessionToken']}');
+                }
+              } else {
+                // Fallback to standard INSERT OR REPLACE by ID
+                await db.insert(
+                  tableName, 
+                  recordMap,
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
             } catch (e) {
               debugPrint('Error syncing session record ${recordMap['id']}: $e');
-              // Try updating if insert fails
-              try {
-                await db.update(
-                  tableName,
-                  recordMap,
-                  where: 'id = ?',
-                  whereArgs: [recordMap['id']],
-                );
-              } catch (updateError) {
-                debugPrint('Both insert and update failed for session ${recordMap['id']}: $updateError');
-              }
             }
           }
         } else {

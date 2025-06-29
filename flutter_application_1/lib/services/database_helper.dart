@@ -1046,11 +1046,11 @@ class DatabaseHelper {
     return await db.rawQuery(query, args);
   }
 
-  /// Invalidate all sessions for a user (except optionally one device)
+  /// Delete all sessions for a user (except optionally one device)
   Future<void> invalidateUserSessions(String userId, {String? excludeDeviceId}) async {
     final db = await database;
     
-    String query = 'UPDATE $tableUserSessions SET isActive = 0 WHERE userId = ?';
+    String query = 'DELETE FROM $tableUserSessions WHERE userId = ?';
     List<dynamic> args = [userId];
     
     if (excludeDeviceId != null) {
@@ -1058,8 +1058,8 @@ class DatabaseHelper {
       args.add(excludeDeviceId);
     }
     
-    await db.rawUpdate(query, args);
-    await logChange(tableUserSessions, userId, 'update');
+    await db.rawDelete(query, args);
+    await logChange(tableUserSessions, userId, 'delete');
   }
 
   /// Update session activity timestamp
@@ -1073,16 +1073,15 @@ class DatabaseHelper {
     );
   }
 
-  /// Invalidate specific session
+  /// Delete a specific session completely
   Future<void> invalidateSession(String sessionId) async {
     final db = await database;
-    await db.update(
+    await db.delete(
       tableUserSessions,
-      {'isActive': 0},
       where: 'id = ?',
       whereArgs: [sessionId],
     );
-    await logChange(tableUserSessions, sessionId, 'update');
+    await logChange(tableUserSessions, sessionId, 'delete');
   }
 
   /// Clean up expired sessions

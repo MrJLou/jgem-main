@@ -87,7 +87,10 @@ class CrossDeviceSessionMonitor {
           
         case 'session_table_synced':
           debugPrint('CROSS_DEVICE_MONITOR: Session table sync completed');
-          _checkCurrentSessionValidity();
+          // Wait a moment for sync to fully complete before validation
+          Future.delayed(const Duration(seconds: 2), () {
+            _checkCurrentSessionValidity();
+          });
           break;
           
         case 'session_sync_validation_needed':
@@ -100,7 +103,10 @@ class CrossDeviceSessionMonitor {
         case 'table_sync_completed':
           if (update['table'] == 'user_sessions') {
             debugPrint('CROSS_DEVICE_MONITOR: User sessions table sync completed');
-            _checkCurrentSessionValidity();
+            // Wait for sync operations to complete before checking
+            Future.delayed(const Duration(seconds: 3), () {
+              _checkCurrentSessionValidity();
+            });
           }
           break;
           

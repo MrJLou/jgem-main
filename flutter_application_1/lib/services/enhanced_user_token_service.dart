@@ -57,6 +57,15 @@ class EnhancedUserTokenService {
       final db = await _dbHelper.database;
       final deviceId = await _getOrCreateDeviceId();
       
+      // Always refresh session data from network first to get latest state
+      // This ensures both host and client have the most current session info
+      try {
+        await refreshSessionDataFromNetwork();
+        debugPrint('ENHANCED_TOKEN_SERVICE: Refreshed session data from network before creating session');
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Could not refresh from network (offline?): $e');
+      }
+      
       // Check for existing active sessions
       final existingSessions = await getActiveUserSessions(username);
       
@@ -73,39 +82,55 @@ class EnhancedUserTokenService {
         debugPrint('ENHANCED_TOKEN_SERVICE: Force logged out existing sessions for $username');
       }
       
-      // Generate new session token
+      // Generate new session token with unique identifiers
       final sessionToken = _generateSecureToken();
       final sessionId = const Uuid().v4();
       final now = DateTime.now();
       final expiresAt = now.add(_defaultSessionDuration);
       
+      // Create session record with unique sessionToken to prevent duplicates during sync
+      final sessionData = {
+        'id': sessionId,
+        'session_id': sessionId,
+        'userId': await _getUserId(username) ?? 'unknown',
+        'username': username,
+        'deviceId': deviceId,
+        'deviceName': deviceName ?? await _getDeviceName(),
+        'loginTime': now.toIso8601String(),
+        'lastActivity': now.toIso8601String(),
+        'created_at': now.toIso8601String(),
+        'expires_at': expiresAt.toIso8601String(),
+        'expiresAt': expiresAt.toIso8601String(),
+        'invalidated_at': null,
+        'ipAddress': await _getLocalIpAddress(),
+        'isActive': 1,
+        'sessionToken': sessionToken,
+      };
+      
+      // Check if a session with this token already exists (should be very rare due to crypto)
+      final existingWithToken = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: 'sessionToken = ?',
+        whereArgs: [sessionToken],
+      );
+      
+      if (existingWithToken.isNotEmpty) {
+        // This should be extremely rare with crypto secure tokens
+        debugPrint('ENHANCED_TOKEN_SERVICE: Session token collision detected, regenerating...');
+        return createUserSession(username: username, deviceName: deviceName, forceLogout: forceLogout);
+      }
+      
       // Insert new session record
       await db.insert(
         DatabaseHelper.tableUserSessions,
-        {
-          'id': sessionId,
-          'session_id': sessionId,
-          'userId': await _getUserId(username) ?? 'unknown',
-          'username': username,
-          'deviceId': deviceId,
-          'deviceName': deviceName ?? await _getDeviceName(),
-          'loginTime': now.toIso8601String(),
-          'lastActivity': now.toIso8601String(),
-          'created_at': now.toIso8601String(),
-          'expires_at': expiresAt.toIso8601String(),
-          'expiresAt': expiresAt.toIso8601String(),
-          'invalidated_at': null,
-          'ipAddress': await _getLocalIpAddress(),
-          'isActive': 1,
-          'sessionToken': sessionToken,
-        },
+        sessionData,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       
       // Store current session info locally
       await _storeCurrentSessionInfo(sessionToken, username);
       
-      // Log the change for sync
+      // Log the change for sync - this will trigger bidirectional sync
       await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionId, 'insert');
       
       debugPrint('ENHANCED_TOKEN_SERVICE: Created new session for user: $username on device: $deviceId');
@@ -113,13 +138,26 @@ class EnhancedUserTokenService {
       // Broadcast new session creation to other devices
       await _broadcastSessionCreation(username, sessionToken, deviceId, deviceName ?? await _getDeviceName());
       
-      // Force immediate sync of session table to all connected devices
-      if (EnhancedShelfServer.isRunning) {
+      // Force immediate sync of session table to all connected devices (bidirectional)
+      final isHost = EnhancedShelfServer.isRunning;
+      final isClient = DatabaseSyncClient.isConnected;
+      
+      if (isHost) {
         try {
           await EnhancedShelfServer.forceSyncTable('user_sessions');
-          debugPrint('ENHANCED_TOKEN_SERVICE: Forced immediate session sync to all devices');
+          debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Forced immediate session sync to all clients');
         } catch (e) {
-          debugPrint('ENHANCED_TOKEN_SERVICE: Error forcing session sync: $e');
+          debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Error forcing session sync: $e');
+        }
+      }
+      
+      if (isClient) {
+        try {
+          // Send the session creation to the host server
+          await DatabaseSyncClient.manualSync();
+          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Sent session sync to host');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending session sync to host: $e');
         }
       }
       
@@ -281,7 +319,7 @@ class EnhancedUserTokenService {
     }
   }
 
-  /// Invalidate all sessions for a specific user
+  /// Invalidate all sessions for a specific user by deleting them
   /// 
   /// [username] - Username whose sessions to invalidate
   /// [excludeCurrentDevice] - Whether to keep current device session active
@@ -291,9 +329,8 @@ class EnhancedUserTokenService {
   }) async {
     try {
       final db = await _dbHelper.database;
-      final now = DateTime.now().toIso8601String();
       
-      String whereClause = 'username = ? AND isActive = 1';
+      String whereClause = 'username = ?';
       List<dynamic> whereArgs = [username];
       
       if (excludeCurrentDevice) {
@@ -302,53 +339,82 @@ class EnhancedUserTokenService {
         whereArgs.add(deviceId);
       }
 
-      // Get the sessions that will be invalidated for broadcasting
-      final sessionsToInvalidate = await db.query(
+      // Get the sessions that will be deleted for broadcasting
+      final sessionsToDelete = await db.query(
         DatabaseHelper.tableUserSessions,
         where: whereClause,
         whereArgs: whereArgs,
       );
       
-      await db.update(
+      // DELETE the session records completely instead of just marking inactive
+      final result = await db.delete(
         DatabaseHelper.tableUserSessions,
-        {
-          'isActive': 0,
-          'invalidated_at': now,
-        },
         where: whereClause,
         whereArgs: whereArgs,
       );
 
-      // Clear local session info if invalidating all sessions
+      // Clear local session info if deleting all sessions
       if (!excludeCurrentDevice) {
         await _clearCurrentSessionInfo();
       }
 
-      await _dbHelper.logChange(DatabaseHelper.tableUserSessions, username, 'update');
+      if (result > 0) {
+        // Log changes for each deleted session to trigger proper sync
+        for (final session in sessionsToDelete) {
+          await _dbHelper.logChange(DatabaseHelper.tableUserSessions, session['id'].toString(), 'delete');
+        }
+        
+        // Broadcast session deletions to all connected devices
+        await _broadcastSessionDeletions(username, sessionsToDelete);
+        
+        // Force immediate bidirectional sync after mass session deletion
+        final isHost = EnhancedShelfServer.isRunning;
+        final isClient = DatabaseSyncClient.isConnected;
+        
+        if (isHost) {
+          try {
+            await EnhancedShelfServer.forceSyncTable('user_sessions');
+            debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Forced mass session deletion sync to all clients');
+          } catch (e) {
+            debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Error forcing mass session deletion sync: $e');
+          }
+        }
+        
+        if (isClient) {
+          try {
+            // Send the session deletions to the host server
+            await DatabaseSyncClient.manualSync();
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Sent mass session deletion sync to host');
+          } catch (e) {
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending mass session deletion sync to host: $e');
+          }
+        }
+      }
       
-      // Broadcast session invalidation to all connected devices
-      await _broadcastSessionInvalidation(username, sessionsToInvalidate);
-      
-      debugPrint('ENHANCED_TOKEN_SERVICE: Invalidated sessions for user: $username');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Deleted $result sessions for user: $username');
     } catch (e) {
-      debugPrint('ENHANCED_TOKEN_SERVICE: Error invalidating user sessions: $e');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error deleting user sessions: $e');
       rethrow;
     }
   }
 
-  /// Invalidate a specific session token
+  /// Invalidate a specific session token by deleting it
   /// 
   /// [sessionToken] - Session token to invalidate
   static Future<void> invalidateSession(String sessionToken) async {
     try {
       final db = await _dbHelper.database;
       
-      final result = await db.update(
+      // Get the session info before deleting for broadcasting
+      final sessionInfo = await db.query(
         DatabaseHelper.tableUserSessions,
-        {
-          'isActive': 0,
-          'invalidated_at': DateTime.now().toIso8601String(),
-        },
+        where: 'sessionToken = ?',
+        whereArgs: [sessionToken],
+      );
+
+      // DELETE the session record completely instead of just marking inactive
+      final result = await db.delete(
+        DatabaseHelper.tableUserSessions,
         where: 'sessionToken = ?',
         whereArgs: [sessionToken],
       );
@@ -357,17 +423,47 @@ class EnhancedUserTokenService {
       final currentToken = await _getCurrentSessionToken();
       if (currentToken == sessionToken) {
         await _clearCurrentSessionInfo();
-        debugPrint('ENHANCED_TOKEN_SERVICE: Cleared local session info for invalidated token');
+        debugPrint('ENHANCED_TOKEN_SERVICE: Cleared local session info for deleted session');
       }
 
       if (result > 0) {
-        await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionToken, 'update');
-        debugPrint('ENHANCED_TOKEN_SERVICE: Successfully invalidated session token');
+        // Log as DELETE operation to trigger proper sync
+        await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionToken, 'delete');
+        
+        // Broadcast session deletion to other devices
+        if (sessionInfo.isNotEmpty) {
+          await _broadcastSessionDeletion(sessionInfo.first);
+        }
+        
+        // Force immediate bidirectional sync after session deletion
+        final isHost = EnhancedShelfServer.isRunning;
+        final isClient = DatabaseSyncClient.isConnected;
+        
+        if (isHost) {
+          try {
+            await EnhancedShelfServer.forceSyncTable('user_sessions');
+            debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Forced session deletion sync to all clients');
+          } catch (e) {
+            debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Error forcing session deletion sync: $e');
+          }
+        }
+        
+        if (isClient) {
+          try {
+            // Send the session deletion to the host server
+            await DatabaseSyncClient.manualSync();
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Sent session deletion sync to host');
+          } catch (e) {
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending session deletion sync to host: $e');
+          }
+        }
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Successfully deleted session token');
       } else {
-        debugPrint('ENHANCED_TOKEN_SERVICE: Session token not found or already invalidated');
+        debugPrint('ENHANCED_TOKEN_SERVICE: Session token not found');
       }
     } catch (e) {
-      debugPrint('ENHANCED_TOKEN_SERVICE: Error invalidating session: $e');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error deleting session: $e');
       rethrow;
     }
   }
@@ -408,33 +504,33 @@ class EnhancedUserTokenService {
     }
   }
 
-  /// Cleanup expired sessions across all users
+  /// Cleanup expired sessions across all users by deleting them
   static Future<void> cleanupExpiredSessions() async {
     try {
       final db = await _dbHelper.database;
       final now = DateTime.now().toIso8601String();
       
-      // Get count of sessions to clean up
-      final countResult = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM ${DatabaseHelper.tableUserSessions} WHERE (expiresAt < ? OR isActive = 0) AND invalidated_at IS NULL',
-        [now],
+      // Get sessions that need to be deleted
+      final sessionsToDelete = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: 'expiresAt < ?',
+        whereArgs: [now],
       );
       
-      final sessionsToClean = countResult.first['count'] as int;
-      
-      if (sessionsToClean > 0) {
-        // Mark expired sessions as invalidated
-        await db.update(
+      if (sessionsToDelete.isNotEmpty) {
+        // DELETE expired sessions completely
+        final result = await db.delete(
           DatabaseHelper.tableUserSessions,
-          {
-            'isActive': 0,
-            'invalidated_at': now,
-          },
-          where: 'expiresAt < ? AND isActive = 1',
+          where: 'expiresAt < ?',
           whereArgs: [now],
         );
         
-        debugPrint('ENHANCED_TOKEN_SERVICE: Cleaned up $sessionsToClean expired sessions');
+        // Log deletion for each session to trigger sync
+        for (final session in sessionsToDelete) {
+          await _dbHelper.logChange(DatabaseHelper.tableUserSessions, session['id'].toString(), 'delete');
+        }
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Deleted $result expired sessions');
       } else {
         debugPrint('ENHANCED_TOKEN_SERVICE: No expired sessions to clean up');
       }
@@ -449,26 +545,27 @@ class EnhancedUserTokenService {
       final db = await _dbHelper.database;
       final now = DateTime.now().toIso8601String();
       
-      // Get all sessions for the user that need cleanup
-      final sessionsToClean = await db.query(
+      // Get all expired or inactive sessions for the user that need cleanup
+      final sessionsToDelete = await db.query(
         DatabaseHelper.tableUserSessions,
         where: 'username = ? AND (isActive = 0 OR expiresAt < ?)',
         whereArgs: [username, now],
       );
       
-      if (sessionsToClean.isNotEmpty) {
-        // Mark them as properly invalidated
-        await db.update(
+      if (sessionsToDelete.isNotEmpty) {
+        // DELETE expired/inactive sessions completely
+        final result = await db.delete(
           DatabaseHelper.tableUserSessions,
-          {
-            'isActive': 0,
-            'invalidated_at': now,
-          },
           where: 'username = ? AND (isActive = 0 OR expiresAt < ?)',
           whereArgs: [username, now],
         );
         
-        debugPrint('ENHANCED_TOKEN_SERVICE: Cleaned up ${sessionsToClean.length} sessions for user: $username');
+        // Log deletion for each session to trigger sync
+        for (final session in sessionsToDelete) {
+          await _dbHelper.logChange(DatabaseHelper.tableUserSessions, session['id'].toString(), 'delete');
+        }
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: Deleted $result stale sessions for user: $username');
       }
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error cleaning up user sessions: $e');
@@ -676,39 +773,38 @@ class EnhancedUserTokenService {
 
   // ============== LAN SYNC BROADCASTING METHODS ==============
 
-  /// Broadcast session invalidation to all connected devices via LAN sync
-  static Future<void> _broadcastSessionInvalidation(String username, List<Map<String, dynamic>> invalidatedSessions) async {
+  /// Broadcast session deletions to all connected devices via LAN sync
+  static Future<void> _broadcastSessionDeletions(String username, List<Map<String, dynamic>> deletedSessions) async {
     try {
-      // Prepare session invalidation data for broadcast
-      final invalidationData = {
-        'type': 'session_invalidation',
+      // Prepare session deletion data for broadcast
+      final deletionData = {
+        'type': 'session_deletion',
         'username': username,
         'timestamp': DateTime.now().toIso8601String(),
-        'invalidated_sessions': invalidatedSessions.map((session) => {
+        'deleted_sessions': deletedSessions.map((session) => {
           'session_id': session['id'],
           'device_id': session['deviceId'],
           'device_name': session['deviceName'],
           'session_token': session['sessionToken'],
         }).toList(),
-        'action': 'logout_user',
+        'action': 'delete_sessions',
       };
 
-      debugPrint('ENHANCED_TOKEN_SERVICE: Broadcasting session invalidation for user: $username to ${invalidatedSessions.length} sessions');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Broadcasting session deletion for user: $username - ${deletedSessions.length} sessions');
 
       // Broadcast via LAN server if running
       if (EnhancedShelfServer.isRunning) {
         EnhancedShelfServer.announceToClients(
-          'Session invalidated for user: $username',
-          type: 'session_invalidation',
+          'Sessions deleted for user: $username',
+          type: 'session_deletion',
         );
         
-        // Broadcast the session invalidation details
+        // Broadcast the session deletion details
         EnhancedShelfServer.announceToClients(
-          jsonEncode(invalidationData),
+          jsonEncode(deletionData),
           type: 'session_update'
         );
         
-        // Use reflection to access private broadcast method or implement public one
         try {
           // Force sync the user_sessions table to all clients
           await EnhancedShelfServer.forceSyncTable('user_sessions');
@@ -723,20 +819,29 @@ class EnhancedUserTokenService {
           'type': 'database_change',
           'change': {
             'table': 'user_sessions',
-            'operation': 'update',
+            'operation': 'delete',
             'recordId': username,
-            'data': invalidationData,
+            'data': deletionData,
             'timestamp': DateTime.now().toIso8601String(),
             'source': 'session_manager',
           },
         });
       } catch (e) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting via sync client: $e');
+        debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting deletion via sync client: $e');
       }
 
-      debugPrint('ENHANCED_TOKEN_SERVICE: Session invalidation broadcasted successfully');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session deletion broadcasted successfully');
     } catch (e) {
-      debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting session invalidation: $e');
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting session deletion: $e');
+    }
+  }
+
+  /// Broadcast single session deletion to all connected devices via LAN sync
+  static Future<void> _broadcastSessionDeletion(Map<String, dynamic> deletedSession) async {
+    try {
+      await _broadcastSessionDeletions(deletedSession['username'], [deletedSession]);
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting single session deletion: $e');
     }
   }
 

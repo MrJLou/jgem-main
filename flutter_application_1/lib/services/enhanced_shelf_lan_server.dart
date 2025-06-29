@@ -544,21 +544,54 @@ class EnhancedShelfServer {
         
         if (id != null) {
           try {
-            // Use INSERT OR REPLACE to handle conflicts gracefully
-            await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
-            
-            // Check if this was an insert or update
-            final existing = await db.query(table, where: 'id = ?', whereArgs: [id], limit: 1);
-            if (existing.isNotEmpty) {
-              final existingRecord = existing.first;
-              final isUpdate = existingRecord.toString() != recordMap.toString();
-              if (isUpdate) {
-                updatedCount++;
+            // Special handling for user_sessions table to prevent duplicates
+            if (table == 'user_sessions') {
+              // Check if session already exists by sessionToken to prevent duplicates
+              if (recordMap['sessionToken'] != null) {
+                final existing = await db.query(
+                  table,
+                  where: 'sessionToken = ?',
+                  whereArgs: [recordMap['sessionToken']],
+                );
+                
+                if (existing.isNotEmpty) {
+                  // Update existing session instead of creating duplicate
+                  await db.update(
+                    table, 
+                    recordMap, 
+                    where: 'sessionToken = ?', 
+                    whereArgs: [recordMap['sessionToken']]
+                  );
+                  updatedCount++;
+                  debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                } else {
+                  // Insert new session
+                  await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+                  insertedCount++;
+                  debugPrint('Inserted new session: ${recordMap['sessionToken']}');
+                }
               } else {
+                // Fallback to normal insert if no sessionToken
+                await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
                 insertedCount++;
               }
             } else {
-              insertedCount++;
+              // Use INSERT OR REPLACE to handle conflicts gracefully for other tables
+              await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+              
+              // Check if this was an insert or update
+              final existing = await db.query(table, where: 'id = ?', whereArgs: [id], limit: 1);
+              if (existing.isNotEmpty) {
+                final existingRecord = existing.first;
+                final isUpdate = existingRecord.toString() != recordMap.toString();
+                if (isUpdate) {
+                  updatedCount++;
+                } else {
+                  insertedCount++;
+                }
+              } else {
+                insertedCount++;
+              }
             }
           } catch (e) {
             debugPrint('Error syncing record $id in table $table: $e');
@@ -977,11 +1010,45 @@ class EnhancedShelfServer {
           case 'insert':
             if (recordData != null) {
               try {
-                // Use INSERT OR REPLACE to handle potential conflicts
-                await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                // Log the change to trigger sync notifications
-                await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                // Special handling for user_sessions table to prevent duplicates
+                if (table == 'user_sessions') {
+                  // Check if session already exists by sessionToken to prevent duplicates
+                  if (recordData['sessionToken'] != null) {
+                    final existing = await db.query(
+                      table,
+                      where: 'sessionToken = ?',
+                      whereArgs: [recordData['sessionToken']],
+                    );
+                    
+                    if (existing.isNotEmpty) {
+                      // Update existing session instead of creating duplicate
+                      await db.update(
+                        table, 
+                        recordData, 
+                        where: 'sessionToken = ?', 
+                        whereArgs: [recordData['sessionToken']]
+                      );
+                      await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                      debugPrint('Updated existing session via WebSocket: ${recordData['sessionToken']}');
+                    } else {
+                      // Insert new session
+                      await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                      await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                      debugPrint('Successfully applied WebSocket session insert: $table.$recordId');
+                    }
+                  } else {
+                    // Fallback to normal insert if no sessionToken
+                    await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                    await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                    debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                  }
+                } else {
+                  // Use INSERT OR REPLACE to handle potential conflicts for other tables
+                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                  // Log the change to trigger sync notifications
+                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                  debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                }
               } catch (e) {
                 debugPrint('Error applying WebSocket insert: $e');
                 // If insert fails, try update as fallback
@@ -1034,17 +1101,26 @@ class EnhancedShelfServer {
           case 'delete':
             try {
               String whereColumn = 'id';
+              String whereValue = recordId;
+              
               // Handle special cases for tables with different primary key columns
               if (table == 'active_patient_queue') {
                 whereColumn = 'queueEntryId';
               } else if (table == 'user_sessions') {
-                whereColumn = 'id';
+                // For user_sessions, try to use sessionToken if available in the data
+                if (recordData != null && recordData['sessionToken'] != null) {
+                  whereColumn = 'sessionToken';
+                  whereValue = recordData['sessionToken'];
+                  debugPrint('Using sessionToken for session deletion: $whereValue');
+                } else {
+                  whereColumn = 'id';
+                }
               }
               
-              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [recordId]);
+              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
               // Log the change to trigger sync notifications
               await _dbHelper!.logChange(table, recordId, 'delete');
-              debugPrint('Successfully applied WebSocket delete: $table.$recordId (rows affected: $rowsAffected)');
+              debugPrint('Successfully applied WebSocket delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying WebSocket delete: $e');
             }

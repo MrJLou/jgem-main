@@ -84,8 +84,6 @@ void main() async {
   
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
-  
-  debugPrint('Application initialized with simplified authentication');
 
   runApp(const PatientRecordManagementApp());
 }
