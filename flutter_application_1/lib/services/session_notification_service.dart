@@ -16,42 +16,58 @@ class SessionNotificationService {
 
   /// Show session conflict notification
   static void showSessionInvalidatedNotification() {
-    if (_navigatorKey?.currentContext == null) return;
+    try {
+      final context = _navigatorKey?.currentContext;
+      if (context == null) {
+        debugPrint('SESSION_NOTIFICATION: No context available, cannot show overlay');
+        return;
+      }
 
-    // Remove any existing overlay
-    _overlayEntry?.remove();
+      // Remove any existing overlay
+      _overlayEntry?.remove();
 
-    _overlayEntry = OverlayEntry(
-      builder: (context) => _SessionInvalidatedOverlay(
-        onDismiss: () {
-          _overlayEntry?.remove();
-          _overlayEntry = null;
-        },
-      ),
-    );
+      _overlayEntry = OverlayEntry(
+        builder: (context) => _SessionInvalidatedOverlay(
+          onDismiss: () {
+            _overlayEntry?.remove();
+            _overlayEntry = null;
+          },
+        ),
+      );
 
-    Overlay.of(_navigatorKey!.currentContext!).insert(_overlayEntry!);
+      final overlay = Overlay.of(context);
+      overlay.insert(_overlayEntry!);
+    } catch (e) {
+      debugPrint('SESSION_NOTIFICATION: Error showing session invalidated notification: $e');
+      _overlayEntry = null;
+    }
   }
 
   /// Show a simple snackbar notification
   static void showSnackBarNotification(String message, {Color? backgroundColor}) {
-    if (_navigatorKey?.currentContext == null) return;
+    try {
+      final context = _navigatorKey?.currentContext;
+      if (context == null) {
+        debugPrint('SESSION_NOTIFICATION: No context available, cannot show snackbar');
+        return;
+      }
 
-    ScaffoldMessenger.of(_navigatorKey!.currentContext!).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message)),
-          ],
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: backgroundColor ?? Colors.orange,
+          duration: const Duration(seconds: 5),
         ),
-        backgroundColor: backgroundColor ?? Colors.orange,
-        duration: const Duration(seconds: 5),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('SESSION_NOTIFICATION: Error showing snackbar notification: $e');
+    }
   }
 }
 

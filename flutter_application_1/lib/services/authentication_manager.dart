@@ -5,6 +5,8 @@ import '../screens/login_screen.dart';
 import 'database_helper.dart';
 import 'enhanced_user_token_service.dart';
 import 'session_notification_service.dart';
+import 'enhanced_shelf_lan_server.dart';
+import 'database_sync_client.dart';
 import '../models/user.dart';
 
 /// Comprehensive Authentication Manager
@@ -73,11 +75,15 @@ class AuthenticationManager {
       }
       
       // Create new session (this will invalidate existing ones if forceLogout is true)
-      debugPrint('AUTH_MANAGER: Creating new session with forceLogout: $forceLogout');
+      debugPrint('AUTH_MANAGER: DEBUG - About to create session for $username with forceLogout: $forceLogout');
+      debugPrint('AUTH_MANAGER: DEBUG - Device is host: ${EnhancedShelfServer.isRunning}, client: ${DatabaseSyncClient.isConnected}');
+      
       final sessionToken = await EnhancedUserTokenService.createUserSession(
         username: username,
         forceLogout: forceLogout,
       );
+      
+      debugPrint('AUTH_MANAGER: DEBUG - Session created successfully with token: ${sessionToken.substring(0, 8)}...');
       
       // Save authentication state
       await _saveAuthenticationState(

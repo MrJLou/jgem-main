@@ -58,6 +58,18 @@ class EnhancedUserTokenService {
       final db = await _dbHelper.database;
       final deviceId = await _getOrCreateDeviceId();
       
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Starting session creation for $username on device $deviceId');
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Database instance: ${db.isOpen ? 'OPEN' : 'CLOSED'}');
+      
+      // Test database connection with a simple query
+      try {
+        final testQuery = await db.query(DatabaseHelper.tableUserSessions, limit: 1);
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Database test query successful, ${testQuery.length} results');
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Database test query failed: $e');
+        throw Exception('Database connection test failed: $e');
+      }
+      
       // REAL-TIME SYNC: Force immediate session refresh from network to get latest state
       // This ensures both host and client have the most current session info BEFORE creating sessions
       debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Forcing immediate session refresh...');
@@ -91,8 +103,13 @@ class EnhancedUserTokenService {
       
       // If forcing logout, invalidate all existing sessions
       if (forceLogout && existingSessions.isNotEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Starting force logout of ${existingSessions.length} existing sessions');
         await invalidateAllUserSessions(username);
         debugPrint('ENHANCED_TOKEN_SERVICE: Force logged out existing sessions for $username');
+        
+        // Verify sessions were actually invalidated
+        final remainingSessions = await getActiveUserSessions(username);
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - After force logout: ${remainingSessions.length} remaining sessions');
       }
       
       // Generate new session token with unique identifiers
@@ -133,12 +150,45 @@ class EnhancedUserTokenService {
         return createUserSession(username: username, deviceName: deviceName, forceLogout: forceLogout);
       }
       
-      // Insert new session record
-      await db.insert(
+      // Insert new session record with debug logging
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - About to insert session into local database...');
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session data: $sessionData');
+      
+      final insertResult = await db.insert(
         DatabaseHelper.tableUserSessions,
         sessionData,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session inserted with result: $insertResult');
+      
+      // Verify the session was actually inserted by querying it back immediately
+      final verifyResult = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: 'sessionToken = ?',
+        whereArgs: [sessionToken],
+      );
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Verification query found ${verifyResult.length} sessions with this token');
+      if (verifyResult.isNotEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Inserted session verified: ${verifyResult.first}');
+      } else {
+        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Session was NOT found in database after insert!');
+        
+        // Try to query all sessions for this user to see what's in the database
+        final allUserSessions = await db.query(
+          DatabaseHelper.tableUserSessions,
+          where: 'username = ?',
+          whereArgs: [username],
+        );
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - All sessions for user $username: ${allUserSessions.length}');
+        for (final session in allUserSessions) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Existing session: ${session['sessionToken']}, active: ${session['isActive']}, expires: ${session['expiresAt']}');
+        }
+        
+        // This is a critical error - we should throw an exception
+        throw Exception('Failed to create session: Session not found in database after insert');
+      }
       
       // Store current session info locally
       await _storeCurrentSessionInfo(sessionToken, username);
@@ -302,6 +352,8 @@ class EnhancedUserTokenService {
         whereArgs.add(deviceId);
       }
       
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Querying sessions with WHERE: $whereClause, ARGS: $whereArgs');
+      
       final result = await db.query(
         DatabaseHelper.tableUserSessions,
         where: whereClause,
@@ -309,7 +361,8 @@ class EnhancedUserTokenService {
         orderBy: 'created_at DESC',
       );
 
-      debugPrint('ENHANCED_TOKEN_SERVICE: Raw query result for $username: ${result.length} sessions');
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Raw query result for $username: ${result.length} sessions');
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Full query result: $result');
 
       // Filter out actually expired sessions (database might have stale data)
       final validSessions = <Map<String, dynamic>>[];
