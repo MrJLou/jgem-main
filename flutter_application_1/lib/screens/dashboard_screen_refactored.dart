@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
-import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/services/authentication_manager.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
 import 'lan_connection_screen.dart';
@@ -103,7 +103,7 @@ class DashboardScreenState extends State<DashboardScreen> {
       },
     );
     if (shouldLogout == true) {
-      await AuthService.logout();
+      await AuthenticationManager.logout();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),

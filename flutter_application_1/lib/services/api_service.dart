@@ -114,7 +114,8 @@ class ApiService {
 
   static Future<void> logout() async {
     _currentUserRole = null;
-    await AuthService.clearCredentials();
+    // Use AuthService.logout() which properly delegates to AuthenticationManager
+    await AuthService.logout();
   }
 
   // Appointment Methods

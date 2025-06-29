@@ -101,7 +101,7 @@ class SocketService {
   static bool get isHosting => EnhancedShelfServer.isRunning;
 
   /// Get host connection info
-  static Map<String, dynamic> getHostConnectionInfo() {
-    return EnhancedShelfServer.getConnectionInfo();
+  static Future<Map<String, dynamic>> getHostConnectionInfo() async {
+    return await EnhancedShelfServer.getConnectionInfo();
   }
 }

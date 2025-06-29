@@ -3,7 +3,9 @@ import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/models/medical_record.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/services/database_sync_client.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 class PatientHistoryScreen extends StatefulWidget {
   final Patient patient;
@@ -16,11 +18,53 @@ class PatientHistoryScreen extends StatefulWidget {
 
 class _PatientHistoryScreenState extends State<PatientHistoryScreen> {
   late Future<List<dynamic>> _historyFuture;
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
 
   @override
   void initState() {
     super.initState();
     _historyFuture = _fetchPatientHistory();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle patient history and appointment changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'patient_history' || 
+                                change['table'] == 'appointments' ||
+                                change['table'] == 'medical_records')) {
+            // Refresh history when related data changes
+            _refreshHistory();
+          }
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh for history updates
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) {
+            _refreshHistory();
+          }
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _refreshHistory() {
+    if (mounted) {
+      setState(() {
+        _historyFuture = _fetchPatientHistory();
+      });
+    }
   }
 
   Future<List<dynamic>> _fetchPatientHistory() async {
@@ -46,6 +90,13 @@ class _PatientHistoryScreenState extends State<PatientHistoryScreen> {
       appBar: AppBar(
         title: Text('History for ${widget.patient.fullName}'),
         backgroundColor: Colors.teal[700],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshHistory,
+            tooltip: 'Refresh History',
+          ),
+        ],
       ),
       body: FutureBuilder<List<dynamic>>(
         future: _historyFuture,

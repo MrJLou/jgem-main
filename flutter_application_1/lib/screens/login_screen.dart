@@ -3,7 +3,8 @@ import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
 import 'dart:math' as math; // Added for rotation
 // import 'dart:async'; // REMOVED for Timer
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
-import '../services/auth_service.dart';
+import '../services/enhanced_auth_integration.dart';
+import '../services/enhanced_user_token_service.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -106,18 +107,18 @@ class LoginScreenState extends State<LoginScreen>
   Future<void> _checkExistingSession() async {
     setState(() => _isLoading = true);
     try {
-      final isLoggedIn = await AuthService.isLoggedIn();
+      final isLoggedIn = await EnhancedAuthIntegration.isLoggedIn();
 
       if (isLoggedIn && mounted) {
-        final credentials = await AuthService.getSavedCredentials();
-        if (credentials != null) {
+        final currentUser = await EnhancedAuthIntegration.getCurrentUser();
+        if (currentUser != null) {
           // Only navigate to dashboard if actually logged in
           if (mounted) {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(
                 builder: (context) => DashboardScreen(
-                  accessLevel: credentials['accessLevel'] ?? 'user',
+                  accessLevel: currentUser.role,
                 ),
               ),
               (route) =>
@@ -166,9 +167,21 @@ class LoginScreenState extends State<LoginScreen>
         // final username = _usernameController.text; // Already defined above        // Check rate limiting before attempting login
         // await LoginRateLimiter.canAttemptLogin(username); // COMMENTED OUT
 
-        // Use enhanced session management login
-        final response = await AuthService.loginWithSessionManagement(
-            username, _passwordController.text);
+        // Use enhanced authentication integration
+        final response = await EnhancedAuthIntegration.login(
+          username: username,
+          password: _passwordController.text,
+          forceLogout: false,
+        );
+
+        // Check if login was successful
+        if (response['success'] == false) {
+          setState(() {
+            _errorMessage = response['message'] ?? 'Login failed';
+          });
+          _recordFailedLoginAttempt(username);
+          return;
+        }
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -177,7 +190,6 @@ class LoginScreenState extends State<LoginScreen>
             _errorMessage = 'Login failed: User role not found in response.';
           });
           _recordFailedLoginAttempt(username); // Record failed attempt
-          // await LoginRateLimiter.recordFailedAttempt(username); // COMMENTED OUT
           return;
         }
 
@@ -187,12 +199,8 @@ class LoginScreenState extends State<LoginScreen>
         // Reset login attempts for this user on successful login
         _loginAttempts.remove(username);
 
-        // Save credentials after successful login
-        await AuthService.saveLoginCredentials(
-          token: response['token'],
-          username: username,
-          accessLevel: userRole,
-        );
+        // Note: Credentials are already saved by AuthenticationManager.login()
+        // No need to call AuthService.saveLoginCredentials() as it conflicts with the new system
 
         // Navigate to dashboard and remove all previous routes
         if (mounted) {
@@ -207,9 +215,10 @@ class LoginScreenState extends State<LoginScreen>
           );
         }
       } catch (e) {
-        // Check if user is already logged in elsewhere
-        if (e.toString().contains('already logged in') ||
-            e.toString().contains('logged in on another device')) {
+        // Check for session conflict (user already logged in on another device)
+        if (e is UserSessionConflictException || 
+            e.toString().contains('UserSessionConflictException') ||
+            e.toString().contains('already logged in on another device')) {
           await _handleSessionConflict(username, _passwordController.text);
           return;
         }
@@ -295,9 +304,33 @@ class LoginScreenState extends State<LoginScreen>
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('User Already Logged In'),
-          content: const Text(
-              'This user is already logged in on another device. Do you want to log out the existing session and continue?'),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('Account Already Active'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This account is currently logged in on another device.',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Do you want to log out from the other device and continue on this device?',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '⚠️ The other device will be automatically logged out.',
+                style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -305,8 +338,12 @@ class LoginScreenState extends State<LoginScreen>
                 Navigator.of(dialogContext).pop(false);
               },
             ),
-            TextButton(
-              child: const Text('Force Logout'),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Force Login'),
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
@@ -320,9 +357,19 @@ class LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = true);
       try {
         // Attempt login with force logout
-        final response = await AuthService.loginWithSessionManagement(
-            username, password,
-            forceLogoutExisting: true);
+        final response = await EnhancedAuthIntegration.login(
+          username: username,
+          password: password,
+          forceLogout: true,
+        );
+
+        // Check if login was successful
+        if (response['success'] == false) {
+          setState(() {
+            _errorMessage = response['message'] ?? 'Login failed';
+          });
+          return;
+        }
 
         // Validate that the user has a role (access level) from the response
         final userRole = response['user']?.role;
@@ -336,12 +383,25 @@ class LoginScreenState extends State<LoginScreen>
         // Reset login attempts for this user on successful login
         _loginAttempts.remove(username);
 
-        // Save credentials after successful login
-        await AuthService.saveLoginCredentials(
-          token: response['token'],
-          username: username,
-          accessLevel: userRole,
-        );
+        // Note: Credentials are already saved by AuthenticationManager.login()
+        // No need to call AuthService.saveLoginCredentials() as it conflicts with the new system
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text('Successfully logged in. Other device has been logged out.'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
 
         // Navigate to dashboard and remove all previous routes
         if (mounted) {

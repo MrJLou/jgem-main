@@ -8,6 +8,7 @@ import '../../models/user.dart'; // ADDED for doctors
 import '../../services/queue_service.dart';
 import '../../services/database_helper.dart';
 import '../../services/appointment_database_service.dart';
+import '../../services/database_sync_client.dart'; // Added for sync updates
 import '../../models/active_patient_queue_item.dart';
 import '../../models/appointment.dart';
 import '../../models/patient.dart';
@@ -66,6 +67,9 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   List<Patient>? _searchResults;
   bool _isLoading = false;
+  
+  // Sync subscription for real-time updates
+  StreamSubscription? _syncSubscription;
 
   @override
   void initState() {
@@ -73,6 +77,27 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     _appointmentDbService = AppointmentDatabaseService(_dbHelper);
     _fetchAvailableServices();
     _fetchDoctors(); // ADDED
+    _setupSyncListener();
+  }
+  
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle queue changes to refresh the queue table
+      switch (updateEvent['type']) {
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+        case 'remote_change_applied':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'active_patient_queue') {
+            setState(() {
+              // This will trigger a rebuild and refresh the queue table
+            });
+          }
+          break;
+      }
+    });
   }
 
   Future<void> _fetchAvailableServices() async {
@@ -434,9 +459,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                     'category': service.category ?? 'Uncategorized',
                     'price': service.defaultPrice ?? 0.0,
                   })
-              .toList();          // Walk-in patients are added directly to the queue and do not create a separate appointment record.
-          // This keeps walk-ins distinct from scheduled appointments.
-          await widget.queueService.addPatientDataToQueue({
+              .toList();          // Walk-in patients are added ONLY to the queue and do NOT create appointment records.
+          // This keeps walk-ins completely separate from scheduled appointments.
+          // Queue and appointments are now completely independent systems.
+          final addedPatient = await widget.queueService.addPatientDataToQueue({
             'patientName': finalPatientNameToUse,
             'patientId':
                 finalPatientIdToUse.isNotEmpty ? finalPatientIdToUse : null,
@@ -453,6 +479,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
             'doctorName': _isLaboratoryOnly ? 'Laboratory Only' : _selectedDoctor?.fullName,
             'isLaboratoryOnly': _isLaboratoryOnly, // NEW: Flag for laboratory-only entries
           });
+
+          // Log the queue addition for debugging
+          if (kDebugMode) {
+            print('Patient added to queue only (not appointments): ${addedPatient.patientName}');
+          }
 
           // ---- Increment service usage count ----
           if (_selectedServices.isNotEmpty) {
@@ -984,7 +1015,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       ),
                       const SizedBox(height: 20),
                       StreamBuilder<List<ActivePatientQueueItem>>(
-                        stream: Stream.periodic(const Duration(seconds: 5))
+                        stream: Stream.periodic(const Duration(seconds: 30))
                             .asyncMap((_) => widget.queueService
                                 .getActiveQueueItems(
                                     statuses: ['waiting', 'in_consultation'])),
@@ -1170,7 +1201,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
   Widget _buildQueueTable() {
     return StreamBuilder<List<ActivePatientQueueItem>>(
-      stream: Stream.periodic(const Duration(seconds: 2)).asyncMap(
+      stream: Stream.periodic(const Duration(seconds: 30)).asyncMap(
           (_) => widget.queueService.getActiveQueueItems(
               statuses: ['waiting', 'in_consultation']) // Fetch active items
           ),
@@ -1364,6 +1395,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   @override
   void dispose() {
     _patientSearchDebounce?.cancel();
+    _syncSubscription?.cancel();
     _patientIdController.dispose();
     _ageController.dispose();
     _genderController.dispose();

@@ -73,6 +73,9 @@ class EnhancedShelfServer {
     try {
       _currentPort = port;
       
+      // Detect server IP BEFORE starting the server
+      final detectedIp = await _getActualServerIp();
+      
       // Set up database change callback for this server
       DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       
@@ -86,12 +89,26 @@ class EnhancedShelfServer {
           .addMiddleware(_lanOnlyMiddleware())
           .addHandler(router.call);
 
-      // Start HTTP server
+      // Start HTTP server on all interfaces (0.0.0.0)
       _server = await shelf_io.serve(handler, '0.0.0.0', port);
       _isRunning = true;
       
-      debugPrint('Enhanced Shelf Server started on port $port with integrated WebSocket support');
-      debugPrint('Access code: $_accessCode');
+      // Enhanced startup logging
+      debugPrint('');
+      debugPrint('🚀 === ENHANCED SHELF SERVER STARTED ===');
+      debugPrint('✓ Server running on port: $port');
+      debugPrint('✓ Server IP for clients: $detectedIp');
+      debugPrint('✓ Access code: $_accessCode');
+      debugPrint('✓ WebSocket endpoint: /ws');
+      debugPrint('✓ Full WebSocket URL: ws://$detectedIp:$port/ws');
+      debugPrint('✓ HTTP API URL: http://$detectedIp:$port');
+      debugPrint('');
+      debugPrint('📱 For client devices to connect:');
+      debugPrint('   Server IP: $detectedIp');
+      debugPrint('   Port: $port');
+      debugPrint('   Access Code: $_accessCode');
+      debugPrint('==========================================');
+      debugPrint('');
       
       return true;
     } catch (e) {
@@ -184,7 +201,7 @@ class EnhancedShelfServer {
       }
 
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services'];
+      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'user_sessions'];
       final data = <String, List<Map<String, dynamic>>>{};
       
       for (final table in tables) {
@@ -388,18 +405,22 @@ class EnhancedShelfServer {
     };
   }
 
-  /// Check if IP is in LAN range
+  /// Check if IP is in LAN range (enhanced for your network)
   static bool _isLanIp(String ip) {
     if (ip == 'localhost') return true;
     if (ip == '127.0.0.1' || ip == '::1') return true;
     
+    // Your specific network ranges
+    if (ip.startsWith('192.168.68.')) return true; // Your current network
+    
+    // Standard private network ranges
     final lanRanges = [
-      '192.168.',
-      '10.',
+      '192.168.',   // Class C private networks
+      '10.',        // Class A private networks
       '172.16.', '172.17.', '172.18.', '172.19.',
       '172.20.', '172.21.', '172.22.', '172.23.',
       '172.24.', '172.25.', '172.26.', '172.27.',
-      '172.28.', '172.29.', '172.30.', '172.31.',
+      '172.28.', '172.29.', '172.30.', '172.31.',  // Class B private networks
     ];
     
     return lanRanges.any((range) => ip.startsWith(range));
@@ -522,22 +543,83 @@ class EnhancedShelfServer {
         final id = recordMap['id'];
         
         if (id != null) {
-          // Check if record exists
-          final existing = await db.query(table, where: 'id = ?', whereArgs: [id]);
-          
-          if (existing.isNotEmpty) {
-            // Update existing record
-            await db.update(table, recordMap, where: 'id = ?', whereArgs: [id]);
-            updatedCount++;
-          } else {
-            // Insert new record
-            await db.insert(table, recordMap);
-            insertedCount++;
+          try {
+            // Special handling for user_sessions table to prevent duplicates
+            if (table == 'user_sessions') {
+              // Check if session already exists by sessionToken to prevent duplicates
+              if (recordMap['sessionToken'] != null) {
+                final existing = await db.query(
+                  table,
+                  where: 'sessionToken = ?',
+                  whereArgs: [recordMap['sessionToken']],
+                );
+                
+                if (existing.isNotEmpty) {
+                  // Update existing session instead of creating duplicate
+                  await db.update(
+                    table, 
+                    recordMap, 
+                    where: 'sessionToken = ?', 
+                    whereArgs: [recordMap['sessionToken']]
+                  );
+                  updatedCount++;
+                  debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                } else {
+                  // Insert new session
+                  await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+                  insertedCount++;
+                  debugPrint('Inserted new session: ${recordMap['sessionToken']}');
+                }
+              } else {
+                // Fallback to normal insert if no sessionToken
+                await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+                insertedCount++;
+              }
+            } else {
+              // Use INSERT OR REPLACE to handle conflicts gracefully for other tables
+              await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+              
+              // Check if this was an insert or update
+              final existing = await db.query(table, where: 'id = ?', whereArgs: [id], limit: 1);
+              if (existing.isNotEmpty) {
+                final existingRecord = existing.first;
+                final isUpdate = existingRecord.toString() != recordMap.toString();
+                if (isUpdate) {
+                  updatedCount++;
+                } else {
+                  insertedCount++;
+                }
+              } else {
+                insertedCount++;
+              }
+            }
+          } catch (e) {
+            debugPrint('Error syncing record $id in table $table: $e');
+            // Try alternative approach with explicit update/insert
+            try {
+              final existing = await db.query(table, where: 'id = ?', whereArgs: [id]);
+              
+              if (existing.isNotEmpty) {
+                // Update existing record
+                await db.update(table, recordMap, where: 'id = ?', whereArgs: [id]);
+                updatedCount++;
+              } else {
+                // Insert new record
+                await db.insert(table, recordMap);
+                insertedCount++;
+              }
+            } catch (fallbackError) {
+              debugPrint('Fallback sync also failed for $id: $fallbackError');
+            }
           }
         } else {
           // Insert record without ID (let database generate)
-          await db.insert(table, recordMap);
-          insertedCount++;
+          try {
+            await db.insert(table, recordMap);
+            insertedCount++;
+          } catch (e) {
+            debugPrint('Error inserting record without ID: $e');
+          }
         }
       }
       
@@ -563,6 +645,17 @@ class EnhancedShelfServer {
     }
   }
 
+  /// Broadcast real-time data to all connected WebSocket clients immediately
+  static Future<void> broadcastToAllClients(Map<String, dynamic> data) async {
+    try {
+      final message = jsonEncode(data);
+      _broadcastToAllClients(message);
+      debugPrint('EnhancedShelfServer: Broadcasted real-time data to ${_activeWebSocketConnections.length} clients');
+    } catch (e) {
+      debugPrint('EnhancedShelfServer: Error broadcasting real-time data: $e');
+    }
+  }
+
   /// Get server status information
   static Map<String, dynamic> getServerStatus() {
     return {
@@ -578,27 +671,111 @@ class EnhancedShelfServer {
   }
 
   /// Get connection information for sharing with other devices
-  static Map<String, dynamic> getConnectionInfo() {
+  static Future<Map<String, dynamic>> getConnectionInfo() async {
     if (!_isRunning || _accessCode == null) {
       return {'error': 'Server is not running'};
     }
 
+    // Always get fresh IP address
+    final actualServerIp = await _getActualServerIp() ?? 'localhost';
+
     return {
-      'serverIp': _allowedIpRanges.isNotEmpty ? '${_allowedIpRanges.first}.100' : 'localhost',
+      'serverIp': actualServerIp,
       'port': _currentPort,
       'webSocketEndpoint': '/ws',
       'accessCode': _accessCode,
       'timestamp': DateTime.now().toIso8601String(),
       'webSocketIntegrated': true,
       'activeConnections': _activeWebSocketConnections.length,
+      'webSocketUrl': 'ws://$actualServerIp:$_currentPort/ws',
+      'httpUrl': 'http://$actualServerIp:$_currentPort',
       'instructions': [
         '1. Open the Patient Management app on your device',
         '2. Go to "LAN Client Connection"',
-        '3. Enter the server details above',
-        '4. HTTP Port: $_currentPort, WebSocket Endpoint: ws://[SERVER_IP]:$_currentPort/ws',
-        '5. Tap "Connect to Server"',
+        '3. Enter the server details above:',
+        '   - Server IP: $actualServerIp',
+        '   - Port: $_currentPort',
+        '   - Access Code: $_accessCode',
+        '4. Tap "Connect to Server"',
+      ],
+      'troubleshooting': [
+        'Ensure both devices are on the same WiFi network',
+        'Check that firewall is not blocking port $_currentPort',
+        'Verify the IP address has not changed',
+        'Make sure the server is running before connecting',
       ],
     };
+  }
+
+  /// Get the actual server IP address with improved detection
+  static Future<String?> _getActualServerIp() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      final validIps = <Map<String, String>>[];
+      
+      debugPrint('=== IP Detection Debug ===');
+      
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (address.type == InternetAddressType.IPv4) {
+            final ip = address.address;
+            final interfaceName = interface.name;
+            
+            debugPrint('Found IPv4: $ip on $interfaceName');
+            
+            if (_isLanIp(ip) && !ip.startsWith('127.') && !address.isLoopback) {
+              validIps.add({
+                'ip': ip,
+                'interface': interfaceName,
+                'priority': _getIpPriority(ip).toString(),
+              });
+              debugPrint('✓ Valid LAN IP: $ip on interface: $interfaceName (priority: ${_getIpPriority(ip)})');
+            } else {
+              debugPrint('✗ Skipped IP: $ip (not suitable for LAN)');
+            }
+          }
+        }
+      }
+      
+      debugPrint('Found ${validIps.length} valid LAN IPs');
+      
+      if (validIps.isNotEmpty) {
+        // Sort by priority (higher number = higher priority)
+        validIps.sort((a, b) => int.parse(b['priority']!) - int.parse(a['priority']!));
+        
+        final selectedIp = validIps.first['ip']!;
+        final selectedInterface = validIps.first['interface']!;
+        
+        debugPrint('=== SELECTED IP ===');
+        debugPrint('✓ Primary LAN IP: $selectedIp');
+        debugPrint('✓ Interface: $selectedInterface');
+        debugPrint('✓ Clients should connect to: $selectedIp:$_currentPort');
+        debugPrint('==================');
+        
+        return selectedIp;
+      }
+      
+      // Fallback to localhost if no LAN IP found
+      debugPrint('❌ No LAN IP found, using localhost');
+      debugPrint('NOTE: Clients will not be able to connect from other devices!');
+      return 'localhost';
+    } catch (e) {
+      debugPrint('Error getting server IP: $e');
+      return 'localhost';
+    }
+  }
+
+  /// Get IP priority for selection (higher = better)
+  static int _getIpPriority(String ip) {
+    // Prioritize based on common network patterns
+    if (ip.startsWith('192.168.68.')) return 100; // Your specific network
+    if (ip.startsWith('172.30.')) return 95;       // Corporate network pattern
+    if (ip.startsWith('192.168.1.')) return 90;    // Common home network
+    if (ip.startsWith('192.168.0.')) return 85;    // Common home network
+    if (ip.startsWith('192.168.')) return 80;      // Other 192.168.x.x networks
+    if (ip.startsWith('10.')) return 70;           // Class A private networks
+    if (ip.startsWith('172.')) return 60;          // Other Class B private networks
+    return 10; // Other IPs (lowest priority)
   }
 
   /// Handle WebSocket connections for real-time sync
@@ -621,10 +798,10 @@ class EnhancedShelfServer {
     
     // Listen for messages from client
     webSocket.stream.listen(
-      (message) {
+      (message) async {
         try {
           final data = jsonDecode(message) as Map<String, dynamic>;
-          _handleWebSocketMessage(webSocket, data);
+          await _handleWebSocketMessage(webSocket, data);
         } catch (e) {
           debugPrint('Error processing WebSocket message: $e');
           _sendWebSocketError(webSocket, 'Invalid message format');
@@ -642,12 +819,14 @@ class EnhancedShelfServer {
   }
 
   /// Handle incoming WebSocket messages
-  static void _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) {
+  static Future<void> _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) async {
     final type = data['type'] as String?;
+    debugPrint('Received WebSocket message: $type');
     
     try {
       switch (type) {
         case 'ping':
+          debugPrint('Handling ping request');
           // Respond to ping with pong
           webSocket.sink.add(jsonEncode({
             'type': 'pong',
@@ -657,6 +836,8 @@ class EnhancedShelfServer {
           break;
           
         case 'request_full_sync':
+        case 'request_sync':  // Handle both message types for compatibility
+          debugPrint('Client requested full sync');
           // Send full database sync to this client
           _sendWebSocketFullSync(webSocket);
           break;
@@ -700,14 +881,41 @@ class EnhancedShelfServer {
           }
           break;
           
+        case 'request_immediate_table_sync':
+          // Handle immediate table sync request with priority
+          final tableName = data['table'] as String?;
+          if (tableName != null) {
+            debugPrint('IMMEDIATE SYNC REQUEST: $tableName');
+            _sendTableSyncToClient(webSocket, tableName);
+            
+            // If it's user_sessions, broadcast to ALL clients immediately
+            if (tableName == 'user_sessions') {
+              await forceSyncTable('user_sessions');
+              debugPrint('IMMEDIATE SYNC: Forced user_sessions sync to all clients');
+            }
+          }
+          break;
+          
         case 'acknowledge':
           // Handle acknowledgment from client
           final ackId = data['ackId'] as String?;
           debugPrint('Received acknowledgment for: $ackId');
           break;
           
+        case 'pong':
+          // Handle pong response from client (to our ping)
+          debugPrint('Received pong from client');
+          break;
+          
+        case 'session_invalidated':
+          // Handle session invalidation message and broadcast to all clients
+          debugPrint('Received session invalidation message from client');
+          _broadcastToAllClients(jsonEncode(data));
+          break;
+          
         default:
           debugPrint('Unknown WebSocket message type: $type');
+          debugPrint('Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong, session_invalidated');
           _sendWebSocketError(webSocket, 'Unknown message type: $type');
       }
     } catch (e) {
@@ -738,7 +946,7 @@ class EnhancedShelfServer {
       }
       
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services'];
+      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'active_patient_queue', 'user_sessions'];
       
       final syncData = <String, dynamic>{};
       
@@ -827,18 +1035,89 @@ class EnhancedShelfServer {
           case 'insert':
             if (recordData != null) {
               try {
-                await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                // Special handling for user_sessions table to prevent duplicates
+                if (table == 'user_sessions') {
+                  // Check if session already exists by sessionToken to prevent duplicates
+                  if (recordData['sessionToken'] != null) {
+                    final existing = await db.query(
+                      table,
+                      where: 'sessionToken = ?',
+                      whereArgs: [recordData['sessionToken']],
+                    );
+                    
+                    if (existing.isNotEmpty) {
+                      // Update existing session instead of creating duplicate
+                      await db.update(
+                        table, 
+                        recordData, 
+                        where: 'sessionToken = ?', 
+                        whereArgs: [recordData['sessionToken']]
+                      );
+                      await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                      debugPrint('Updated existing session via WebSocket: ${recordData['sessionToken']}');
+                    } else {
+                      // Insert new session
+                      await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                      await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                      debugPrint('Successfully applied WebSocket session insert: $table.$recordId');
+                    }
+                  } else {
+                    // Fallback to normal insert if no sessionToken
+                    await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                    await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                    debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                  }
+                } else {
+                  // Use INSERT OR REPLACE to handle potential conflicts for other tables
+                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                  // Log the change to trigger sync notifications
+                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                  debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                }
               } catch (e) {
                 debugPrint('Error applying WebSocket insert: $e');
+                // If insert fails, try update as fallback
+                try {
+                  String whereColumn = 'id';
+                  if (table == 'active_patient_queue') {
+                    whereColumn = 'queueEntryId';
+                  } else if (table == 'user_sessions') {
+                    whereColumn = 'id';
+                  }
+                  
+                  final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+                } catch (updateError) {
+                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                }
               }
             }
             break;
           case 'update':
             if (recordData != null) {
               try {
-                final rowsAffected = await db.update(table, recordData, where: 'id = ?', whereArgs: [recordId]);
-                debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+                String whereColumn = 'id';
+                // Handle special cases for tables with different primary key columns
+                if (table == 'active_patient_queue') {
+                  whereColumn = 'queueEntryId';
+                } else if (table == 'user_sessions') {
+                  whereColumn = 'id';
+                }
+                
+                final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
+                
+                // If no rows were affected, try inserting the record
+                if (rowsAffected == 0) {
+                  debugPrint('No rows updated, attempting insert for $table.$recordId');
+                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                } else {
+                  // Log the change to trigger sync notifications
+                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                  debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+                }
               } catch (e) {
                 debugPrint('Error applying WebSocket update: $e');
               }
@@ -846,8 +1125,27 @@ class EnhancedShelfServer {
             break;
           case 'delete':
             try {
-              final rowsAffected = await db.delete(table, where: 'id = ?', whereArgs: [recordId]);
-              debugPrint('Successfully applied WebSocket delete: $table.$recordId (rows affected: $rowsAffected)');
+              String whereColumn = 'id';
+              String whereValue = recordId;
+              
+              // Handle special cases for tables with different primary key columns
+              if (table == 'active_patient_queue') {
+                whereColumn = 'queueEntryId';
+              } else if (table == 'user_sessions') {
+                // For user_sessions, try to use sessionToken if available in the data
+                if (recordData != null && recordData['sessionToken'] != null) {
+                  whereColumn = 'sessionToken';
+                  whereValue = recordData['sessionToken'];
+                  debugPrint('Using sessionToken for session deletion: $whereValue');
+                } else {
+                  whereColumn = 'id';
+                }
+              }
+              
+              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
+              // Log the change to trigger sync notifications
+              await _dbHelper!.logChange(table, recordId, 'delete');
+              debugPrint('Successfully applied WebSocket delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying WebSocket delete: $e');
             }

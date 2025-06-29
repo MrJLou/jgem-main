@@ -8,6 +8,7 @@ import '../../models/appointment.dart';
 import '../../models/active_patient_queue_item.dart';
 import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
+import '../../services/database_sync_client.dart';
 import 'dashboard_welcome_section.dart';
 import 'dashboard_metrics_section.dart';
 import 'dashboard_doctors_section.dart';
@@ -25,7 +26,8 @@ class LiveQueueDashboardView extends StatefulWidget {
   LiveQueueDashboardViewState createState() => LiveQueueDashboardViewState();
 }
 
-class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateTime _calendarSelectedDate = DateTime.now();
+class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
+  DateTime _calendarSelectedDate = DateTime.now();
   DateTime _calendarFocusedDay = DateTime.now();
   List<Appointment> _allAppointmentsForCalendar = [];
   List<Appointment> _dailyAppointmentsForDisplay = [];
@@ -36,6 +38,12 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
   bool _isLoadingQueueAndAppointments = true;
   
   Timer? _refreshTimer;
+  StreamSubscription? _syncSubscription;
+  
+  // Sync status indicator
+  bool _showSyncIndicator = false;
+  String _lastSyncTime = 'Never';
+  Timer? _syncIndicatorTimer;
 
   @override
   void initState() {
@@ -49,21 +57,68 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
     _loadAppointments().then((_) {
       _loadCombinedQueueData(_calendarSelectedDate);
     });
-      // Set up periodic refresh every 15 seconds to catch payment updates quickly
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+    
+    // Set up periodic refresh every 30 seconds for background updates
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _loadCombinedQueueData(_calendarSelectedDate);
       }
     });
+    
+    // Set up sync listener for real-time updates
+    _setupSyncListener();
     
     if (kDebugMode) {
       print('DEBUG: LiveQueueDashboardView initState END');
     }
   }
 
+  /// Setup sync listener for real-time updates
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle different types of sync events
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'active_patient_queue' || 
+                                change['table'] == 'appointments')) {
+            // Show sync activity and refresh data immediately
+            _showSyncActivity();
+            _loadCombinedQueueData(_calendarSelectedDate);
+          }
+          break;
+          
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+          // Immediate queue refresh with sync indicator
+          _showSyncActivity();
+          _loadCombinedQueueData(_calendarSelectedDate);
+          break;
+          
+        case 'appointment_change_immediate':
+          // Immediate appointment refresh with sync indicator  
+          _showSyncActivity();
+          _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
+          break;
+          
+        case 'ui_refresh_requested':
+          // Periodic UI refresh from sync client - less frequent refresh
+          if (DateTime.now().millisecondsSinceEpoch % 60000 < 2000) { // Only refresh every minute on this event
+            _loadCombinedQueueData(_calendarSelectedDate);
+          }
+          break;
+      }
+    });
+  }
+
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _syncSubscription?.cancel();
+    _syncIndicatorTimer?.cancel(); // Cancel sync indicator timer
     super.dispose();
   }
 
@@ -292,6 +347,9 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
 
     try {
       bool success = await widget.queueService.updatePatientStatusInQueue(item.queueEntryId, newStatus);      if (success) {
+        // Trigger immediate sync to all connected devices
+        DatabaseSyncClient.triggerQueueRefresh();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -299,7 +357,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
               backgroundColor: Colors.green,
             ),
           );
-          // Reload both appointments and queue data to reflect changes
+          // Reload both appointments and queue data to reflect changes immediately
           _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
         }
       } else {
@@ -333,7 +391,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
     }
   }
 
-  static String _getDisplayStatus(String status) {
+  String _getDisplayStatus(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
       case 'in_consultation': return 'In Consultation';
@@ -367,6 +425,39 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Sync Status Indicator
+                if (_showSyncIndicator)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: Colors.green[300]!),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16.0,
+                          height: 16.0,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
+                          ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        Text(
+                          'Syncing... Last: $_lastSyncTime',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 12.0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const DashboardWelcomeSection(),
                 const DashboardMetricsSection(),
                 const DashboardDoctorsSection(),
@@ -427,5 +518,25 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {  DateT
         ),
       ],
     );
+  }
+
+  // Sync activity methods
+  void _showSyncActivity() {
+    if (mounted) {
+      setState(() {
+        _showSyncIndicator = true;
+        _lastSyncTime = DateFormat('HH:mm:ss').format(DateTime.now());
+      });
+      
+      // Hide the indicator after 2 seconds
+      _syncIndicatorTimer?.cancel();
+      _syncIndicatorTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _showSyncIndicator = false;
+          });
+        }
+      });
+    }
   }
 }

@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 34;
+  static const int _databaseVersion = 36;
 
   // Tables
   static const String tableUsers = 'users';
@@ -56,6 +56,7 @@ class DatabaseHelper {
   static const String tableSyncLog = 'sync_log';
   static const String tablePatientQueue = 'patient_queue';
   static const String tableActivePatientQueue = 'active_patient_queue';
+  static const String tableUserSessions = 'user_sessions';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -439,7 +440,7 @@ class DatabaseHelper {
         cancelledAt TEXT,
         cancellationReason TEXT,
         notes TEXT,
-        isWalkIn INTEGER DEFAULT 0,
+        isWalkIn INTEGER DEFAULT 0 NOT NULL,
         createdAt TEXT,
         updatedAt TEXT,
         FOREIGN KEY (patientId) REFERENCES $tablePatients(id) ON DELETE CASCADE,
@@ -648,6 +649,29 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Table $tableActivePatientQueue created');
 
+    // User Sessions table (for session management and concurrent login detection)
+    await db.execute('''
+      CREATE TABLE $tableUserSessions (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        userId TEXT NOT NULL,
+        username TEXT NOT NULL,
+        deviceId TEXT NOT NULL,
+        deviceName TEXT,
+        loginTime TEXT NOT NULL,
+        lastActivity TEXT NOT NULL,
+        created_at TEXT,
+        expires_at TEXT,
+        invalidated_at TEXT,
+        ipAddress TEXT,
+        isActive INTEGER DEFAULT 1 NOT NULL,
+        sessionToken TEXT NOT NULL,
+        expiresAt TEXT NOT NULL,
+        FOREIGN KEY (userId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table $tableUserSessions created');
+
     // Create admin user by default
     await _createDefaultAdmin(db);
 
@@ -823,6 +847,51 @@ class DatabaseHelper {
           db, tableMedicalRecords, 'selectedServices', 'TEXT');
     }
 
+    if (oldVersion < 35) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 35: Creating user_sessions table for session management.");
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableUserSessions (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          username TEXT NOT NULL,
+          deviceId TEXT NOT NULL,
+          deviceName TEXT,
+          loginTime TEXT NOT NULL,
+          lastActivity TEXT NOT NULL,
+          ipAddress TEXT,
+          isActive INTEGER DEFAULT 1 NOT NULL,
+          sessionToken TEXT NOT NULL,
+          expiresAt TEXT NOT NULL,
+          FOREIGN KEY (userId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+
+    if (oldVersion < 36) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 36: Adding session_id, created_at, expires_at, and invalidated_at columns to user_sessions table.");
+      
+      // Add new columns for enhanced token-based session management
+      await _addColumnIfNotExists(db, tableUserSessions, 'session_id', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'created_at', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'expires_at', 'TEXT');
+      await _addColumnIfNotExists(db, tableUserSessions, 'invalidated_at', 'TEXT');
+      
+      // Update existing records to have proper structure
+      await db.execute('''
+        UPDATE $tableUserSessions 
+        SET created_at = COALESCE(loginTime, datetime('now')) 
+        WHERE created_at IS NULL
+      ''');
+      
+      await db.execute('''
+        UPDATE $tableUserSessions 
+        SET expires_at = COALESCE(expiresAt, datetime('now', '+1 hour')) 
+        WHERE expires_at IS NULL
+      ''');
+    }
+
     debugPrint(
         "DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
@@ -890,6 +959,17 @@ class DatabaseHelper {
     return userDbService.updateUser(user);
   }
 
+  Future<int> updateUserPassword(String userId, String hashedPassword) async {
+    return userDbService.updateUserPassword(userId, hashedPassword);
+  }
+
+  Future<int> updateUserSecurityQuestions(String userId, String question1,
+      String hashedAnswer1, String question2, String hashedAnswer2,
+      String question3, String hashedAnswer3) async {
+    return userDbService.updateUserSecurityQuestions(userId, question1,
+        hashedAnswer1, question2, hashedAnswer2, question3, hashedAnswer3);
+  }
+
   Future<int> deleteUser(String id) async {
     return userDbService.deleteUser(id);
   }
@@ -907,10 +987,139 @@ class DatabaseHelper {
     return userDbService.authenticateUser(username, password);
   }
 
-  Future<bool> resetPassword(String username, String securityQuestion,
+  Future<bool> resetPassword(String username, String securityQuestionKey,
       String securityAnswer, String newPassword) async {
     return userDbService.resetPassword(
-        username, securityQuestion, securityAnswer, newPassword);
+        username, securityQuestionKey, securityAnswer, newPassword);
+  }
+
+  // SESSION MANAGEMENT METHODS
+  
+  /// Create a new user session when user logs in
+  Future<String> createUserSession({
+    required String userId,
+    required String username,
+    required String deviceId,
+    String? deviceName,
+    String? ipAddress,
+    required String sessionToken,
+    required DateTime expiresAt,
+  }) async {
+    final db = await database;
+    final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}_$userId';
+    final now = DateTime.now().toIso8601String();
+    
+    await db.insert(tableUserSessions, {
+      'id': sessionId,
+      'userId': userId,
+      'username': username,
+      'deviceId': deviceId,
+      'deviceName': deviceName ?? 'Unknown Device',
+      'loginTime': now,
+      'lastActivity': now,
+      'ipAddress': ipAddress,
+      'isActive': 1,
+      'sessionToken': sessionToken,
+      'expiresAt': expiresAt.toIso8601String(),
+    });
+    
+    await logChange(tableUserSessions, sessionId, 'insert');
+    return sessionId;
+  }
+
+  /// Check if user has active sessions on other devices
+  Future<List<Map<String, dynamic>>> getActiveUserSessions(String userId, {String? excludeDeviceId}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    String query = '''
+      SELECT * FROM $tableUserSessions 
+      WHERE userId = ? AND isActive = 1 AND expiresAt > ?
+    ''';
+    List<dynamic> args = [userId, now];
+    
+    if (excludeDeviceId != null) {
+      query += ' AND deviceId != ?';
+      args.add(excludeDeviceId);
+    }
+    
+    return await db.rawQuery(query, args);
+  }
+
+  /// Delete all sessions for a user (except optionally one device)
+  Future<void> invalidateUserSessions(String userId, {String? excludeDeviceId}) async {
+    final db = await database;
+    
+    String query = 'DELETE FROM $tableUserSessions WHERE userId = ?';
+    List<dynamic> args = [userId];
+    
+    if (excludeDeviceId != null) {
+      query += ' AND deviceId != ?';
+      args.add(excludeDeviceId);
+    }
+    
+    await db.rawDelete(query, args);
+    await logChange(tableUserSessions, userId, 'delete');
+  }
+
+  /// Update session activity timestamp
+  Future<void> updateSessionActivity(String sessionId) async {
+    final db = await database;
+    await db.update(
+      tableUserSessions,
+      {'lastActivity': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  /// Delete a specific session completely
+  Future<void> invalidateSession(String sessionId) async {
+    final db = await database;
+    await db.delete(
+      tableUserSessions,
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+    await logChange(tableUserSessions, sessionId, 'delete');
+  }
+
+  /// Clean up expired sessions
+  Future<void> cleanupExpiredSessions() async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    await db.delete(
+      tableUserSessions,
+      where: 'expiresAt < ? OR isActive = 0',
+      whereArgs: [now],
+    );
+  }
+
+  /// Get session details by session ID
+  Future<Map<String, dynamic>?> getSession(String sessionId) async {
+    final db = await database;
+    final result = await db.query(
+      tableUserSessions,
+      where: 'id = ? AND isActive = 1',
+      whereArgs: [sessionId],
+    );
+    
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  /// Check if a session exists and is valid
+  Future<bool> isSessionValid(String sessionId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    final result = await db.query(
+      tableUserSessions,
+      where: 'id = ? AND isActive = 1 AND expiresAt > ?',
+      whereArgs: [sessionId, now],
+    );
+    
+    return result.isNotEmpty;
   }
 
   // PATIENT MANAGEMENT METHODS (Delegating to PatientDatabaseService)
@@ -1224,26 +1433,142 @@ class DatabaseHelper {
   Future<bool> _performServerSync(
       String serverIp, int port, String accessCode) async {
     try {
-      debugPrint('Syncing with server at $serverIp:$port');
+      debugPrint('Attempting to sync with server at $serverIp:$port');
       
-      // For now, return true to indicate "successful" sync
-      // The real-time sync via WebSocket handles the actual data transfer
-      // This periodic sync serves as a backup/verification mechanism
+      // First, test if the server is actually reachable
+      try {
+        final socket = await Socket.connect(serverIp, port, timeout: const Duration(seconds: 3));
+        socket.destroy();
+        debugPrint('Server connectivity test passed');
+      } catch (e) {
+        debugPrint('Server $serverIp:$port is not reachable: $e');
+        debugPrint('Clearing cached server settings...');
+        
+        // Clear the cached server settings since they're invalid
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('lan_server_ip');
+        await prefs.remove('lan_server_port');
+        await prefs.remove('lan_access_code');
+        await prefs.setBool('sync_enabled', false);
+        
+        return false;
+      }
       
-      // TODO: Implement actual data comparison and sync logic here
-      // This could include:
-      // 1. Getting list of changes since last sync
-      // 2. Uploading pending changes to server
-      // 3. Downloading and applying server changes
-      // 4. Resolving conflicts if any
+      // Validate that the server IP and current device IP are compatible
+      final currentActualIp = await _getCurrentDeviceIp();
+      if (currentActualIp != null) {
+        debugPrint('Current device IP: $currentActualIp');
+        
+        // If we're trying to sync with an IP that doesn't match our network, clear cache
+        if (!_isSameNetwork(currentActualIp, serverIp)) {
+          debugPrint('Warning: Server IP $serverIp appears to be on different network than device IP $currentActualIp');
+          debugPrint('Clearing cached server settings...');
+          
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('lan_server_ip');
+          await prefs.remove('lan_server_port');
+          await prefs.remove('lan_access_code');
+          await prefs.setBool('sync_enabled', false);
+          
+          return false;
+        }
+      }
       
-      await Future.delayed(const Duration(milliseconds: 100)); // Simulate network call
-      
-      debugPrint('Sync completed with success');
-      return true;
+      // Test HTTP endpoint
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 5);
+        final request = await client.getUrl(Uri.parse('http://$serverIp:$port/status'));
+        request.headers.set('access-code', accessCode);
+        final response = await request.close();
+        client.close();
+        
+        if (response.statusCode == 200) {
+          debugPrint('Server HTTP endpoint accessible');
+          debugPrint('Sync completed with success');
+          return true;
+        } else {
+          debugPrint('Server returned status: ${response.statusCode}');
+          if (response.statusCode == 401 || response.statusCode == 403) {
+            debugPrint('Access code may be invalid, clearing cached settings...');
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('lan_server_ip');
+            await prefs.remove('lan_server_port');
+            await prefs.remove('lan_access_code');
+            await prefs.setBool('sync_enabled', false);
+          }
+          return false;
+        }
+      } catch (e) {
+        debugPrint('HTTP request to server failed: $e');
+        return false;
+      }
     } catch (e) {
       debugPrint('Server sync failed: $e');
       return false;
+    }
+  }
+
+  // Get current device IP
+  Future<String?> _getCurrentDeviceIp() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (address.type == InternetAddressType.IPv4) {
+            final ip = address.address;
+            if (ip.startsWith('192.168.') && !ip.startsWith('127.')) {
+              return ip;
+            }
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting current device IP: $e');
+      return null;
+    }
+  }
+
+  // Check if two IPs are on the same network
+  bool _isSameNetwork(String ip1, String ip2) {
+    final parts1 = ip1.split('.');
+    final parts2 = ip2.split('.');
+    
+    if (parts1.length >= 3 && parts2.length >= 3) {
+      // Check if first 3 octets match (same subnet)
+      return parts1[0] == parts2[0] && 
+             parts1[1] == parts2[1] && 
+             parts1[2] == parts2[2];
+    }
+    return false;
+  }
+
+  // Clear stale sync settings (useful for troubleshooting)
+  Future<void> clearSyncSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lan_server_ip');
+      await prefs.remove('lan_server_port');
+      await prefs.remove('lan_access_code');
+      debugPrint('Cleared stale sync settings');
+    } catch (e) {
+      debugPrint('Error clearing sync settings: $e');
+    }
+  }
+
+  // Enhanced method to clear all sync settings including sync enabled flag
+  Future<void> clearAllSyncSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('lan_server_ip');
+      await prefs.remove('lan_server_port');
+      await prefs.remove('lan_access_code');
+      await prefs.setBool('sync_enabled', false);
+      debugPrint('All sync settings cleared (including sync_enabled flag)');
+    } catch (e) {
+      debugPrint('Error clearing all sync settings: $e');
     }
   }
 
@@ -1421,14 +1746,22 @@ To view live changes in DB Browser:
     // Create timestamp in UTC+8
     final now = DateTime.now().toUtc().add(const Duration(hours: 8));
 
-    await db.insert(DatabaseHelper.tableUserActivityLog, {
+    final activityData = {
       'userId': userId,
       'actionDescription': actionDescription,
       'targetRecordId': targetRecordId,
       'targetTable': targetTable,
       'timestamp': now.toIso8601String(),
       'details': details,
-    });
+    };
+
+    final insertResult = await db.insert(DatabaseHelper.tableUserActivityLog, activityData);
+    
+    // Trigger sync for user activity logs
+    if (insertResult > 0) {
+      await logChange(DatabaseHelper.tableUserActivityLog, insertResult.toString(), 'insert', data: activityData);
+      debugPrint('DatabaseHelper: User activity logged for $userId - sync notification sent');
+    }
   }
 
   // Create indexes (helper method)
@@ -1656,6 +1989,17 @@ To view live changes in DB Browser:
     await db.insert(DatabaseHelper.tableActivePatientQueue, item.toJson());
     await logChange(
         DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
+    
+    debugPrint('DatabaseHelper: Patient added to queue ${item.queueEntryId} - sync notification sent');
+    
+    // Trigger immediate sync to notify all connected devices
+    await _notifyDatabaseChange(
+      DatabaseHelper.tableActivePatientQueue, 
+      'insert', 
+      item.queueEntryId, 
+      data: item.toJson()
+    );
+    
     return item;
   }
 
@@ -1670,6 +2014,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, queueEntryId, 'delete');
+      debugPrint('DatabaseHelper: Patient removed from queue $queueEntryId - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'delete', 
+        queueEntryId, 
+        data: {'queueEntryId': queueEntryId}
+      );
     }
     return result;
   }
@@ -1687,6 +2040,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, queueEntryId, 'update');
+      debugPrint('DatabaseHelper: Queue status updated for $queueEntryId to $newStatus - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'update', 
+        queueEntryId, 
+        data: {'status': newStatus, 'queueEntryId': queueEntryId}
+      );
     }
     return result;
   }
@@ -1703,6 +2065,15 @@ To view live changes in DB Browser:
     if (result > 0) {
       await logChange(
           DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'update');
+      debugPrint('DatabaseHelper: Queue item updated for ${item.queueEntryId} - sync notification sent');
+      
+      // Trigger immediate sync to notify all connected devices
+      await _notifyDatabaseChange(
+        DatabaseHelper.tableActivePatientQueue, 
+        'update', 
+        item.queueEntryId, 
+        data: item.toJson()
+      );
     }
     return result;
   }
@@ -2279,6 +2650,7 @@ To view live changes in DB Browser:
           where: 'id = ?',
           whereArgs: [billDbId],
         );
+        await logChange(tablePatientBills, billDbId, 'update', executor: txn);
         debugPrint(
             'DATABASE_HELPER: Found existing unpaid bill $invoiceNumber. Updating status to Paid.');
       } else {
@@ -2303,6 +2675,7 @@ To view live changes in DB Browser:
               'Invoice for services related to: ${patient.conditionOrPurpose ?? 'Consultation'}'
         };
         await txn.insert(tablePatientBills, billData);
+        await logChange(tablePatientBills, billDbId, 'insert', executor: txn);
 
         // Insert bill items
         for (var itemJson in billItemsJson) {
@@ -2359,6 +2732,7 @@ To view live changes in DB Browser:
         'notes': paymentNotes ?? 'Payment for Invoice #$invoiceNumber',
       };
       await txn.insert(tablePayments, paymentData);
+      await logChange(tablePayments, paymentReferenceNumber, 'insert', executor: txn);
 
       debugPrint(
           'DATABASE_HELPER: Successfully recorded payment $paymentReferenceNumber for invoice $invoiceNumber.');

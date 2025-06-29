@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../models/appointment.dart';
@@ -9,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
 import '../../services/btree_queue_manager.dart';
 import '../../services/database_sync_client.dart';
+import '../../services/database_helper.dart';
 import 'add_to_queue_screen.dart';
 import 'dart:async';
 
@@ -82,6 +84,12 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   
   // Stream subscription for real-time sync updates
   StreamSubscription? _syncSubscription;
+  Timer? _periodicRefreshTimer;
+  
+  // Sync status indicator
+  bool _showSyncIndicator = false;
+  String _lastSyncTime = 'Never';
+  Timer? _syncIndicatorTimer;
 
   @override
   void initState() {
@@ -98,17 +106,66 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     
     // Setup search listener
     _searchController.addListener(_onSearchChanged);
+    
+    // Setup real-time sync listener for database changes
+    _setupSyncListener();
 
     // Listen to real-time sync updates from DatabaseSyncClient
     _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
-      // Check if this is a queue-related update
-      if (updateEvent['type'] == 'remote_change_applied' || 
-          updateEvent['type'] == 'database_change') {
-        final change = updateEvent['change'] as Map<String, dynamic>?;
-        if (change != null && change['table'] == 'active_patient_queue') {
-          // Refresh live queue data on queue updates
+      if (!mounted) return;
+      
+      // Handle different types of sync events
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && (change['table'] == 'active_patient_queue' || 
+                                change['table'] == 'appointments')) {
+            // Show sync indicator and refresh immediately
+            _showSyncActivity();
+            _refreshCurrentTabData();
+          }
+          break;
+          
+        case 'ui_refresh_requested':
+          // Periodic UI refresh from sync client
           _refreshCurrentTabData();
-        }
+          break;
+          
+        case 'queue_change_immediate':
+        case 'force_queue_refresh':
+          // Immediate queue refresh with sync indicator
+          _showSyncActivity();
+          _refreshCurrentTabData();
+          break;
+          
+        case 'appointment_change_immediate':
+          // Immediate appointment refresh with sync indicator
+          _showSyncActivity();
+          if (_tabController.index == 1) {
+            _loadAppointmentsForSelectedDate();
+          }
+          break;
+          
+        case 'table_sync':
+        case 'table_sync_completed':
+          final tableName = updateEvent['table'] as String?;
+          if (tableName == 'active_patient_queue' || tableName == 'appointments') {
+            _refreshCurrentTabData();
+          }
+          break;
+          
+        case 'full_sync_completed':
+          // Complete refresh after full sync
+          _refreshCurrentTabData();
+          break;
+      }
+    });
+
+    // Start periodic refresh timer (every 30 seconds for background updates)
+    _periodicRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _refreshCurrentTabData();
       }
     });
   }
@@ -119,6 +176,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     _tabController.dispose();
     _searchController.dispose();
     _syncSubscription?.cancel();
+    _periodicRefreshTimer?.cancel(); // Cancel periodic refresh timer
+    _syncIndicatorTimer?.cancel(); // Cancel sync indicator timer
     super.dispose();
   }
 
@@ -241,6 +300,12 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
       }
       
       if (success) {
+        // Show sync activity immediately
+        _showSyncActivity();
+        
+        // Trigger immediate sync to all connected devices
+        DatabaseSyncClient.triggerQueueRefresh();
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -421,12 +486,90 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text(
-          'Patient Queue & Appointments',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Row(
+          children: [
+            const Text(
+              'Patient Queue & Appointments',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            const Spacer(),
+            // Sync status indicator
+            if (_showSyncIndicator)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withAlpha(50),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Syncing...',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(50),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Last sync: $_lastSyncTime',
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+          ],
         ),
         backgroundColor: Colors.teal[700],
         actions: [
+          // Sync indicator
+          if (_showSyncIndicator)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Syncing...',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          // Last sync time display (when not actively syncing)
+          if (!_showSyncIndicator && _lastSyncTime != 'Never')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Center(
+                child: Text(
+                  'Last sync: $_lastSyncTime',
+                  style: const TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+              ),
+            ),
           // Debug menu for B-Tree performance
           if (_queueManager.isInitialized)
             PopupMenuButton<String>(
@@ -886,6 +1029,70 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
           ),
         );
       }
+    }
+  }
+
+  // Setup real-time sync listener for database changes
+  void _setupSyncListener() {
+    // Listen for real-time sync updates from DatabaseSyncClient
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((update) {
+      if (!mounted) return;
+      
+      final table = update['table'] as String?;
+      final operation = update['operation'] as String?;
+      
+      // Handle queue table changes
+      if (table == DatabaseHelper.tableActivePatientQueue) {
+        debugPrint('ViewQueueScreen: Received sync update for queue table: $operation');
+        _handleQueueSyncUpdate(update);
+      }
+      
+      // Handle appointments table changes
+      if (table == DatabaseHelper.tableAppointments) {
+        debugPrint('ViewQueueScreen: Received sync update for appointments table: $operation');
+        _handleAppointmentSyncUpdate(update);
+      }
+    });
+  }
+
+  void _handleQueueSyncUpdate(Map<String, dynamic> update) {
+    if (!mounted) return;
+    
+    // Refresh queue data when changes are detected
+    if (_tabController.index == 0) {
+      // Currently viewing live queue tab
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadLiveQueue();
+          if (kDebugMode) {
+            print('ViewQueueScreen: Live queue refreshed due to sync update');
+          }
+        }
+      });
+    }
+    
+    // Also refresh B-Tree if initialized
+    if (_queueManager.isInitialized) {
+      _queueManager.refresh().catchError((e) {
+        debugPrint('Error refreshing B-Tree after sync update: $e');
+      });
+    }
+  }
+
+  void _handleAppointmentSyncUpdate(Map<String, dynamic> update) {
+    if (!mounted) return;
+    
+    // Refresh appointment data when changes are detected
+    if (_tabController.index == 1) {
+      // Currently viewing scheduled appointments tab
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadAppointmentsForSelectedDate();
+          if (kDebugMode) {
+            print('ViewQueueScreen: Appointments refreshed due to sync update');
+          }
+        }
+      });
     }
   }
 
@@ -1410,6 +1617,26 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     } catch (e) {
       debugPrint('Error adding patient through B-Tree: $e');
       return false;
+    }
+  }
+
+  // Sync activity methods
+  void _showSyncActivity() {
+    if (mounted) {
+      setState(() {
+        _showSyncIndicator = true;
+        _lastSyncTime = DateFormat('HH:mm:ss').format(DateTime.now());
+      });
+      
+      // Hide the indicator after 2 seconds
+      _syncIndicatorTimer?.cancel();
+      _syncIndicatorTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _showSyncIndicator = false;
+          });
+        }
+      });
     }
   }
 }

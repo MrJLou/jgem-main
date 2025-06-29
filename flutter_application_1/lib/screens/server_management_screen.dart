@@ -70,8 +70,8 @@ class _ServerManagementScreenState extends State<ServerManagementScreen> {
     }
   }
 
-  void _shareConnectionInfo() {
-    final connectionInfo = EnhancedShelfServer.getConnectionInfo();
+  void _shareConnectionInfo() async {
+    final connectionInfo = await EnhancedShelfServer.getConnectionInfo();
     
     if (connectionInfo.containsKey('error')) {
       _showError(connectionInfo['error']);

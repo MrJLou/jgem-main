@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/database_sync_client.dart';
 // import '../services/auth_service.dart'; // AuthService.hashSecurityAnswer is no longer called here
 import 'login_screen.dart';
+import 'dart:async';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -73,6 +75,8 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       _errorMessage = null;
       _userQuestionMap = {};
       _selectedQuestionKey = null;
+      // Clear the security answer when fetching new questions
+      _securityAnswerController.clear();
     });
     try {
       final userDetails =
@@ -150,6 +154,9 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
         if (!mounted) return;
         if (success) {
+          // Trigger sync for user/password changes across all devices
+          DatabaseSyncClient.triggerUserPasswordSync();
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Password reset successfully! Please login'),
@@ -163,7 +170,7 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         } else {
           setState(() {
             _errorMessage =
-                'Password reset failed. Please check your information.';
+                'Password reset failed. Please check your security answer and try again.';
           });
         }
       } catch (e) {
@@ -372,6 +379,9 @@ class ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                   onChanged: (value) {
                                     setState(() {
                                       _selectedQuestionKey = value;
+                                      // Clear the security answer when question changes
+                                      _securityAnswerController.clear();
+                                      _errorMessage = null;
                                     });
                                   },
                                   decoration: InputDecoration(

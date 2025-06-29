@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/dashboard_screen_refactored.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
+import '../services/authentication_manager.dart';
+import '../services/enhanced_user_token_service.dart';
 import '../widgets/login_rate_limiter.dart';
 import 'forgot_password_screen.dart';
 
@@ -50,19 +50,19 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   Future<void> _checkExistingSession() async {
     setState(() => _isLoading = true);
     try {
-      final isLoggedIn = await AuthService.isLoggedIn();
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!mounted) return;
 
       if (isLoggedIn) {
-        final credentials = await AuthService.getSavedCredentials();
+        final accessLevel = await AuthenticationManager.getCurrentUserAccessLevel();
         if (!mounted) return;
 
-        if (credentials != null) {
+        if (accessLevel != null) {
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
               builder: (context) => DashboardScreen(
-                accessLevel: credentials['accessLevel'] ?? 'user',
+                accessLevel: accessLevel,
               ),
             ),
             (route) => false,
@@ -94,8 +94,12 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         final username = _loginUsernameController.text;
         await LoginRateLimiter.canAttemptLogin(username);
 
-        final response =
-            await ApiService.login(username, _loginPasswordController.text);
+        // Use enhanced session management login
+        final response = await AuthenticationManager.login(
+          username: username,
+          password: _loginPasswordController.text,
+          forceLogout: false,
+        );
 
         if (!mounted) return;
 
@@ -111,11 +115,8 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         }
 
         await LoginRateLimiter.recordSuccessfulLogin(username);
-        await AuthService.saveLoginCredentials(
-          token: response['token'],
-          username: username,
-          accessLevel: userRole,
-        );
+        // Note: Credentials are already saved by AuthenticationManager.login()
+        // No need to call AuthService.saveLoginCredentials() as it conflicts with the new system
 
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
@@ -126,6 +127,41 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           (route) => false,
         );
       } catch (e) {
+        // Check for session conflict (user already logged in on another device)
+        if (e is UserSessionConflictException || 
+            e.toString().contains('UserSessionConflictException') ||
+            e.toString().contains('already logged in on another device')) {
+          // Show dialog asking if user wants to force logout other devices
+          final shouldForceLogout = await _showForceLoginDialog();
+          if (shouldForceLogout == true) {
+            try {
+              final response = await AuthenticationManager.login(
+                username: _loginUsernameController.text,
+                password: _loginPasswordController.text,
+                forceLogout: true,
+              );
+              
+              final userRole = response['user']?.role;
+              if (userRole != null && mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DashboardScreen(accessLevel: userRole),
+                  ),
+                  (route) => false,
+                );
+              }
+            } catch (forceLoginError) {
+              if (mounted) {
+                setState(() {
+                  _loginErrorMessage = 'Force login failed: ${forceLoginError.toString()}';
+                });
+              }
+            }
+          }
+          return;
+        }
+
         if (_loginUsernameController.text.isNotEmpty) {
           await LoginRateLimiter.recordFailedAttempt(
               _loginUsernameController.text);
@@ -140,6 +176,50 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         }
       }
     }
+  }
+
+  Future<bool?> _showForceLoginDialog() async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Account Already Active'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('This account is already logged in on another device.'),
+              SizedBox(height: 8),
+              Text('Would you like to force logout the other device and continue?'),
+              SizedBox(height: 8),
+              Text(
+                '⚠️ The other device will be automatically logged out.',
+                style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Force Login'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -445,7 +525,7 @@ class AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-      ),
+      )
     );
   }
 

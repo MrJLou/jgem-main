@@ -5,6 +5,8 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:flutter_application_1/screens/appointments/add_appointment_screen.dart';
 import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED for ApiService
+import 'package:flutter_application_1/services/database_sync_client.dart';
+import 'dart:async';
 
 class AppointmentOverviewScreen extends StatefulWidget {
   const AppointmentOverviewScreen({super.key});
@@ -24,6 +26,7 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen>
 
   bool _isLoading = true; // Start with loading true
   String? _errorMessage;
+  StreamSubscription<Map<String, dynamic>>? _syncSubscription;
   // bool _isDbInitialized = false; // We'll rely on ApiService, not direct DB init here
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -35,10 +38,41 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen>
     // Initialize with a few dummy appointments for UI testing
     // _simulatedAppointments = [ ... ]; // REMOVED OLD SIMULATION
     _initializeServicesAndFetch();
+    _setupSyncListener();
+  }
+
+  void _setupSyncListener() {
+    _syncSubscription = DatabaseSyncClient.syncUpdates.listen((updateEvent) {
+      if (!mounted) return;
+      
+      // Handle appointment changes
+      switch (updateEvent['type']) {
+        case 'remote_change_applied':
+        case 'database_change':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'appointments') {
+            // Refresh appointments when changes occur
+            _initializeServicesAndFetch();
+          }
+          break;
+        case 'appointment_change_immediate':
+        case 'force_queue_refresh': // This might affect appointments too
+          // Immediate appointment refresh
+          _initializeServicesAndFetch();
+          break;
+        case 'ui_refresh_requested':
+          // Periodic refresh
+          if (DateTime.now().millisecondsSinceEpoch % 30000 < 2000) {
+            _initializeServicesAndFetch();
+          }
+          break;
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
