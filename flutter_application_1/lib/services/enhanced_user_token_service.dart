@@ -57,19 +57,31 @@ class EnhancedUserTokenService {
       final db = await _dbHelper.database;
       final deviceId = await _getOrCreateDeviceId();
       
-      // Always refresh session data from network first to get latest state
-      // This ensures both host and client have the most current session info
+      // REAL-TIME SYNC: Force immediate session refresh from network to get latest state
+      // This ensures both host and client have the most current session info BEFORE creating sessions
+      debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Forcing immediate session refresh...');
+      
       try {
         await refreshSessionDataFromNetwork();
-        debugPrint('ENHANCED_TOKEN_SERVICE: Refreshed session data from network before creating session');
+        
+        // Wait for sync to complete with timeout
+        await Future.delayed(const Duration(milliseconds: 1500));
+        
+        // Force another refresh to ensure we have the absolute latest data
+        await refreshSessionDataFromNetwork();
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Session data refreshed from network before creating session');
       } catch (e) {
         debugPrint('ENHANCED_TOKEN_SERVICE: Could not refresh from network (offline?): $e');
       }
       
-      // Check for existing active sessions
+      // Check for existing active sessions AFTER real-time sync
       final existingSessions = await getActiveUserSessions(username);
       
+      debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME CHECK - Found ${existingSessions.length} existing sessions for $username');
+      
       if (existingSessions.isNotEmpty && !forceLogout) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME CONFLICT - User $username already has ${existingSessions.length} active sessions');
         throw UserSessionConflictException(
           'User is already logged in on another device',
           existingSessions,
@@ -130,22 +142,34 @@ class EnhancedUserTokenService {
       // Store current session info locally
       await _storeCurrentSessionInfo(sessionToken, username);
       
-      // Log the change for sync - this will trigger bidirectional sync
+      // REAL-TIME SYNC: Immediate broadcasting and sync
+      debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Starting immediate session broadcast...');
+      
+      // 1. Log the change for sync - this will trigger bidirectional sync
       await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionId, 'insert');
       
-      debugPrint('ENHANCED_TOKEN_SERVICE: Created new session for user: $username on device: $deviceId');
-      
-      // Broadcast new session creation to other devices
+      // 2. Broadcast new session creation to other devices IMMEDIATELY
       await _broadcastSessionCreation(username, sessionToken, deviceId, deviceName ?? await _getDeviceName());
       
-      // Force immediate sync of session table to all connected devices (bidirectional)
+      // 3. Force IMMEDIATE sync of session table to all connected devices (bidirectional)
       final isHost = EnhancedShelfServer.isRunning;
       final isClient = DatabaseSyncClient.isConnected;
       
       if (isHost) {
         try {
+          // Force immediate sync to ALL clients
           await EnhancedShelfServer.forceSyncTable('user_sessions');
-          debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Forced immediate session sync to all clients');
+          
+          // Send immediate WebSocket broadcast to all connected clients
+          await _broadcastRealTimeSessionChange('session_created', {
+            'username': username,
+            'sessionToken': sessionToken,
+            'deviceId': deviceId,
+            'deviceName': deviceName ?? await _getDeviceName(),
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          
+          debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] REAL-TIME - Forced immediate session sync to all clients');
         } catch (e) {
           debugPrint('ENHANCED_TOKEN_SERVICE: [HOST] Error forcing session sync: $e');
         }
@@ -153,13 +177,23 @@ class EnhancedUserTokenService {
       
       if (isClient) {
         try {
-          // Send the session creation to the host server
+          // Send the session creation to the host server IMMEDIATELY
           await DatabaseSyncClient.manualSync();
-          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Sent session sync to host');
+          
+          // Request immediate session table refresh from host
+          DatabaseSyncClient.requestImmediateSessionSync();
+          
+          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] REAL-TIME - Sent immediate session sync to host');
         } catch (e) {
           debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending session sync to host: $e');
         }
       }
+      
+      // 4. Wait a moment to ensure sync propagation before returning
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: Created new session for user: $username on device: $deviceId');
+      debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Session creation and sync completed');
       
       return sessionToken;
     } catch (e) {
@@ -895,6 +929,44 @@ class EnhancedUserTokenService {
       debugPrint('ENHANCED_TOKEN_SERVICE: Session creation broadcasted successfully');
     } catch (e) {
       debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting session creation: $e');
+    }
+  }
+
+  /// Broadcast real-time session changes to all connected devices immediately
+  static Future<void> _broadcastRealTimeSessionChange(String changeType, Map<String, dynamic> sessionData) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Broadcasting real-time session change: $changeType');
+      
+      final broadcastData = {
+        'type': 'real_time_session_change',
+        'changeType': changeType,
+        'sessionData': sessionData,
+        'timestamp': DateTime.now().toIso8601String(),
+        'priority': 'immediate',
+      };
+
+      // Broadcast via LAN server if running (host)
+      if (EnhancedShelfServer.isRunning) {
+        try {
+          // Send immediate WebSocket message to all connected clients
+          await EnhancedShelfServer.broadcastToAllClients(broadcastData);
+          debugPrint('ENHANCED_TOKEN_SERVICE: Real-time session change broadcasted to all clients');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting via server: $e');
+        }
+      }
+
+      // Broadcast via sync client if connected (client)
+      if (DatabaseSyncClient.isConnected) {
+        try {
+          DatabaseSyncClient.broadcastMessage(broadcastData);
+          debugPrint('ENHANCED_TOKEN_SERVICE: Real-time session change sent to host');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: Error broadcasting via client: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error in real-time session broadcast: $e');
     }
   }
 

@@ -1007,4 +1007,32 @@ class DatabaseSyncClient {
       debugPrint('DatabaseSyncClient: Error checking authentication conflicts: $e');
     }
   }
+
+  /// Request immediate session sync from host server
+  static void requestImmediateSessionSync() {
+    if (_isConnected && _wsChannel != null) {
+      try {
+        _wsChannel!.sink.add(jsonEncode({
+          'type': 'request_immediate_table_sync',
+          'table': 'user_sessions',
+          'priority': 'immediate',
+          'timestamp': DateTime.now().toIso8601String(),
+        }));
+        
+        // Also trigger session validation
+        _syncUpdates.add({
+          'type': 'immediate_session_sync_requested',
+          'table': 'user_sessions',
+          'timestamp': DateTime.now().toIso8601String(),
+          'source': 'real_time_login',
+        });
+        
+        debugPrint('DatabaseSyncClient: Requested immediate session sync from host');
+      } catch (e) {
+        debugPrint('DatabaseSyncClient: Error requesting immediate session sync: $e');
+      }
+    } else {
+      debugPrint('DatabaseSyncClient: Cannot request immediate sync - not connected');
+    }
+  }
 }

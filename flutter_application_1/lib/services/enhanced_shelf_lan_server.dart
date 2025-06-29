@@ -645,6 +645,17 @@ class EnhancedShelfServer {
     }
   }
 
+  /// Broadcast real-time data to all connected WebSocket clients immediately
+  static Future<void> broadcastToAllClients(Map<String, dynamic> data) async {
+    try {
+      final message = jsonEncode(data);
+      _broadcastToAllClients(message);
+      debugPrint('EnhancedShelfServer: Broadcasted real-time data to ${_activeWebSocketConnections.length} clients');
+    } catch (e) {
+      debugPrint('EnhancedShelfServer: Error broadcasting real-time data: $e');
+    }
+  }
+
   /// Get server status information
   static Map<String, dynamic> getServerStatus() {
     return {
@@ -787,10 +798,10 @@ class EnhancedShelfServer {
     
     // Listen for messages from client
     webSocket.stream.listen(
-      (message) {
+      (message) async {
         try {
           final data = jsonDecode(message) as Map<String, dynamic>;
-          _handleWebSocketMessage(webSocket, data);
+          await _handleWebSocketMessage(webSocket, data);
         } catch (e) {
           debugPrint('Error processing WebSocket message: $e');
           _sendWebSocketError(webSocket, 'Invalid message format');
@@ -808,8 +819,7 @@ class EnhancedShelfServer {
   }
 
   /// Handle incoming WebSocket messages
-  /// Handle incoming WebSocket messages
-  static void _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) {
+  static Future<void> _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) async {
     final type = data['type'] as String?;
     debugPrint('Received WebSocket message: $type');
     
@@ -868,6 +878,21 @@ class EnhancedShelfServer {
           final tableName = data['table'] as String?;
           if (tableName != null) {
             _sendTableSyncToClient(webSocket, tableName);
+          }
+          break;
+          
+        case 'request_immediate_table_sync':
+          // Handle immediate table sync request with priority
+          final tableName = data['table'] as String?;
+          if (tableName != null) {
+            debugPrint('IMMEDIATE SYNC REQUEST: $tableName');
+            _sendTableSyncToClient(webSocket, tableName);
+            
+            // If it's user_sessions, broadcast to ALL clients immediately
+            if (tableName == 'user_sessions') {
+              await forceSyncTable('user_sessions');
+              debugPrint('IMMEDIATE SYNC: Forced user_sessions sync to all clients');
+            }
           }
           break;
           
