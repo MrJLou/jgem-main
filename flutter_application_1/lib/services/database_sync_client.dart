@@ -141,6 +141,8 @@ class DatabaseSyncClient {
           _sendClientInfo();
           // Request full sync
           _requestFullSync();
+          // Immediately request user_sessions sync for authentication state
+          _requestUserSessionsSync();
           break;
 
         case 'database_change':
@@ -264,6 +266,19 @@ class DatabaseSyncClient {
       debugPrint('Full sync request sent');
     } else {
       debugPrint('Cannot request sync - not connected to server');
+    }
+  }
+
+  /// Request user sessions table sync
+  static void _requestUserSessionsSync() {
+    if (_isConnected && _wsChannel != null) {
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'user_sessions',
+        'priority': 'high',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      debugPrint('Requested user_sessions table sync from server');
     }
   }
 
@@ -747,6 +762,35 @@ class DatabaseSyncClient {
 
       _wsChannel!.sink.add(jsonEncode(changeMessage));
       debugPrint('Successfully sent local change to server');
+
+      // Special handling for user_sessions table - request immediate sync back
+      if (table == 'user_sessions') {
+        debugPrint('Session change detected - requesting immediate bidirectional sync');
+        
+        // Request immediate sync back from server to ensure all devices are in sync
+        Future.delayed(const Duration(milliseconds: 500), () {
+          requestImmediateSessionSync();
+        });
+        
+        // Also trigger manual sync to ensure session data reaches the host immediately
+        Future.delayed(const Duration(milliseconds: 1000), () async {
+          try {
+            await manualSync();
+            debugPrint('Manual sync completed for session change');
+          } catch (e) {
+            debugPrint('Error during manual sync for session change: $e');
+          }
+        });
+        
+        // Notify listeners about session change
+        _syncUpdates.add({
+          'type': 'local_session_change_sent',
+          'table': table,
+          'operation': operation,
+          'recordId': recordId,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+      }
     } catch (e) {
       debugPrint('Error sending local change to server: $e');
     }
@@ -1033,6 +1077,30 @@ class DatabaseSyncClient {
       }
     } else {
       debugPrint('DatabaseSyncClient: Cannot request immediate sync - not connected');
+    }
+  }
+
+  /// Force immediate session table sync - called when sessions change
+  static Future<void> forceSessionSync() async {
+    if (_isConnected && _wsChannel != null) {
+      try {
+        // Request immediate session table sync
+        _wsChannel!.sink.add(jsonEncode({
+          'type': 'request_immediate_table_sync',
+          'table': 'user_sessions',
+          'priority': 'critical',
+          'reason': 'session_change',
+          'timestamp': DateTime.now().toIso8601String(),
+        }));
+        
+        // Wait a moment then perform manual sync
+        await Future.delayed(const Duration(milliseconds: 1000));
+        await manualSync();
+        
+        debugPrint('DatabaseSyncClient: Forced immediate session sync completed');
+      } catch (e) {
+        debugPrint('DatabaseSyncClient: Error forcing session sync: $e');
+      }
     }
   }
 }

@@ -84,6 +84,18 @@ void main() async {
   
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
+  
+  // Trigger immediate session sync if connected to ensure all devices have current state
+  if (DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning) {
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+        debugPrint('Initial session sync triggered successfully');
+      } catch (e) {
+        debugPrint('Error triggering initial session sync: $e');
+      }
+    });
+  }
 
   runApp(const PatientRecordManagementApp());
 }

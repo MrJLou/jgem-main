@@ -225,6 +225,34 @@ class CrossDeviceSessionMonitor {
     }
   }
   
+  /// Trigger immediate session sync after login/logout
+  static Future<void> triggerImmediateSessionSync() async {
+    try {
+      debugPrint('CROSS_DEVICE_MONITOR: Triggering immediate session sync');
+      
+      // Request immediate sync via client if connected to host
+      if (DatabaseSyncClient.isConnected) {
+        await DatabaseSyncClient.forceSessionSync();
+        DatabaseSyncClient.requestImmediateSessionSync();
+        debugPrint('CROSS_DEVICE_MONITOR: Sent immediate session sync request to host');
+      }
+      
+      // Force sync from host if running
+      if (EnhancedShelfServer.isRunning) {
+        await EnhancedShelfServer.forceSyncTable('user_sessions');
+        debugPrint('CROSS_DEVICE_MONITOR: Forced session sync from host to all clients');
+      }
+      
+      // Also trigger immediate session validation
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        _checkCurrentSessionValidity();
+      });
+      
+    } catch (e) {
+      debugPrint('CROSS_DEVICE_MONITOR: Error triggering immediate session sync: $e');
+    }
+  }
+
   /// Force session sync across all devices for a specific user
   static Future<void> forceSyncUserSessions(String username) async {
     try {

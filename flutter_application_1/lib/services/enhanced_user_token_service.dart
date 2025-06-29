@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'database_helper.dart';
 import 'database_sync_client.dart';
 import 'enhanced_shelf_lan_server.dart';
+import 'cross_device_session_monitor.dart';
 
 /// Enhanced Token-based Authentication Service
 /// 
@@ -178,12 +179,21 @@ class EnhancedUserTokenService {
       if (isClient) {
         try {
           // Send the session creation to the host server IMMEDIATELY
-          await DatabaseSyncClient.manualSync();
+          await DatabaseSyncClient.forceSessionSync();
           
-          // Request immediate session table refresh from host
+          // Also request immediate bidirectional sync
           DatabaseSyncClient.requestImmediateSessionSync();
           
-          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] REAL-TIME - Sent immediate session sync to host');
+          // Send immediate broadcast as well
+          await _broadcastRealTimeSessionChange('session_created', {
+            'username': username,
+            'sessionToken': sessionToken,
+            'deviceId': deviceId,
+            'deviceName': deviceName ?? await _getDeviceName(),
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          
+          debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] REAL-TIME - Sent immediate session creation to host');
         } catch (e) {
           debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending session sync to host: $e');
         }
@@ -191,6 +201,14 @@ class EnhancedUserTokenService {
       
       // 4. Wait a moment to ensure sync propagation before returning
       await Future.delayed(const Duration(milliseconds: 500));
+      
+      // 5. Trigger immediate cross-device session sync
+      try {
+        await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+        debugPrint('ENHANCED_TOKEN_SERVICE: Triggered immediate cross-device session sync');
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: Error triggering cross-device sync: $e');
+      }
       
       debugPrint('ENHANCED_TOKEN_SERVICE: Created new session for user: $username on device: $deviceId');
       debugPrint('ENHANCED_TOKEN_SERVICE: REAL-TIME SYNC - Session creation and sync completed');
@@ -484,11 +502,11 @@ class EnhancedUserTokenService {
         
         if (isClient) {
           try {
-            // Send the session deletion to the host server
-            await DatabaseSyncClient.manualSync();
-            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Sent session deletion sync to host');
+            // Force immediate session sync to the host server
+            await DatabaseSyncClient.forceSessionSync();
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Forced session deletion sync to host');
           } catch (e) {
-            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error sending session deletion sync to host: $e');
+            debugPrint('ENHANCED_TOKEN_SERVICE: [CLIENT] Error forcing session deletion sync to host: $e');
           }
         }
         

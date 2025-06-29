@@ -201,7 +201,7 @@ class EnhancedShelfServer {
       }
 
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services'];
+      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'user_sessions'];
       final data = <String, List<Map<String, dynamic>>>{};
       
       for (final table in tables) {
@@ -946,7 +946,7 @@ class EnhancedShelfServer {
       }
       
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'active_patient_queue'];
+      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'active_patient_queue', 'user_sessions'];
       
       final syncData = <String, dynamic>{};
       
