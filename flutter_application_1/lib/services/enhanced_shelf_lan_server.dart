@@ -877,7 +877,14 @@ class EnhancedShelfServer {
           // Send specific table data to client
           final tableName = data['table'] as String?;
           if (tableName != null) {
+            debugPrint('SERVER: Table sync requested for: $tableName');
             _sendTableSyncToClient(webSocket, tableName);
+            
+            // For user_sessions, also broadcast to all other clients to ensure consistency
+            if (tableName == 'user_sessions') {
+              debugPrint('SERVER: Broadcasting user_sessions to all clients due to sync request');
+              await forceSyncTable('user_sessions');
+            }
           }
           break;
           
@@ -885,13 +892,36 @@ class EnhancedShelfServer {
           // Handle immediate table sync request with priority
           final tableName = data['table'] as String?;
           if (tableName != null) {
-            debugPrint('IMMEDIATE SYNC REQUEST: $tableName');
+            debugPrint('SERVER: IMMEDIATE SYNC REQUEST for: $tableName');
             _sendTableSyncToClient(webSocket, tableName);
             
             // If it's user_sessions, broadcast to ALL clients immediately
             if (tableName == 'user_sessions') {
+              debugPrint('SERVER: IMMEDIATE SYNC - Force broadcasting user_sessions to all clients');
               await forceSyncTable('user_sessions');
-              debugPrint('IMMEDIATE SYNC: Forced user_sessions sync to all clients');
+              
+              // Also broadcast a general session update notification
+              _broadcastToAllClients(jsonEncode({
+                'type': 'session_table_updated',
+                'table': 'user_sessions',
+                'timestamp': DateTime.now().toIso8601String(),
+                'reason': 'immediate_sync_request',
+              }));
+            }
+          }
+          break;
+          
+        case 'force_table_sync':
+          // Handle force table sync request from client
+          final tableName = data['table'] as String?;
+          if (tableName != null) {
+            debugPrint('SERVER: FORCE TABLE SYNC requested for: $tableName');
+            await _sendTableSyncToClient(webSocket, tableName);
+            
+            // For user_sessions, ensure all clients get the update
+            if (tableName == 'user_sessions') {
+              debugPrint('SERVER: FORCE SYNC - Broadcasting user_sessions to all clients');
+              await forceSyncTable('user_sessions');
             }
           }
           break;

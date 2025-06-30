@@ -14,6 +14,7 @@ import 'screens/analytics/analytics_hub_screen.dart';
 import 'services/database_sync_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'dart:async';
 import 'services/cross_device_session_monitor.dart';
 
 void main() async {
@@ -84,6 +85,19 @@ void main() async {
   
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
+  
+  // Set up enhanced session sync every 5 seconds for critical auth consistency
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
+    try {
+      if (DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning) {
+        // Force session table sync more frequently for authentication integrity
+        await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+        debugPrint('MAIN: Periodic session sync triggered (every 5s)');
+      }
+    } catch (e) {
+      debugPrint('MAIN: Error during periodic session sync: $e');
+    }
+  });
   
   // Trigger immediate session sync if connected to ensure all devices have current state
   if (DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning) {

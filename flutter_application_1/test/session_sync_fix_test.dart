@@ -4,7 +4,6 @@ import 'package:flutter_application_1/services/enhanced_user_token_service.dart'
 import 'package:flutter_application_1/services/enhanced_shelf_lan_server.dart';
 import 'package:flutter_application_1/services/database_sync_client.dart';
 import 'package:flutter_application_1/services/cross_device_session_monitor.dart';
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// Test suite for session sync fixes
@@ -223,8 +222,8 @@ void main() {
       
       // Create session directly on host database (bypass token service to simulate host-only creation)
       final hostDb = await hostDbHelper.database;
-      final sessionId = 'test_session_id';
-      final sessionToken = 'test_session_token_host';
+      const sessionId = 'test_session_id';
+      const sessionToken = 'test_session_token_host';
       final now = DateTime.now();
       
       await hostDb.insert('user_sessions', {
