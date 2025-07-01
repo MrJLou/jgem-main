@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
-import '../models/doctor_schedule.dart';
+import '../models/doctor_work_schedule.dart';
 import 'database_helper.dart';
 import 'api_service.dart';
 
-/// Service for managing doctor schedules with working days and arrival/departure times
-class DoctorScheduleService {
+/// Simple service for managing doctor work schedules (arrival/departure times)
+class DoctorWorkScheduleService {
   static DatabaseHelper? _dbHelper;
   
   static DatabaseHelper get dbHelper {
@@ -14,7 +14,7 @@ class DoctorScheduleService {
     return _dbHelper!;
   }
 
-  /// Get schedule for a specific doctor
+  /// Get work schedule for a specific doctor
   static Future<DoctorSchedule?> getDoctorSchedule(String doctorId) async {
     try {
       final db = await dbHelper.database;
@@ -37,7 +37,7 @@ class DoctorScheduleService {
     }
   }
 
-  /// Save or update doctor schedule
+  /// Save or update doctor work schedule
   static Future<bool> saveDoctorSchedule(DoctorSchedule schedule) async {
     try {
       final db = await dbHelper.database;
@@ -53,7 +53,7 @@ class DoctorScheduleService {
       );
       
       if (kDebugMode) {
-        print('Doctor schedule saved successfully for ${schedule.doctorName}');
+        print('Saved doctor schedule: ${scheduleWithTimestamp.toString()}');
       }
       return true;
     } catch (e) {
@@ -64,7 +64,7 @@ class DoctorScheduleService {
     }
   }
 
-  /// Get all doctor schedules
+  /// Get all doctor work schedules
   static Future<List<DoctorSchedule>> getAllDoctorSchedules() async {
     try {
       final db = await dbHelper.database;
@@ -83,36 +83,46 @@ class DoctorScheduleService {
     }
   }
 
-  /// Get doctors working today
-  static Future<List<DoctorSchedule>> getDoctorsWorkingToday() async {
-    final today = DateTime.now();
-    final dayName = _getDayName(today.weekday);
-    
+  /// Get doctors currently working (within their arrival/departure times)
+  static Future<List<DoctorSchedule>> getDoctorsCurrentlyWorking() async {
     try {
       final allSchedules = await getAllDoctorSchedules();
-      return allSchedules.where((schedule) => schedule.worksOnDay(dayName)).toList();
+      return allSchedules.where((schedule) => schedule.isCurrentlyWorking()).toList();
     } catch (e) {
       if (kDebugMode) {
-        print('Error fetching doctors working today: $e');
+        print('Error getting currently working doctors: $e');
       }
       return [];
     }
   }
 
-  /// Get doctors working on a specific day
-  static Future<List<DoctorSchedule>> getDoctorsWorkingOnDay(String dayName) async {
+  /// Check if doctor is available at a specific time
+  static Future<bool> isDoctorAvailableAt(String doctorId, TimeOfDay time) async {
     try {
-      final allSchedules = await getAllDoctorSchedules();
-      return allSchedules.where((schedule) => schedule.worksOnDay(dayName)).toList();
+      final schedule = await getDoctorSchedule(doctorId);
+      return schedule?.isTimeWithinWorkHours(time) ?? false;
     } catch (e) {
       if (kDebugMode) {
-        print('Error fetching doctors working on $dayName: $e');
+        print('Error checking doctor availability: $e');
       }
-      return [];
+      return false;
     }
   }
 
-  /// Delete doctor schedule
+  /// Check if doctor is currently working
+  static Future<bool> isDoctorCurrentlyWorking(String doctorId) async {
+    try {
+      final schedule = await getDoctorSchedule(doctorId);
+      return schedule?.isCurrentlyWorking() ?? false;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error checking if doctor is currently working: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Delete doctor work schedule
   static Future<bool> deleteDoctorSchedule(String doctorId) async {
     try {
       final db = await dbHelper.database;
@@ -149,42 +159,7 @@ class DoctorScheduleService {
     }
   }
 
-  /// Check if doctor is available at current time
-  static Future<bool> isDoctorAvailableNow(String doctorId) async {
-    try {
-      final schedule = await getDoctorSchedule(doctorId);
-      if (schedule == null || !schedule.isActive) return false;
-
-      final now = DateTime.now();
-      final currentDay = _getDayName(now.weekday);
-      
-      if (!schedule.worksOnDay(currentDay)) return false;
-
-      final currentTime = TimeOfDay.fromDateTime(DateTime.now());
-      return schedule.isTimeWithinWorkHours(currentTime);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error checking doctor availability: $e');
-      }
-      return false;
-    }
-  }
-
-  /// Helper method to get day name from weekday number
-  static String _getDayName(int weekday) {
-    switch (weekday) {
-      case 1: return 'monday';
-      case 2: return 'tuesday';
-      case 3: return 'wednesday';
-      case 4: return 'thursday';
-      case 5: return 'friday';
-      case 6: return 'saturday';
-      case 7: return 'sunday';
-      default: return 'monday';
-    }
-  }
-
-  /// Initialize schedules for all existing doctors
+  /// Initialize schedules for all existing doctors who don't have one
   static Future<void> initializeSchedulesForAllDoctors() async {
     try {
       final users = await ApiService.getUsers();

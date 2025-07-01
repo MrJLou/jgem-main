@@ -8,8 +8,8 @@ import 'package:flutter_application_1/screens/registration/patient_registration_
     show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
-import '../../models/doctor_availability.dart'; // ADDED for doctor availability
-import '../../services/doctor_availability_service.dart'; // ADDED
+import '../../services/doctor_schedule_service.dart'; // ADDED for simple doctor schedules
+// Legacy time slot imports removed - using simple work schedule system
 
 class AddAppointmentScreen extends StatefulWidget {
   final List<Appointment>? existingAppointments;
@@ -58,6 +58,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   Map<String, bool> _serviceSelectionState = {};
   double _totalPrice = 0.0;
   bool _isLaboratoryOnly = false; // NEW: For laboratory appointments without doctor
+
+  // Removed complex time slot management - using simple work schedule validation
 
   final List<String> _dialogBloodTypes = [
     'A+',
@@ -236,21 +238,16 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       }
     }
   }
-
   Future<void> _updateAvailableDoctorsForDate() async {
     if (_doctors.isEmpty) return;
-    
+
     try {
-      final dayOfWeek = DayOfWeek.fromDateTime(_selectedDate);
       final availableDoctors = <User>[];
       
       for (final doctor in _doctors) {
-        final availability = await DoctorAvailabilityService.getDoctorAvailability(doctor.id);
-        if (availability != null) {
-          final daySchedule = availability.getScheduleForDay(dayOfWeek);
-          if (daySchedule != null && daySchedule.isAvailable) {
-            availableDoctors.add(doctor);
-          }
+        final schedule = await DoctorScheduleService.getDoctorSchedule(doctor.id);
+        if (schedule != null && schedule.isActive) {
+          availableDoctors.add(doctor);
         }
       }
       
@@ -260,13 +257,21 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           // If currently selected doctor is not available on this date, clear selection
           if (_selectedDoctor != null && !availableDoctors.contains(_selectedDoctor)) {
             _selectedDoctor = null;
+            // Simple schedule system - no complex time slot management
           }
         });
+        
+        // Load doctors for selected date - simplified for work schedule system
+        if (_selectedDoctor != null) {
+          // Simple validation will happen during save
+        }
       }
     } catch (e) {
-      debugPrint('Error filtering doctors by availability: $e');
+      debugPrint('Error filtering doctors by schedule: $e');
     }
   }
+
+
 
   Future<void> _fetchAvailableServices() async {
     try {
@@ -326,7 +331,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _patientSearchController.clear();
       _patientSearchResults = [];
       _errorMessage = null;
-      _formKey.currentState?.reset();      _selectedServices.clear();
+      _formKey.currentState?.reset();      
+      _selectedServices.clear();
       _serviceSelectionState = {
         for (var service in _availableServices) service.id: false
       };
@@ -403,14 +409,14 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     if (_selectedDoctor == null && !_isLaboratoryOnly) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text('Please select a doctor first or check "Laboratory Tests Only" to see available time slots.'),
+          content: Text('Please select a doctor first or check "Laboratory Tests Only" to see available time slots.'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
       return;
     }
 
+    // Simple time slot selection - no complex time slot system
     final List<TimeOfDay> timeSlots = _isLaboratoryOnly 
         ? _generateWorkingTimeSlots() // For lab-only, show all working hours
         : _generateSelectableTimeSlots(); // For doctor appointments, check conflicts
@@ -933,6 +939,33 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           );
           return;
         }
+
+        // Check if appointment time is within doctor's work hours
+        final schedule = await DoctorScheduleService.getDoctorSchedule(_selectedDoctor!.id);
+        if (schedule == null || !schedule.isActive) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Selected doctor has no active work schedule.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        if (!schedule.isTimeWithinWorkHours(_selectedTime)) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Selected time is outside doctor\'s work hours (${schedule.getFormattedTimeRange()}).'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
       }
 
       try {
@@ -965,6 +998,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         // Save the appointment and get it back with the generated ID
         final savedAppointment =
             await ApiService.saveAppointment(appointmentToSave);
+
+        // Simplified system - no complex time slot booking needed
 
         // Notify parent about the new appointment
         if (widget.onAppointmentAdded != null) {
@@ -1005,6 +1040,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _totalPrice = total;
     });
   }
+
   @override
   void dispose() {
     _notesController.dispose();

@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 37;
+  static const int _databaseVersion = 39;
 
   // Tables
   static const String tableUsers = 'users';
@@ -57,6 +57,8 @@ class DatabaseHelper {
   static const String tablePatientQueue = 'patient_queue';
   static const String tableActivePatientQueue = 'active_patient_queue';
   static const String tableUserSessions = 'user_sessions';
+  static const String tableDoctorTimeSlots = 'doctor_time_slots';
+  static const String tableDoctorSchedules = 'doctor_schedules';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -707,6 +709,52 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Table doctor_availability created');
 
+    // Doctor Time Slots table (for time slot allocation and booking)
+    await db.execute('''
+      CREATE TABLE $tableDoctorTimeSlots (
+        id TEXT PRIMARY KEY,
+        doctorId TEXT NOT NULL,
+        doctorName TEXT NOT NULL,
+        date TEXT NOT NULL,
+        startTime TEXT NOT NULL,
+        endTime TEXT NOT NULL,
+        durationMinutes INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        type TEXT NOT NULL,
+        patientId TEXT,
+        patientName TEXT,
+        appointmentId TEXT,
+        queueEntryId TEXT,
+        selectedServices TEXT,
+        totalPrice REAL,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE,
+        FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+        FOREIGN KEY (appointmentId) REFERENCES $tableAppointments (id) ON DELETE SET NULL
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table $tableDoctorTimeSlots created');
+
+    // Doctor Schedules table (simple working hours and days)
+    await db.execute('''
+      CREATE TABLE $tableDoctorSchedules (
+        id TEXT PRIMARY KEY,
+        doctor_id TEXT NOT NULL,
+        doctor_name TEXT NOT NULL,
+        working_days TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table $tableDoctorSchedules created');
+
     // Create admin user by default
     await _createDefaultAdmin(db);
 
@@ -924,6 +972,51 @@ class DatabaseHelper {
         UPDATE $tableUserSessions 
         SET expires_at = COALESCE(expiresAt, datetime('now', '+1 hour')) 
         WHERE expires_at IS NULL
+      ''');
+    }
+
+    if (oldVersion < 38) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 38: Creating doctor_time_slots table for time slot allocation and booking.");
+      
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableDoctorTimeSlots (
+          id TEXT PRIMARY KEY,
+          doctorId TEXT NOT NULL,
+          doctorName TEXT NOT NULL,
+          date TEXT NOT NULL,
+          startTime TEXT NOT NULL,
+          endTime TEXT NOT NULL,
+          durationMinutes INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          type TEXT NOT NULL,
+          patientId TEXT,
+          patientName TEXT,
+          appointmentId TEXT,
+          queueEntryId TEXT,
+          selectedServices TEXT,
+          totalPrice REAL,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE,
+          FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+          FOREIGN KEY (appointmentId) REFERENCES $tableAppointments (id) ON DELETE SET NULL
+        )
+      ''');
+      
+      // Create indexes for the new table
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctorId ON $tableDoctorTimeSlots (doctorId)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_date ON $tableDoctorTimeSlots (date)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_status ON $tableDoctorTimeSlots (status)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctor_date ON $tableDoctorTimeSlots (doctorId, date)
       ''');
     }
 
@@ -2945,6 +3038,7 @@ To view live changes in DB Browser:
       tablePatientQueue,
       tableActivePatientQueue,
       tablePatientHistory,
+      tableDoctorTimeSlots,
     ];
 
     await db.transaction((txn) async {

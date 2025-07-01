@@ -1,8 +1,31 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../models/doctor_availability.dart';
-import '../../services/doctor_availability_service.dart';
+import '../../models/doctor_schedule.dart'; // This has workingDays
+import '../../services/doctor_schedule_service.dart';
+
+// Days of week enum for the registration form
+enum DayOfWeek {
+  monday,
+  tuesday,
+  wednesday,
+  thursday,
+  friday,
+  saturday,
+  sunday;
+
+  String get displayName {
+    switch (this) {
+      case DayOfWeek.monday: return 'Monday';
+      case DayOfWeek.tuesday: return 'Tuesday';
+      case DayOfWeek.wednesday: return 'Wednesday';
+      case DayOfWeek.thursday: return 'Thursday';
+      case DayOfWeek.friday: return 'Friday';
+      case DayOfWeek.saturday: return 'Saturday';
+      case DayOfWeek.sunday: return 'Sunday';
+    }
+  }
+}
 
 class UserRegistrationScreen extends StatefulWidget {
   const UserRegistrationScreen({super.key});
@@ -38,16 +61,28 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
   late Animation<double> _fadeAnimation;
   String? _errorMessage;
 
-  // Doctor availability selection
-  final Map<DayOfWeek, bool> _selectedDays = {
-    DayOfWeek.monday: true,
-    DayOfWeek.tuesday: true,
-    DayOfWeek.wednesday: true,
-    DayOfWeek.thursday: true,
-    DayOfWeek.friday: true,
-    DayOfWeek.saturday: true,
-    DayOfWeek.sunday: false,
+  // Doctor working days selection (simplified with strings)
+  final Map<String, bool> _selectedDays = {
+    'monday': true,
+    'tuesday': true,
+    'wednesday': true,
+    'thursday': true,
+    'friday': true,
+    'saturday': true,
+    'sunday': false,
   };
+
+  // Doctor service hours (when they arrive and leave the clinic)
+  TimeOfDay _arrivalTime = const TimeOfDay(hour: 7, minute: 30);
+  TimeOfDay _departureTime = const TimeOfDay(hour: 16, minute: 30);
+
+  // Simple configuration for doctor schedules
+  bool _enableTimeSlotAllocation = false; // Disable complex time slots
+  int _slotDurationMinutes = 30; // Keep for UI compatibility
+  final List<int> _availableSlotDurations = [15, 30, 45, 60]; // Keep for UI compatibility
+
+  // Days of week for the UI
+  final List<String> _allDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
   // For password strength indicator
   double _passwordStrengthValue = 0.0;
@@ -165,11 +200,11 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
       _errorMessage = null;
     });
 
-    // Validate doctor availability if role is doctor
+    // Validate doctor working days if role is doctor
     if (_selectedRole == 'doctor') {
       if (_selectedDays.values.every((selected) => !selected)) {
         setState(() {
-          _errorMessage = 'Please select at least one available day for the doctor.';
+          _errorMessage = 'Please select at least one working day for the doctor.';
         });
         return;
       }
@@ -218,7 +253,7 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           securityAnswer3: hashedSecurityAnswer3,
         );
 
-        // If this is a doctor, create their availability schedule
+        // If this is a doctor, create their availability schedule and time slots
         if (_selectedRole == 'doctor' && mounted) {
           try {
             await _createDoctorAvailability();
@@ -279,39 +314,24 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
         orElse: () => throw Exception('Could not find newly created user'),
       );
 
-      // Create availability schedule based on selected days
-      final weeklySchedule = <DayOfWeek, DaySchedule>{};
+      // Create simple work schedule with selected days
+      final workingDaysMap = Map<String, bool>.from(_selectedDays);
       
-      for (final day in DayOfWeek.values) {
-        if (_selectedDays[day] == true) {
-          weeklySchedule[day] = DaySchedule(
-            isAvailable: true,
-            timeSlot: TimeSlot(
-              startHour: 7,
-              startMinute: 30,
-              endHour: 16,
-              endMinute: 30,
-            ),
-            notes: 'Created during registration',
-          );
-        } else {
-          weeklySchedule[day] = DaySchedule.createDayOff();
-        }
-      }
-
-      final availability = DoctorAvailability(
-        id: 'availability_${newUser.id}_${DateTime.now().millisecondsSinceEpoch}',
+      final newSchedule = DoctorSchedule(
+        id: 'schedule_${newUser.id}_${DateTime.now().millisecondsSinceEpoch}',
         doctorId: newUser.id,
         doctorName: newUser.fullName,
-        weeklySchedule: weeklySchedule,
+        workingDays: workingDaysMap,
+        arrivalTime: _arrivalTime,
+        departureTime: _departureTime,
+        isActive: true,
+        notes: 'Created during registration',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        isActive: true,
-        notes: 'Initial schedule created during registration',
       );
 
-      await DoctorAvailabilityService.saveDoctorAvailability(availability);
-      debugPrint('Doctor availability created successfully for doctor: ${newUser.fullName}');
+      await DoctorScheduleService.saveDoctorSchedule(newSchedule);
+      debugPrint('Simple work schedule created successfully for doctor: ${newUser.fullName}');
     } catch (e) {
       debugPrint('Error creating doctor availability: $e');
       rethrow;
@@ -1119,7 +1139,7 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: DayOfWeek.values.map((day) {
+                children: _allDays.map((day) {
                   final isSelected = _selectedDays[day] ?? false;
                   return FilterChip(
                     label: Text(_getDayDisplayName(day)),
@@ -1168,25 +1188,125 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                   ),
                 ),
               const SizedBox(height: 12),
+              
+              // Service Hours Section
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Colors.teal.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(color: Colors.teal.shade200),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info, color: Colors.blue.shade600, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Doctor availability is automatically set to standard hours (7:30 AM - 4:30 PM) for selected days.',
-                        style: TextStyle(
-                          color: Colors.blue.shade700,
-                          fontSize: 12,
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, color: Colors.teal.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Service Hours',
+                          style: TextStyle(
+                            color: Colors.teal.shade700,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Set when you arrive at and leave the clinic:',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Time Pickers Row
+                    Row(
+                      children: [
+                        // Arrival Time
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Arrival Time',
+                                style: TextStyle(
+                                  color: Colors.teal.shade700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () => _selectArrivalTime(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.teal.shade300),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.schedule, color: Colors.teal.shade600, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatTimeOfDay(_arrivalTime),
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(width: 16),
+                        
+                        // Departure Time
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Departure Time',
+                                style: TextStyle(
+                                  color: Colors.teal.shade700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () => _selectDepartureTime(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.teal.shade300),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.schedule_send, color: Colors.teal.shade600, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatTimeOfDay(_departureTime),
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1194,26 +1314,259 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
             ],
           ),
         ),
-      ],
-    );
+        
+        const SizedBox(height: 16),
+        
+        // Time Slot Configuration
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.teal.shade300),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.access_time, color: Colors.teal[700], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Time Slot Configuration',
+                    style: TextStyle(
+                      color: Colors.teal[700],
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Enable Time Slot Allocation Toggle
+              Row(
+                children: [
+                  Switch(
+                    value: _enableTimeSlotAllocation,
+                    onChanged: (bool value) {
+                      setState(() {
+                        _enableTimeSlotAllocation = value;
+                      });
+                    },
+                    activeColor: Colors.teal[700],
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Enable Time Slot-Based Appointments',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              
+              if (_enableTimeSlotAllocation) ...[
+                const SizedBox(height: 16),
+                
+                // Slot Duration Selection
+                Text(
+                  'Appointment Slot Duration:',
+                  style: TextStyle(
+                    color: Colors.grey[700],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                
+                Wrap(
+                  spacing: 8,
+                  children: _availableSlotDurations.map((duration) {
+                    final isSelected = _slotDurationMinutes == duration;
+                    return FilterChip(
+                      label: Text('$duration min'),
+                      selected: isSelected,
+                      onSelected: (bool selected) {
+                        if (selected) {
+                          setState(() {
+                            _slotDurationMinutes = duration;
+                          });
+                        }
+                      },
+                      selectedColor: Colors.teal.shade100,
+                      checkmarkColor: Colors.teal.shade700,
+                      backgroundColor: Colors.grey.shade100,
+                      labelStyle: TextStyle(
+                        color: isSelected ? Colors.teal.shade700 : Colors.grey[700],
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                      side: BorderSide(
+                        color: isSelected ? Colors.teal.shade400 : Colors.grey.shade300,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                
+                const SizedBox(height: 12),
+                
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.schedule, color: Colors.green.shade600, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Time slots will be automatically generated based on doctor availability and selected duration. This enables precise appointment scheduling and queue management.',
+                          style: TextStyle(
+                            color: Colors.green.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
+              if (!_enableTimeSlotAllocation) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info, color: Colors.orange.shade600, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Traditional appointment scheduling will be used without predefined time slots. Appointments can be scheduled at any time within working hours.',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontSize: 12,                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],),
+          ),
+      ]);
   }
 
-  String _getDayDisplayName(DayOfWeek day) {
-    switch (day) {
-      case DayOfWeek.monday:
+  String _getDayDisplayName(String day) {
+    switch (day.toLowerCase()) {
+      case 'monday':
         return 'Monday';
-      case DayOfWeek.tuesday:
+      case 'tuesday':
         return 'Tuesday';
-      case DayOfWeek.wednesday:
+      case 'wednesday':
         return 'Wednesday';
-      case DayOfWeek.thursday:
+      case 'thursday':
         return 'Thursday';
-      case DayOfWeek.friday:
+      case 'friday':
         return 'Friday';
-      case DayOfWeek.saturday:
+      case 'saturday':
         return 'Saturday';
-      case DayOfWeek.sunday:
+      case 'sunday':
         return 'Sunday';
+      default:
+        return day;
     }
+  }
+
+  // Time picker methods for doctor service hours
+  Future<void> _selectArrivalTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _arrivalTime,
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.teal.shade600,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null && picked != _arrivalTime) {
+      setState(() {
+        _arrivalTime = picked;
+        // Ensure departure time is after arrival time
+        if (_departureTime.hour < _arrivalTime.hour || 
+            (_departureTime.hour == _arrivalTime.hour && _departureTime.minute <= _arrivalTime.minute)) {
+          _departureTime = TimeOfDay(
+            hour: _arrivalTime.hour + 1, 
+            minute: _arrivalTime.minute,
+          );
+          // Handle case where hour goes past 23
+          if (_departureTime.hour > 23) {
+            _departureTime = const TimeOfDay(hour: 23, minute: 59);
+          }
+        }
+      });
+    }
+  }
+
+  Future<void> _selectDepartureTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _departureTime,
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.teal.shade600,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null && picked != _departureTime) {
+      setState(() {
+        // Ensure departure time is after arrival time
+        if (picked.hour > _arrivalTime.hour || 
+            (picked.hour == _arrivalTime.hour && picked.minute > _arrivalTime.minute)) {
+          _departureTime = picked;
+        } else {
+          // Show error if trying to set departure before arrival
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Departure time must be after arrival time'),
+              backgroundColor: Colors.red.shade600,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final period = time.hour >= 12 ? 'PM' : 'AM';
+    final displayHour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final minuteStr = time.minute.toString().padLeft(2, '0');
+    return '$displayHour:$minuteStr $period';
   }
 }

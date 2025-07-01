@@ -336,7 +336,7 @@ class BackupService {
           }
         }
         
-        throw restoreError;
+        rethrow;
       }
 
     } catch (e) {
@@ -461,7 +461,7 @@ class BackupService {
       return BackupResult(
         success: true,
         metadata: metadata,
-        message: 'Full database backup created successfully with ${tableCount} tables and ${recordCount} records',
+        message: 'Full database backup created successfully with $tableCount tables and $recordCount records',
       );
 
     } catch (e) {

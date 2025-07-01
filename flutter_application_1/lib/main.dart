@@ -12,6 +12,7 @@ import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/analytics/analytics_hub_screen.dart';
+import 'screens/appointments/doctor_work_schedule_screen.dart' as work_schedule;
 import 'services/database_sync_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -147,7 +148,8 @@ class PatientRecordManagementApp extends StatelessWidget {
             ), // Add route for DashboardScreen
         '/analytics-hub': (context) => const AnalyticsHubScreen(),
         '/laboratory-hub': (context) =>
-            const LaboratoryHubScreen(), 
+            const LaboratoryHubScreen(),
+        '/doctor-schedule': (context) => const work_schedule.DoctorScheduleScreen(),
       },
       debugShowCheckedModeBanner: false,
     );
