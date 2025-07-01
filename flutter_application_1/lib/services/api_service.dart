@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import '../models/appointment.dart';
 import '../models/user.dart';
@@ -13,12 +13,14 @@ import '../services/auth_service.dart';
 import 'enhanced_shelf_lan_server.dart';
 import '../models/clinic_service.dart';
 import './queue_service.dart';
+import './backup_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/models/patient_report.dart';
+import 'authentication_manager.dart';
 
 class ApiService {
-  static final DatabaseHelper _dbHelper = DatabaseHelper();
+  static DatabaseHelper _dbHelper = DatabaseHelper();
   static final QueueService _queueService = QueueService();
   static String? _currentUserRole;
   static const String baseUrl = 'http://localhost:3000'; // Updated to a valid local API base URL
@@ -197,6 +199,19 @@ class ApiService {
       final patientsData = await _dbHelper.getPatients();
       return patientsData.map((data) => Patient.fromJson(data)).toList();
     } catch (e) {
+      // Check if this is a database connection issue after restore
+      if (e.toString().contains('database_closed') || e.toString().contains('DatabaseException')) {
+        debugPrint('ApiService: Detected database connection issue, attempting to reinitialize...');
+        try {
+          // Force database reinitialization
+          await _reinitializeDatabaseConnection();
+          // Retry the operation
+          final patientsData = await _dbHelper.getPatients();
+          return patientsData.map((data) => Patient.fromJson(data)).toList();
+        } catch (retryError) {
+          throw Exception('Failed to load patients after database reconnection: $retryError');
+        }
+      }
       throw Exception('Failed to load patients: $e');
     }
   }
@@ -605,21 +620,21 @@ class ApiService {
         try {
           final externalDir = await getExternalStorageDirectory();
           if (externalDir != null) {
-            dbPath = join(externalDir.path, 'patient_management.db');
+            dbPath = path.join(externalDir.path, 'patient_management.db');
           } else {
             // Fallback to app documents directory
             final appDir = await getApplicationDocumentsDirectory();
-            dbPath = join(appDir.path, 'patient_management.db');
+            dbPath = path.join(appDir.path, 'patient_management.db');
           }
         } catch (e) {
           // Fallback if external storage access fails
           final appDir = await getApplicationDocumentsDirectory();
-          dbPath = join(appDir.path, 'patient_management.db');
+          dbPath = path.join(appDir.path, 'patient_management.db');
         }
       } else {
         // For iOS, desktop, web or other platforms
         final appDir = await getApplicationDocumentsDirectory();
-        dbPath = join(appDir.path, 'patient_management.db');
+        dbPath = path.join(appDir.path, 'patient_management.db');
       }
 
       // Export database to accessible location
@@ -641,7 +656,7 @@ class ApiService {
       debugPrint(
           'DB Browser setup info: Unable to access external storage. Using internal storage instead.');
       final appDir = await getApplicationDocumentsDirectory();
-      final dbPath = join(appDir.path, 'patient_management.db');
+      final dbPath = path.join(appDir.path, 'patient_management.db');
       debugPrint('Database Path: $dbPath');
     }
   }
@@ -668,7 +683,7 @@ class ApiService {
       } catch (e) {
         // Fallback to standard path
         final appDir = await getApplicationDocumentsDirectory();
-        dbPath = join(appDir.path, 'patient_management.db');
+        dbPath = path.join(appDir.path, 'patient_management.db');
       }
 
       return {
@@ -745,33 +760,33 @@ class ApiService {
   }
 
   // User access control
-  static bool canPerformAction(String requiredRole) {
-    // Check if current user has the required role
-    if (_currentUserRole == null) return false;
+  static Future<bool> canPerformAction(String requiredRole) async {
+    try {
+      // Get current user role from the new authentication system
+      final currentUserRole = await AuthenticationManager.getCurrentUserAccessLevel();
+      if (currentUserRole == null) return false;
 
-    // Admin can do everything
-    if (_currentUserRole == 'admin') return true;
+      // Admin can do everything
+      if (currentUserRole == 'admin') return true;
 
-    // Role-specific permissions
-    switch (requiredRole) {
-      case 'doctor':
-        return _currentUserRole == 'doctor' || _currentUserRole == 'admin';
-      case 'nurse':
-        return _currentUserRole == 'nurse' ||
-            _currentUserRole == 'doctor' ||
-            _currentUserRole == 'admin';
-      case 'receptionist':
-        return _currentUserRole == 'receptionist' ||
-            _currentUserRole == 'admin';
-      default:
-        return _currentUserRole == requiredRole;
+      // Role-specific permissions
+      switch (requiredRole) {
+        case 'doctor':
+          return currentUserRole == 'doctor' || currentUserRole == 'admin';
+        default:
+          return currentUserRole == requiredRole;
+      }
+    } catch (e) {
+      debugPrint('ApiService: Error checking user permissions: $e');
+      return false;
     }
   }
 
   static Future<int> deleteUser(String id) async {
     try {
-      // Check if user has admin privileges
-      if (_currentUserRole != 'admin') {
+      // Check if user has admin privileges using the new authentication system
+      final currentUserAccessLevel = await AuthenticationManager.getCurrentUserAccessLevel();
+      if (currentUserAccessLevel != 'admin') {
         throw Exception('Only administrators can delete users');
       }
 
@@ -1046,6 +1061,186 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService: Failed to get patient reports for service: $e');
       return [];
+    }
+  }
+
+  // Enhanced Backup and Restore Methods
+  static Future<Map<String, dynamic>> createFullDatabaseBackup({
+    String? customBackupPath, 
+    String? backupName,
+  }) async {
+    try {
+      final result = await BackupService.createFullDatabaseBackup(
+        customBackupPath: customBackupPath,
+        backupName: backupName,
+      );
+      
+      return {
+        'success': result.success,
+        'metadata': result.metadata,
+        'error': result.error,
+        'message': result.message,
+      };
+    } catch (e) {
+      debugPrint('ApiService: Error creating full database backup: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'message': 'Failed to create backup: $e',
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> migrateFromBackup(String backupFilePath, {
+    bool createPreMigrationBackup = true,
+  }) async {
+    try {
+      // Create a temporary BackupMetadata for the external file
+      final backupFile = File(backupFilePath);
+      if (!await backupFile.exists()) {
+        throw Exception('Backup file not found: $backupFilePath');
+      }
+      
+      final fileName = path.basename(backupFilePath);
+      final fileSize = await backupFile.length();
+      
+      final backupMetadata = BackupMetadata(
+        fileName: fileName,
+        filePath: backupFilePath,
+        timestamp: DateTime.now(),
+        originalDbPath: '', // Not applicable for external files
+        fileSize: fileSize,
+        status: BackupStatus.success,
+        type: BackupType.manual,
+        description: 'External backup file for migration',
+      );
+      
+      final result = await BackupService.migrateFromBackup(
+        backupMetadata,
+        createPreMigrationBackup: createPreMigrationBackup,
+      );
+      
+      return {
+        'success': result.success,
+        'error': result.error,
+        'message': result.message,
+        'restoredFrom': result.restoredFrom,
+      };
+    } catch (e) {
+      debugPrint('ApiService: Error migrating from backup: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'message': 'Failed to migrate from backup: $e',
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> overwriteDatabaseWithBackup(String backupFilePath) async {
+    try {
+      // Create a temporary BackupMetadata for the external file
+      final backupFile = File(backupFilePath);
+      if (!await backupFile.exists()) {
+        throw Exception('Backup file not found: $backupFilePath');
+      }
+      
+      final fileName = path.basename(backupFilePath);
+      final fileSize = await backupFile.length();
+      
+      final backupMetadata = BackupMetadata(
+        fileName: fileName,
+        filePath: backupFilePath,
+        timestamp: DateTime.now(),
+        originalDbPath: '', // Not applicable for external files
+        fileSize: fileSize,
+        status: BackupStatus.success,
+        type: BackupType.manual,
+        description: 'External backup file for overwrite',
+      );
+      
+      final result = await BackupService.overwriteDatabaseWithBackup(backupMetadata);
+      
+      return {
+        'success': result.success,
+        'error': result.error,
+        'message': result.message,
+        'restoredFrom': result.restoredFrom,
+      };
+    } catch (e) {
+      debugPrint('ApiService: Error overwriting database with backup: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'message': 'Failed to overwrite database with backup: $e',
+      };
+    }
+  }
+
+  /// Clean all user sessions - utility method for fixing login issues after restore
+  static Future<Map<String, dynamic>> cleanAllUserSessions() async {
+    try {
+      final success = await BackupService.cleanAllUserSessions();
+      
+      return {
+        'success': success,
+        'message': success ? 'All user sessions cleaned successfully' : 'Failed to clean user sessions',
+      };
+    } catch (e) {
+      debugPrint('ApiService: Error cleaning user sessions: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+        'message': 'Failed to clean user sessions: $e',
+      };
+    }
+  }
+
+  // Authentication state management methods
+  static void onUserLoggedIn(String userRole) {
+    _currentUserRole = userRole;
+    debugPrint('ApiService: User logged in with role: $userRole');
+  }
+
+  static void onUserLoggedOut() {
+    _currentUserRole = null;
+    debugPrint('ApiService: User logged out, role cleared');
+  }
+
+  static Future<void> initializeCurrentUserRole() async {
+    try {
+      final currentUser = await AuthenticationManager.getCurrentUser();
+      if (currentUser != null) {
+        _currentUserRole = currentUser.role;
+        debugPrint('ApiService: Initialized current user role: ${currentUser.role}');
+      } else {
+        _currentUserRole = null;
+        debugPrint('ApiService: No current user found, role set to null');
+      }
+    } catch (e) {
+      debugPrint('ApiService: Error initializing current user role: $e');
+      _currentUserRole = null;
+    }
+  }
+
+  static String? getCurrentUserRole() {
+    return _currentUserRole;
+  }
+
+  // Database reinitialization method
+  static Future<void> _reinitializeDatabaseConnection() async {
+    try {
+      debugPrint('ApiService: Reinitializing database connection...');
+      
+      // Reset the database helper instance
+      _dbHelper = DatabaseHelper();
+      
+      // Initialize the database connection
+      await _dbHelper.database;
+      
+      debugPrint('ApiService: Database connection reinitialized successfully');
+    } catch (e) {
+      debugPrint('ApiService: Error reinitializing database connection: $e');
+      rethrow;
     }
   }
 }

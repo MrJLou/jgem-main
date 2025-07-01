@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
+import '../../models/doctor_availability.dart';
+import '../../services/doctor_availability_service.dart';
 
 class UserRegistrationScreen extends StatefulWidget {
   const UserRegistrationScreen({super.key});
@@ -35,6 +37,17 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   String? _errorMessage;
+
+  // Doctor availability selection
+  final Map<DayOfWeek, bool> _selectedDays = {
+    DayOfWeek.monday: true,
+    DayOfWeek.tuesday: true,
+    DayOfWeek.wednesday: true,
+    DayOfWeek.thursday: true,
+    DayOfWeek.friday: true,
+    DayOfWeek.saturday: true,
+    DayOfWeek.sunday: false,
+  };
 
   // For password strength indicator
   double _passwordStrengthValue = 0.0;
@@ -152,6 +165,16 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
       _errorMessage = null;
     });
 
+    // Validate doctor availability if role is doctor
+    if (_selectedRole == 'doctor') {
+      if (_selectedDays.values.every((selected) => !selected)) {
+        setState(() {
+          _errorMessage = 'Please select at least one available day for the doctor.';
+        });
+        return;
+      }
+    }
+
     if (_formKey.currentState!.validate()) {
       // Check for unique security questions first
       if (_selectedSecurityQuestion1 == _selectedSecurityQuestion2 ||
@@ -195,6 +218,16 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           securityAnswer3: hashedSecurityAnswer3,
         );
 
+        // If this is a doctor, create their availability schedule
+        if (_selectedRole == 'doctor' && mounted) {
+          try {
+            await _createDoctorAvailability();
+          } catch (e) {
+            // Log error but don't fail registration
+            debugPrint('Warning: Could not create doctor availability: $e');
+          }
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -229,6 +262,59 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           setState(() => _isLoading = false);
         }
       }
+    }
+  }
+
+  Future<void> _createDoctorAvailability() async {
+    try {
+      // Validate that required fields are not empty
+      if (_selectedDays.values.every((selected) => !selected)) {
+        throw Exception('At least one available day is required for doctor registration');
+      }
+
+      // Get the newly created user to get their ID
+      final users = await ApiService.getUsers();
+      final newUser = users.firstWhere(
+        (user) => user.username == _usernameController.text,
+        orElse: () => throw Exception('Could not find newly created user'),
+      );
+
+      // Create availability schedule based on selected days
+      final weeklySchedule = <DayOfWeek, DaySchedule>{};
+      
+      for (final day in DayOfWeek.values) {
+        if (_selectedDays[day] == true) {
+          weeklySchedule[day] = DaySchedule(
+            isAvailable: true,
+            timeSlot: TimeSlot(
+              startHour: 7,
+              startMinute: 30,
+              endHour: 16,
+              endMinute: 30,
+            ),
+            notes: 'Created during registration',
+          );
+        } else {
+          weeklySchedule[day] = DaySchedule.createDayOff();
+        }
+      }
+
+      final availability = DoctorAvailability(
+        id: 'availability_${newUser.id}_${DateTime.now().millisecondsSinceEpoch}',
+        doctorId: newUser.id,
+        doctorName: newUser.fullName,
+        weeklySchedule: weeklySchedule,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        isActive: true,
+        notes: 'Initial schedule created during registration',
+      );
+
+      await DoctorAvailabilityService.saveDoctorAvailability(availability);
+      debugPrint('Doctor availability created successfully for doctor: ${newUser.fullName}');
+    } catch (e) {
+      debugPrint('Error creating doctor availability: $e');
+      rethrow;
     }
   }
 
@@ -526,6 +612,12 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                 ],
                               ),
                               const SizedBox(height: 16),
+
+                              // Doctor Availability Section (only shown for doctors)
+                              if (_selectedRole == 'doctor') ...[
+                                _buildDoctorAvailabilitySection(),
+                                const SizedBox(height: 16),
+                              ],
 
                               // Password Field
                               _buildPasswordField(
@@ -981,5 +1073,147 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           if (val == null || val.isEmpty) return 'Please select a question';
           return null;
         });
+  }
+
+  Widget _buildDoctorAvailabilitySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Doctor Availability', Icons.schedule),
+        const SizedBox(height: 16),
+
+        // Available Days Selection
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.teal.shade300),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.teal[700], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Available Days',
+                    style: TextStyle(
+                      color: Colors.teal[700],
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Select the days when this doctor will be available:',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: DayOfWeek.values.map((day) {
+                  final isSelected = _selectedDays[day] ?? false;
+                  return FilterChip(
+                    label: Text(_getDayDisplayName(day)),
+                    selected: isSelected,
+                    onSelected: (bool selected) {
+                      setState(() {
+                        _selectedDays[day] = selected;
+                      });
+                    },
+                    selectedColor: Colors.teal.shade100,
+                    checkmarkColor: Colors.teal.shade700,
+                    backgroundColor: Colors.grey.shade100,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.teal.shade700 : Colors.grey[700],
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                    side: BorderSide(
+                      color: isSelected ? Colors.teal.shade400 : Colors.grey.shade300,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              if (_selectedDays.values.every((selected) => !selected))
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.red.shade600, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Please select at least one available day',
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info, color: Colors.blue.shade600, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Doctor availability is automatically set to standard hours (7:30 AM - 4:30 PM) for selected days.',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getDayDisplayName(DayOfWeek day) {
+    switch (day) {
+      case DayOfWeek.monday:
+        return 'Monday';
+      case DayOfWeek.tuesday:
+        return 'Tuesday';
+      case DayOfWeek.wednesday:
+        return 'Wednesday';
+      case DayOfWeek.thursday:
+        return 'Thursday';
+      case DayOfWeek.friday:
+        return 'Friday';
+      case DayOfWeek.saturday:
+        return 'Saturday';
+      case DayOfWeek.sunday:
+        return 'Sunday';
+    }
   }
 }

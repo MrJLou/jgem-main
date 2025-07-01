@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 36;
+  static const int _databaseVersion = 37;
 
   // Tables
   static const String tableUsers = 'users';
@@ -120,6 +120,25 @@ class DatabaseHelper {
       await database;
     }
     return _instanceDbPath;
+  }
+
+  /// Close and reset database connection for backup restore operations
+  Future<void> closeAndResetDatabase() async {
+    try {
+      if (_instanceDatabase != null && _instanceDatabase!.isOpen) {
+        await _instanceDatabase!.close();
+        debugPrint('DatabaseHelper: Database connection closed for restore operation');
+      }
+    } catch (e) {
+      debugPrint('DatabaseHelper: Warning - Error closing database: $e');
+    }
+    
+    // Reset internal state
+    _instanceDatabase = null;
+    _dbOpenCompleter = null;
+    _instanceDbPath = null;
+    
+    debugPrint('DatabaseHelper: Database helper state reset for restore operation');
   }
 
   // Initialize database
@@ -671,6 +690,22 @@ class DatabaseHelper {
       )
     ''');
     debugPrint('DATABASE_HELPER: Table $tableUserSessions created');
+
+    // Doctor Availability table (for Today Doctor feature)
+    await db.execute('''
+      CREATE TABLE doctor_availability (
+        id TEXT PRIMARY KEY,
+        doctorId TEXT NOT NULL,
+        doctorName TEXT NOT NULL,
+        weeklySchedule TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        isActive INTEGER DEFAULT 1,
+        notes TEXT,
+        FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table doctor_availability created');
 
     // Create admin user by default
     await _createDefaultAdmin(db);
@@ -1856,6 +1891,12 @@ To view live changes in DB Browser:
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_patient_history_updatedAt ON $tablePatientHistory (updatedAt)');
 
+    // Indexes for doctor_availability table
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_doctor_availability_doctorId ON doctor_availability (doctorId)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_doctor_availability_isActive ON doctor_availability (isActive)');
+
     debugPrint('DATABASE_HELPER: Ensured all indexes are created.');
   }
 
@@ -1981,6 +2022,8 @@ To view live changes in DB Browser:
   }
 
   // ACTIVE PATIENT QUEUE METHODS
+
+ 
 
   /// Adds a patient to the active queue.
   Future<ActivePatientQueueItem> addToActiveQueue(

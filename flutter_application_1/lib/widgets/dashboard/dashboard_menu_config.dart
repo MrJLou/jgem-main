@@ -17,6 +17,7 @@ import '../../screens/server_management_screen.dart';
 import '../../screens/lan_connection_screen.dart';
 import '../../screens/help/help_screen.dart';
 import '../../screens/about_screen.dart';
+
 import '../../services/queue_service.dart';
 import '../dashboard/live_queue_dashboard_view.dart';
 
@@ -72,6 +73,7 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AppointmentOverviewScreen(),
       'icon': Icons.calendar_month_outlined
     },
+
     'Analytics Hub': {
       'screen': (String accessLevel) => const AnalyticsHubScreen(),
       'icon': Icons.analytics_outlined
@@ -141,6 +143,7 @@ class DashboardMenuConfig {
       '---',
       'Patient Queue',
       'Appointment Schedule',
+      'Doctor Availability',
       '---',
       'Analytics Hub',
       'Report',
@@ -160,6 +163,7 @@ class DashboardMenuConfig {
       '---',
       'Patient Queue',
       'Appointment Schedule',
+      'Doctor Availability',
       '---',
       'Analytics Hub',
       'Report',

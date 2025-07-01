@@ -51,7 +51,7 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
       
       // Load all users and count doctors
       final allUsers = await ApiService.getUsers();
-      final doctors = allUsers.where((user) => user.role == 'doctor').toList();
+      final doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
 
       if (mounted) {
         setState(() {

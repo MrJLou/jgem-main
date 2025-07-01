@@ -8,6 +8,7 @@ import 'session_notification_service.dart';
 import 'enhanced_shelf_lan_server.dart';
 import 'database_sync_client.dart';
 import '../models/user.dart';
+import 'api_service.dart';
 
 /// Comprehensive Authentication Manager
 /// 
@@ -94,6 +95,9 @@ class AuthenticationManager {
       
       // Start session monitoring
       startSessionMonitoring();
+      
+      // Update API service current user role
+      ApiService.onUserLoggedIn(user.role);
       
       // Log successful login
       await db.logUserActivity(
@@ -250,6 +254,9 @@ class AuthenticationManager {
       
       // Clear local authentication state
       await _clearAuthenticationState();
+      
+      // Clear API service user role
+      ApiService.onUserLoggedOut();
       
       // Log logout activity
       if (username != null) {

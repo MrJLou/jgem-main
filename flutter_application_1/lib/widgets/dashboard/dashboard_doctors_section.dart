@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../models/user.dart';
+import '../../widgets/dashboard/today_doctor_widget.dart';
 
 class DashboardDoctorsSection extends StatefulWidget {
   const DashboardDoctorsSection({super.key});
@@ -25,7 +26,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       final allUsers = await ApiService.getUsers();
       if (mounted) {
         setState(() {
-          _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+          _doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
           _isLoading = false;
         });
       }
@@ -46,14 +47,50 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "Doctors",
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[700]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Today's Doctors",
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal[700]),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  // Navigate to doctor availability view or remove this button
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Doctor availability view coming soon')),
+                  );
+                },
+                icon: const Icon(Icons.calendar_today, size: 16),
+                label: const Text('View All'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.teal[600],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
+          
+          // Today Doctor Widget (compact view)
+          const TodayDoctorWidget(
+            isCompact: true,
+            showDateSelector: false,
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Traditional doctor list (for compatibility)
+          Text(
+            "All Doctors",
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.teal[600]),
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             height: 120,
             child: _isLoading

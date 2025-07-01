@@ -5,6 +5,7 @@ import 'package:flutter_application_1/services/enhanced_auth_integration.dart';
 import 'services/authentication_manager.dart';
 import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
+import 'services/backup_service.dart';
 import 'services/session_notification_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
@@ -56,6 +57,9 @@ void main() async {
   // Initialize ONLY the enhanced Shelf server (consolidated)
   await EnhancedShelfServer.initialize(dbHelper);
   
+  // Initialize backup service for database backup/restore functionality
+  BackupService.initialize(dbHelper);
+  
   // Connect DatabaseHelper to EnhancedShelfServer for automatic sync
   DatabaseHelper.setDatabaseChangeCallback((table, operation, recordId, data) async {
     try {
@@ -82,6 +86,9 @@ void main() async {
   
   // Initialize authentication manager and cross-device session monitoring
   await EnhancedAuthIntegration.initialize();
+  
+  // Initialize API service current user role
+  await ApiService.initializeCurrentUserRole();
   
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
@@ -161,7 +168,16 @@ class _AuthWrapperState extends State<_AuthWrapper> {
   void initState() {
     super.initState();
 
-    _isLoggedInFuture = AuthenticationManager.isLoggedIn();
+    _isLoggedInFuture = _checkAuthAndInitialize();
+  }
+
+  Future<bool> _checkAuthAndInitialize() async {
+    final isLoggedIn = await AuthenticationManager.isLoggedIn();
+    if (isLoggedIn) {
+      // Initialize the current user role when app starts
+      await ApiService.initializeCurrentUserRole();
+    }
+    return isLoggedIn;
   }
 
   @override

@@ -611,9 +611,10 @@ class UserManagementScreenState extends State<UserManagementScreen> {
                 decoration: _formFieldDecoration(
                     label: 'Role',
                     iconData: Icons.admin_panel_settings_outlined),
-                items: ['doctor', 'medtech']
+                items: ['admin', 'doctor', 'medtech']
                     .map((role) => DropdownMenuItem(
-                          value: role,                          child:
+                          value: role,
+                          child:
                               Text(role.isNotEmpty ? role[0].toUpperCase() + role.substring(1) : role),
                         ))
                     .toList(),

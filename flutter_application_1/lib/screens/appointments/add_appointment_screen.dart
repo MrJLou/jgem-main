@@ -8,6 +8,8 @@ import 'package:flutter_application_1/screens/registration/patient_registration_
     show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
+import '../../models/doctor_availability.dart'; // ADDED for doctor availability
+import '../../services/doctor_availability_service.dart'; // ADDED
 
 class AddAppointmentScreen extends StatefulWidget {
   final List<Appointment>? existingAppointments;
@@ -214,8 +216,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       final allUsers = await ApiService.getUsers();
       if (!mounted) return;
       setState(() {
-        _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+        _doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
       });
+      await _updateAvailableDoctorsForDate();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -231,6 +234,37 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _updateAvailableDoctorsForDate() async {
+    if (_doctors.isEmpty) return;
+    
+    try {
+      final dayOfWeek = DayOfWeek.fromDateTime(_selectedDate);
+      final availableDoctors = <User>[];
+      
+      for (final doctor in _doctors) {
+        final availability = await DoctorAvailabilityService.getDoctorAvailability(doctor.id);
+        if (availability != null) {
+          final daySchedule = availability.getScheduleForDay(dayOfWeek);
+          if (daySchedule != null && daySchedule.isAvailable) {
+            availableDoctors.add(doctor);
+          }
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _doctors = availableDoctors;
+          // If currently selected doctor is not available on this date, clear selection
+          if (_selectedDoctor != null && !availableDoctors.contains(_selectedDoctor)) {
+            _selectedDoctor = null;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error filtering doctors by availability: $e');
     }
   }
 
@@ -361,6 +395,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       setState(() {
         _selectedDate = picked;
       });
+      // Update available doctors when date changes
+      await _updateAvailableDoctorsForDate();
     }
   }
   Future<void> _showTimePicker() async {

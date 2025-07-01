@@ -142,7 +142,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
       if (mounted) {
         setState(() {
-          _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+          _doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
           if (kDebugMode) {
             print('Filtered ${_doctors.length} doctors');
             for (var doctor in _doctors) {
