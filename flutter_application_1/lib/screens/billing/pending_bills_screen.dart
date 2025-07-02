@@ -15,6 +15,7 @@ import '../../services/database_helper.dart';
 import '../../services/database_sync_client.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/queue_service.dart';
+import '../../utils/error_dialog_utils.dart';
 import '../payment/payment_screen.dart';
 import '../patient_queue/view_queue_screen.dart';
 
@@ -151,8 +152,11 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice number not found.')));
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Invoice Error',
+        message: 'Invoice number not found.',
+      );
       return;
     }
 
@@ -208,10 +212,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         );
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Invoice $invoiceNumber marked as paid.'),
-              backgroundColor: Colors.green),
+        ErrorDialogUtils.showSuccessDialog(
+          context: context,
+          title: 'Payment Recorded',
+          message: 'Invoice $invoiceNumber marked as paid.',
         );
 
         // Refresh queue displays after marking payment
@@ -273,10 +277,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Error processing bill: ${e.toString()}'),
-            backgroundColor: Colors.red),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Bill Processing Error',
+        message: 'Error processing bill: ${e.toString()}',
       );
     } finally {
       if (mounted) {
@@ -791,10 +795,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   void _processPayment(Map<String, dynamic> bill) {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Error: Invoice number is missing.'),
-            backgroundColor: Colors.red),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Payment Error',
+        message: 'Error: Invoice number is missing.',
       );
       return;
     }

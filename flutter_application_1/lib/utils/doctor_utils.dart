@@ -2,7 +2,7 @@ import '../services/api_service.dart';
 
 /// Utility class for doctor-related operations
 class DoctorUtils {
-  static Map<String, String> _doctorIdToNameCache = {};
+  static final Map<String, String> _doctorIdToNameCache = {};
   static bool _cacheInitialized = false;
 
   /// Initialize the doctor name cache

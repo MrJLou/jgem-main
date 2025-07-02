@@ -53,6 +53,11 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
              doctor.arrivalTime != null && 
              doctor.departureTime != null;
     }).toList();
+    
+    // Filter doctors who are currently available (within work hours)
+    final currentlyAvailable = workingToday.where((doctor) {
+      return doctor.isCurrentlyWorking();
+    }).toList();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
@@ -110,7 +115,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                       if (workingToday.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'Available: ${workingToday.where((doctor) => doctor.isCurrentlyWorking()).length} • On Schedule: ${workingToday.length}',
+                          'Available Now: ${currentlyAvailable.length} • Scheduled Today: ${workingToday.length}',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.teal[600],
@@ -137,7 +142,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 160,
+            height: 140, // Optimized height for compact cards
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : workingToday.isEmpty
@@ -165,24 +170,28 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
     final isCurrentlyWorking = doctor.isCurrentlyWorking();
     
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(right: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      elevation: 3,
+      margin: const EdgeInsets.only(right: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
-        width: 180,
-        padding: const EdgeInsets.all(12),
+        width: 120,
+        padding: const EdgeInsets.all(6), // Further reduced padding
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Avatar with status indicator
             Stack(
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: Colors.teal[50],
+                Container(
+                  padding: const EdgeInsets.all(4), // Further reduced padding
+                  decoration: BoxDecoration(
+                    color: Colors.teal[50],
+                    shape: BoxShape.circle,
+                  ),
                   child: Icon(
                     Icons.medical_services,
-                    size: 26,
+                    size: 18, // Further reduced icon size
                     color: Colors.teal[700],
                   ),
                 ),
@@ -191,117 +200,90 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                     right: 0,
                     bottom: 0,
                     child: Container(
-                      width: 12,
-                      height: 12,
+                      width: 8, // Further reduced size
+                      height: 8,
                       decoration: BoxDecoration(
                         color: Colors.green[600],
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(color: Colors.white, width: 1),
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 2), // Reduced spacing
             
-            // Doctor title and name
+            // Doctor title
             Text(
               'Doctor',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 7, // Further reduced font size
                 color: Colors.teal[600],
                 fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
+                letterSpacing: 0.2,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 1),
+            
+            // Doctor name - constrained to prevent overflow
+            SizedBox(
+              height: 24, // Further reduced height for name area
+              child: Text(
+                doctor.fullName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 9, // Further reduced font size
+                  color: Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(height: 2),
-            Text(
-              doctor.fullName,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 6),
             
-            // Work schedule information
+            // Current status
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1), // Further reduced padding
+              decoration: BoxDecoration(
+                color: isCurrentlyWorking ? Colors.green[100] : Colors.orange[100],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                isCurrentlyWorking ? 'Available' : 'Off Duty',
+                style: TextStyle(
+                  fontSize: 7, // Further reduced font size
+                  color: isCurrentlyWorking ? Colors.green[700] : Colors.orange[700],
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 2),
+            
+            // Work schedule information - more compact
             if (doctor.arrivalTime != null && doctor.departureTime != null) ...[
-              // Work hours container
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.teal[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.teal[200]!, width: 0.5),
+              Text(
+                doctor.getFormattedTimeRange(),
+                style: TextStyle(
+                  fontSize: 7, // Further reduced font size
+                  color: Colors.grey[700],
+                  fontWeight: FontWeight.w500,
                 ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Work Hours',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.teal[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      doctor.getFormattedTimeRange(),
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.teal[800],
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
-              
-              // Current status
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isCurrentlyWorking ? Colors.green[100] : Colors.orange[100],
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  isCurrentlyWorking ? 'Available Now' : 'Not Available',
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: isCurrentlyWorking ? Colors.green[700] : Colors.orange[700],
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 4),
-              
-              // Working days
+              // Working days summary - very compact
               if (doctor.workingDays != null && doctor.getWorkingDaysList().isNotEmpty) ...[
+                const SizedBox(height: 1),
                 Text(
-                  'Working Days',
+                  'Days: ${doctor.getWorkingDaysList().take(2).map((day) => day.substring(0, 2)).join(', ')}${doctor.getWorkingDaysList().length > 2 ? '..' : ''}',
                   style: TextStyle(
-                    fontSize: 9,
+                    fontSize: 6, // Further reduced font size
                     color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  doctor.getWorkingDaysList().take(3).join(', ') + 
-                  (doctor.getWorkingDaysList().length > 3 ? '...' : ''),
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.grey[800],
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w400,
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -309,24 +291,15 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                 ),
               ],
             ] else ...[
-              // No schedule container
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red[200]!, width: 0.5),
+              Text(
+                'No Schedule',
+                style: TextStyle(
+                  fontSize: 6, // Further reduced font size
+                  color: Colors.red[600],
+                  fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic,
                 ),
-                child: Text(
-                  'Schedule not set',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.red[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ],
@@ -353,19 +326,20 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       context: context,
       builder: (BuildContext context) {
         return Dialog(
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.8,
-            height: MediaQuery.of(context).size.height * 0.7,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: SizedBox(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.8,
             child: Column(
               children: [
                 // Header
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: Colors.teal[700],
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      topRight: Radius.circular(12),
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
                     ),
                   ),
                   child: Row(
@@ -374,19 +348,19 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                       const Text(
                         'Doctor Schedules',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: Colors.white),
+                        icon: const Icon(Icons.close, color: Colors.white, size: 28),
                       ),
                     ],
                   ),
                 ),
-                // Content
+                // Content with horizontal layout
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -394,15 +368,55 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                           ? const Center(
                               child: Text(
                                 'No doctors registered yet',
-                                style: TextStyle(fontSize: 16, color: Colors.grey),
+                                style: TextStyle(fontSize: 18, color: Colors.grey),
                               ),
                             )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: _doctors.length,
-                              itemBuilder: (context, index) {
-                                return _buildDoctorInfoCard(_doctors[index]);
-                              },
+                          : Row(
+                              children: [
+                                // Left side - Overview panel
+                                Expanded(
+                                  flex: 2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[50],
+                                      border: Border(
+                                        right: BorderSide(color: Colors.grey[200]!),
+                                      ),
+                                    ),
+                                    child: _buildVerticalOverviewPanel(),
+                                  ),
+                                ),
+                                // Right side - Doctors list
+                                Expanded(
+                                  flex: 3,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'All Doctors',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.teal[700],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Expanded(
+                                          child: ListView.builder(
+                                            itemCount: _doctors.length,
+                                            itemBuilder: (context, index) {
+                                              return _buildCompactDoctorCard(_doctors[index]);
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                 ),
               ],
@@ -413,13 +427,131 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
     );
   }
 
-  Widget _buildDoctorInfoCard(User doctor) {
+  Widget _buildVerticalOverviewPanel() {
+    // Get today's day name for filtering working doctors
+    final today = DateTime.now();
+    final dayName = _getDayName(today.weekday);
+    
+    // Calculate summary statistics
+    final workingToday = _doctors.where((doctor) {
+      return doctor.worksOnDay(dayName) && 
+             doctor.arrivalTime != null && 
+             doctor.departureTime != null;
+    }).toList();
+    
+    final currentlyAvailable = workingToday.where((doctor) => doctor.isCurrentlyWorking()).toList();
+    final withSchedule = _doctors.where((doctor) => doctor.arrivalTime != null && doctor.departureTime != null).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.teal[700]!, Colors.teal[500]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.teal.withAlpha(30),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.analytics, color: Colors.white, size: 24),
+              SizedBox(width: 12),
+              Text(
+                'Doctors Overview',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          
+          // Overview cards
+          _buildOverviewMetric(
+            'Total Registered',
+            _doctors.length.toString(),
+            Icons.person_add,
+            Colors.white,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildOverviewMetric(
+            'Working Today',
+            workingToday.length.toString(),
+            Icons.today,
+            Colors.white,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildOverviewMetric(
+            'Available Now',
+            currentlyAvailable.length.toString(),
+            Icons.check_circle,
+            Colors.green[200]!,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildOverviewMetric(
+            'With Schedule',
+            withSchedule.length.toString(),
+            Icons.schedule,
+            Colors.white,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewMetric(String label, String value, IconData icon, Color iconColor) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 32),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.white.withAlpha(30),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactDoctorCard(User doctor) {
     final workingDays = doctor.getWorkingDaysList();
     final hasSchedule = doctor.arrivalTime != null && doctor.departureTime != null;
+    final isCurrentlyWorking = hasSchedule && doctor.isCurrentlyWorking();
     
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -429,11 +561,11 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
             Row(
               children: [
                 CircleAvatar(
-                  radius: 25,
+                  radius: 24,
                   backgroundColor: Colors.teal[50],
                   child: Icon(
                     Icons.medical_services,
-                    size: 30,
+                    size: 28,
                     color: Colors.teal[700],
                   ),
                 ),
@@ -445,7 +577,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                       Text(
                         'Dr. ${doctor.fullName}',
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -453,19 +585,20 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                         Text(
                           doctor.email!,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 12,
                             color: Colors.grey[600],
                           ),
                         ),
                     ],
                   ),
                 ),
-                if (hasSchedule && doctor.isCurrentlyWorking())
+                if (isCurrentlyWorking)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green[100],
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green[300]!),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -473,10 +606,10 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                         Icon(Icons.circle, color: Colors.green[600], size: 8),
                         const SizedBox(width: 4),
                         Text(
-                          'Available Now',
+                          'Available',
                           style: TextStyle(
                             color: Colors.green[700],
-                            fontSize: 12,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -485,11 +618,12 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
             // Working schedule
             if (hasSchedule) ...[
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.teal[50],
@@ -501,33 +635,31 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.access_time, color: Colors.teal[700], size: 20),
+                        Icon(Icons.access_time, color: Colors.teal[700], size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          'Work Schedule',
+                          'Hours: ${doctor.getFormattedTimeRange()}',
                           style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
                             color: Colors.teal[700],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Hours: ${doctor.getFormattedTimeRange()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Duration: ${doctor.getDurationInHours().toStringAsFixed(1)} hours',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.timer, color: Colors.teal[600], size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Duration: ${doctor.getDurationInHours().toStringAsFixed(1)} hours',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -537,13 +669,19 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
             
             // Working days
             if (workingDays.isNotEmpty) ...[
-              Text(
-                'Working Days:',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.grey[700], size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Working Days:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -556,13 +694,14 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                     decoration: BoxDecoration(
                       color: isToday ? Colors.teal[700] : Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
+                      border: isToday ? Border.all(color: Colors.teal[800]!) : null,
                     ),
                     child: Text(
-                      day,
+                      day.substring(0, 3).toUpperCase(),
                       style: TextStyle(
                         color: isToday ? Colors.white : Colors.grey[700],
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 10,
+                        fontWeight: isToday ? FontWeight.bold : FontWeight.w500,
                       ),
                     ),
                   );
@@ -570,6 +709,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
               ),
             ] else ...[
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.orange[50],
@@ -578,12 +718,13 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.orange[600], size: 20),
+                    Icon(Icons.warning, color: Colors.orange[600], size: 18),
                     const SizedBox(width: 8),
                     const Text(
                       'No working days set',
                       style: TextStyle(
                         fontWeight: FontWeight.w500,
+                        fontSize: 12,
                       ),
                     ),
                   ],

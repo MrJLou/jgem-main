@@ -17,6 +17,7 @@ import '../../screens/server_management_screen.dart';
 import '../../screens/lan_connection_screen.dart';
 import '../../screens/help/help_screen.dart';
 import '../../screens/about_screen.dart';
+import '../../debug_service_analytics_test.dart';
 
 import '../../services/queue_service.dart';
 import '../dashboard/live_queue_dashboard_view.dart';
@@ -78,6 +79,10 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AnalyticsHubScreen(),
       'icon': Icons.analytics_outlined
     },
+    'Debug Service Analytics': {
+      'screen': (String accessLevel) => const DebugServiceAnalyticsTest(),
+      'icon': Icons.bug_report
+    },
     'Report': {
       'screen': (String accessLevel) => const ReportHubScreen(),
       'icon': Icons.receipt_long_outlined
@@ -125,6 +130,7 @@ class DashboardMenuConfig {
       'Appointment Schedule',
       '---',
       'Analytics Hub',
+      'Debug Service Analytics',
       'Report',
       'Payment',
       'Billing',

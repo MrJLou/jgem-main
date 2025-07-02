@@ -838,6 +838,12 @@ class QueueService {
 
     // Prepare the notes from the services provided
     String notes = 'Consultation for: ${item.conditionOrPurpose}';
+    
+    // Include selected services for analytics
+    String? selectedServicesJson;
+    if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
+      selectedServicesJson = jsonEncode(item.selectedServices);
+    }
 
     final medicalRecordData = {
       'id': const Uuid().v4(), // Generate a unique ID for the record
@@ -847,6 +853,7 @@ class QueueService {
       'recordType': 'Consultation', // This is the key for the history screen
       'notes': notes,
       'diagnosis': 'See consultation details.', // Placeholder
+      'selectedServices': selectedServicesJson, // Include services for analytics
       'createdAt': now.toIso8601String(),
       'updatedAt': now.toIso8601String(),
     };

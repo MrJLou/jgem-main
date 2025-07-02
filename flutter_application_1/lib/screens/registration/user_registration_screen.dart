@@ -492,11 +492,11 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                       icon: Icons.email_outlined,
                                       keyboardType: TextInputType.emailAddress,
                                       validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter email';
-                                        }
-                                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                          return 'Enter valid email';
+                                        // Email is optional, but if provided must be valid
+                                        if (value != null && value.isNotEmpty) {
+                                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                            return 'Enter valid email';
+                                          }
                                         }
                                         return null;
                                       },
@@ -510,11 +510,11 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                       icon: Icons.phone_outlined,
                                       keyboardType: TextInputType.phone,
                                       validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter contact number';
-                                        }
-                                        if (value.length < 10) {
-                                          return 'Enter valid phone number';
+                                        // Contact number is optional, but if provided must be valid
+                                        if (value != null && value.isNotEmpty) {
+                                          if (value.length < 10) {
+                                            return 'Enter valid phone number';
+                                          }
                                         }
                                         return null;
                                       },

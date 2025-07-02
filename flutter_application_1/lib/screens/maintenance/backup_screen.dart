@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import '../../services/backup_service.dart';
 import '../../services/database_helper.dart';
+import '../../utils/error_dialog_utils.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -123,42 +124,27 @@ class BackupScreenState extends State<BackupScreen> {
       if (!mounted) return;
 
       if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Full database backup created successfully: ${result.metadata!.fileName}'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+        ErrorDialogUtils.showSuccessDialog(
+          context: context,
+          title: 'Backup Created',
+          message: 'Full database backup created successfully: ${result.metadata!.fileName}',
         );
 
         // Refresh backup list
         await _refreshBackupInfo();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to create full backup: ${result.error}'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Backup Failed',
+          message: 'Failed to create full backup: ${result.error}',
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error creating full backup: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Backup Error',
+        message: 'Error creating full backup: $e',
       );
     } finally {
       if (mounted) {
@@ -782,7 +768,7 @@ class BackupScreenState extends State<BackupScreen> {
                                     icon: const Icon(Icons.copy),
                                     onPressed: () async {
                                       await Clipboard.setData(ClipboardData(text: _backupDirInfo!.path));
-                                      if (!mounted) return;
+                                      if (!context.mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text('Path copied to clipboard')),
                                       );
@@ -879,7 +865,7 @@ class BackupScreenState extends State<BackupScreen> {
                                   await BackupService.cleanupEmptyMonthlyFolders(_customBackupPath);
                                   await BackupService.cleanupMetadataFolders(_customBackupPath);
                                   await _refreshBackupInfo();
-                                  if (!mounted) return;
+                                  if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text('Old backups, empty folders, and metadata cleaned up'),

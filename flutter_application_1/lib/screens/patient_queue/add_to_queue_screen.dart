@@ -13,6 +13,7 @@ import '../../models/active_patient_queue_item.dart';
 import '../../models/appointment.dart';
 import '../../models/patient.dart';
 import '../../services/patient_service.dart';
+import '../../utils/error_dialog_utils.dart';
 
 // Define Service data structure
 // class ServiceItem { // Removed ServiceItem class
@@ -53,6 +54,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   bool _isAddingToQueue = false;
 
   Timer? _patientSearchDebounce;
+  Timer? _queueRefreshTimer; // Add timer for periodic queue refresh
 
   // Predefined services - Will be fetched from DB
   List<ClinicService> _availableServices = []; // Changed to List<ClinicService>
@@ -78,6 +80,15 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     _fetchAvailableServices();
     _fetchDoctors(); // ADDED
     _setupSyncListener();
+    
+    // Set up periodic queue refresh every 30 seconds
+    _queueRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        setState(() {
+          // This will trigger a rebuild and refresh the queue table
+        });
+      }
+    });
   }
   
   void _setupSyncListener() {
@@ -89,6 +100,14 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         case 'queue_change_immediate':
         case 'force_queue_refresh':
         case 'remote_change_applied':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'active_patient_queue') {
+            setState(() {
+              // This will trigger a rebuild and refresh the queue table
+            });
+          }
+          break;
+        case 'database_change':
           final change = updateEvent['change'] as Map<String, dynamic>?;
           if (change != null && change['table'] == 'active_patient_queue') {
             setState(() {
@@ -114,11 +133,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load services: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Error Loading Services',
+          message: 'Failed to load services: $e',
         );
       }
       if (kDebugMode) {
@@ -153,11 +171,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load doctors: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Error Loading Doctors',
+          message: 'Failed to load doctors: $e',
         );
       }
       if (kDebugMode) {
@@ -223,11 +240,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
       // Show error to user
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error searching patients: $e'),
-            backgroundColor: Colors.red[600],
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Search Error',
+          message: 'Error searching patients: $e',
         );
       }
     }
@@ -245,22 +261,19 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   Future<void> _addPatientToQueue() async {
     if (_formKey.currentState!.validate()) {      if (_selectedServices.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-                'Please select at least one service.'),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Service Required',
+          message: 'Please select at least one service.',
         );
         return;
-      }// ADDED - Doctor validation (unless laboratory only)
+      }      // ADDED - Doctor validation (unless laboratory only)
       if (_selectedDoctor == null && !_isLaboratoryOnly) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Please select a doctor or check "Laboratory Tests Only".'),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Doctor Required',
+          message: 'Please select a doctor or check "Laboratory Tests Only".',
         );
         return;
       }
@@ -276,12 +289,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
       if (!mounted) return;
       if (alreadyInQueue) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '$enteredPatientName is already in the active queue (waiting or in consultation).'),
-            backgroundColor: Colors.orange[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Patient Already in Queue',
+          message: '$enteredPatientName is already in the active queue (waiting or in consultation).',
         );
         return; // Stop further execution
       }
@@ -505,12 +516,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           // ---- End Increment service usage count ----
 
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$finalPatientNameToUse added to queue!'),
-              backgroundColor: Colors.teal,
-              duration: const Duration(seconds: 3),
-            ),
+          ErrorDialogUtils.showSuccessDialog(
+            context: context,
+            title: 'Success',
+            message: '$finalPatientNameToUse added to queue!',
           );
           _formKey.currentState!.reset();
           _searchController.clear();
@@ -551,10 +560,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error processing queue addition: $e'),
-              backgroundColor: Colors.red),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Queue Addition Error',
+          message: 'Error processing queue addition: $e',
         );
       } finally {
         if (mounted) {
@@ -1200,33 +1209,178 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Widget _buildQueueTable() {
-    return StreamBuilder<List<ActivePatientQueueItem>>(
-      stream: Stream.periodic(const Duration(seconds: 30)).asyncMap(
-          (_) => widget.queueService.getActiveQueueItems(
-              statuses: ['waiting', 'in_consultation']) // Fetch active items
-          ),
+    return FutureBuilder<List<ActivePatientQueueItem>>(
+      future: _loadQueueWithRetry(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading queue: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        // Handle loading state
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-              child: Text('Queue is currently empty.',
-                  style: TextStyle(fontSize: 16)));
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.teal),
+                ),
+                SizedBox(height: 16),
+                Text('Loading live queue...'),
+                SizedBox(height: 8),
+                Text(
+                  'Checking database connection...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
         }
+        
+        // Handle error state with more detailed information
+        if (snapshot.hasError) {
+          if (kDebugMode) {
+            print('Queue loading error: ${snapshot.error}');
+          }
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.warning_amber, color: Colors.orange[600], size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Database Connection Issue',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[700],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Cannot connect to the queue database.',
+                  style: TextStyle(color: Colors.grey[700]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Please check your LAN connection.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        if (mounted) {
+                          setState(() {});
+                        }
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry Connection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange[600],
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    TextButton.icon(
+                      onPressed: () => _showConnectionHelp(),
+                      icon: const Icon(Icons.help_outline),
+                      label: const Text('Connection Help'),
+                    ),
+                  ],
+                ),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 16),
+                  ExpansionTile(
+                    title: const Text('Debug Info'),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Error: ${snapshot.error}',
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+        
+        // Handle empty state
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.queue, color: Colors.grey[400], size: 64),
+                const SizedBox(height: 16),
+                const Text(
+                  'Queue is currently empty',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Patients will appear here when added to the queue',
+                  style: TextStyle(color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal[600],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        // Handle success state with data
         final queue = snapshot.data!;
         return Column(
           children: [
+            // Header with refresh button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Live Queue (${queue.length} patients)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[700],
+                      fontSize: 16,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    },
+                    color: Colors.teal[600],
+                    tooltip: 'Refresh Queue',
+                  ),
+                ],
+              ),
+            ),
             _buildQueueTableHeader(),
             Expanded(
-              // Allow ListView to scroll within its parent Column/Container
               child: ListView.builder(
-                // shrinkWrap: true, // Not needed if parent is Expanded
-                // physics: const NeverScrollableScrollPhysics(), // Not needed if parent is Expanded
+                padding: EdgeInsets.zero,
                 itemCount: queue.length,
                 itemBuilder: (context, index) {
                   return _buildQueueTableRow(queue[index]);
@@ -1392,9 +1546,183 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     }
   }
 
+  // Method to load queue with retry logic and better error handling
+  Future<List<ActivePatientQueueItem>> _loadQueueWithRetry({int maxRetries = 3}) async {
+    int retryCount = 0;
+    Exception? lastException;
+
+    while (retryCount < maxRetries) {
+      try {
+        if (kDebugMode) {
+          print('Loading queue items, attempt ${retryCount + 1}/$maxRetries');
+        }
+        
+        // Check database connection first
+        await _dbHelper.database;
+        
+        // Try to get queue items
+        final items = await widget.queueService.getActiveQueueItems(
+          statuses: ['waiting', 'in_consultation'],
+        );
+        
+        if (kDebugMode) {
+          print('Successfully loaded ${items.length} queue items');
+        }
+        
+        return items;
+      } catch (e) {
+        lastException = Exception('Queue loading failed: $e');
+        retryCount++;
+        
+        if (kDebugMode) {
+          print('Queue loading attempt $retryCount failed: $e');
+        }
+        
+        if (retryCount < maxRetries) {
+          // Wait before retry with exponential backoff
+          await Future.delayed(Duration(milliseconds: 500 * retryCount));
+        }
+      }
+    }
+    
+    // If all retries failed, throw the last exception
+    throw lastException ?? Exception('Unknown error loading queue');
+  }
+
+  // Method to show connection help dialog
+  void _showConnectionHelp() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.network_check, color: Colors.blue[600]),
+              const SizedBox(width: 8),
+              const Text('Connection Troubleshooting'),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'If the live queue is not loading, try these steps:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                _buildHelpStep('1', 'Check LAN Connection', 'Ensure all devices are on the same local network (Wi-Fi or Ethernet)'),
+                _buildHelpStep('2', 'Database Status', 'Verify the main server/database is running and accessible'),
+                _buildHelpStep('3', 'Restart Application', 'Close and restart the app to refresh the database connection'),
+                _buildHelpStep('4', 'Network Permissions', 'Check if the app has network permissions enabled'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'The queue system requires LAN connectivity to sync between devices in real-time.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Trigger a refresh after closing help
+                if (mounted) {
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHelpStep(String number, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue[600],
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _patientSearchDebounce?.cancel();
+    _queueRefreshTimer?.cancel(); // Cancel the queue refresh timer
     _syncSubscription?.cancel();
     _patientIdController.dispose();
     _ageController.dispose();
