@@ -15,7 +15,7 @@ import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
 import '../../screens/server_management_screen.dart';
 import '../../screens/lan_connection_screen.dart';
-import '../../screens/help/help_screen.dart';
+
 import '../../screens/about_screen.dart';
 import '../../debug_service_analytics_test.dart';
 
@@ -95,10 +95,7 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const BillingHubScreen(),
       'icon': Icons.request_quote_outlined
     },
-    'Help': {
-      'screen': (String accessLevel) => const HelpScreen(),
-      'icon': Icons.help_outline
-    },
+
     'About': {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
@@ -137,7 +134,6 @@ class DashboardMenuConfig {
       '---',
       'Server Management',
       '---',
-      'Help',
       'About'
     ],
     'medtech': [
@@ -158,7 +154,6 @@ class DashboardMenuConfig {
       '---',
       'LAN Connection',
       '---',
-      'Help',
       'About'
     ],
     'doctor': [
@@ -178,7 +173,6 @@ class DashboardMenuConfig {
       '---',
       'LAN Connection',
       '---',
-      'Help',
       'About'
     ],
   };
