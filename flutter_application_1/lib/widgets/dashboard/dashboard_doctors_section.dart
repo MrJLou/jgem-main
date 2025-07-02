@@ -2,8 +2,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../models/user.dart';
-import '../../services/doctor_schedule_service.dart';
-import '../../models/doctor_schedule.dart';
 
 class DashboardDoctorsSection extends StatefulWidget {
   const DashboardDoctorsSection({super.key});
@@ -14,33 +12,22 @@ class DashboardDoctorsSection extends StatefulWidget {
 
 class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
   List<User> _doctors = [];
-  Map<String, DoctorSchedule> _doctorSchedules = {};
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadDoctorsAndSchedules();
+    _loadDoctors();
   }
 
-  Future<void> _loadDoctorsAndSchedules() async {
+  Future<void> _loadDoctors() async {
     try {
       final allUsers = await ApiService.getUsers();
       final doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
       
-      // Load schedules for all doctors
-      final schedules = <String, DoctorSchedule>{};
-      for (final doctor in doctors) {
-        final schedule = await DoctorScheduleService.getDoctorSchedule(doctor.id);
-        if (schedule != null) {
-          schedules[doctor.id] = schedule;
-        }
-      }
-      
       if (mounted) {
         setState(() {
           _doctors = doctors;
-          _doctorSchedules = schedules;
           _isLoading = false;
         });
       }
@@ -48,7 +35,6 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       if (mounted) {
         setState(() {
           _doctors = [];
-          _doctorSchedules = {};
           _isLoading = false;
         });
       }
@@ -61,10 +47,11 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
     final today = DateTime.now();
     final dayName = _getDayName(today.weekday);
     
-    // Filter doctors working today
+    // Filter doctors working today based on their User model working days
     final workingToday = _doctors.where((doctor) {
-      final schedule = _doctorSchedules[doctor.id];
-      return schedule != null && schedule.worksOnDay(dayName);
+      return doctor.worksOnDay(dayName) && 
+             doctor.arrivalTime != null && 
+             doctor.departureTime != null;
     }).toList();
 
     return Padding(
@@ -84,10 +71,10 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
               ),
               TextButton.icon(
                 onPressed: () {
-                  Navigator.pushNamed(context, '/doctor-schedule');
+                  _showDoctorsInfoDialog(context);
                 },
                 icon: const Icon(Icons.calendar_today, size: 16),
-                label: const Text('View Schedule'),
+                label: const Text('View Info'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.teal[600],
                 ),
@@ -123,10 +110,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                       if (workingToday.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'Available: ${workingToday.where((doctor) {
-                            final schedule = _doctorSchedules[doctor.id];
-                            return schedule?.isCurrentlyWorking() ?? false;
-                          }).length} • On Schedule: ${workingToday.length}',
+                          'Available: ${workingToday.where((doctor) => doctor.isCurrentlyWorking()).length} • On Schedule: ${workingToday.length}',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.teal[600],
@@ -178,8 +162,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       ),
     );
   }  Widget _buildDoctorCard(User doctor) {
-    final schedule = _doctorSchedules[doctor.id];
-    final isCurrentlyWorking = schedule?.isCurrentlyWorking() ?? false;
+    final isCurrentlyWorking = doctor.isCurrentlyWorking();
     
     return Card(
       elevation: 2,
@@ -247,7 +230,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
             const SizedBox(height: 6),
             
             // Work schedule information
-            if (schedule != null) ...[
+            if (doctor.arrivalTime != null && doctor.departureTime != null) ...[
               // Work hours container
               Container(
                 width: double.infinity,
@@ -269,7 +252,7 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      schedule.getFormattedTimeRange(),
+                      doctor.getFormattedTimeRange(),
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.teal[800],
@@ -299,6 +282,32 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
                   textAlign: TextAlign.center,
                 ),
               ),
+              const SizedBox(height: 4),
+              
+              // Working days
+              if (doctor.workingDays != null && doctor.getWorkingDaysList().isNotEmpty) ...[
+                Text(
+                  'Working Days',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  doctor.getWorkingDaysList().take(3).join(', ') + 
+                  (doctor.getWorkingDaysList().length > 3 ? '...' : ''),
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.grey[800],
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ] else ...[
               // No schedule container
               Container(
@@ -337,5 +346,253 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
       case 7: return 'sunday';
       default: return 'monday';
     }
+  }
+
+  void _showDoctorsInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.8,
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.teal[700],
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Doctor Schedules',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                // Content
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _doctors.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No doctors registered yet',
+                                style: TextStyle(fontSize: 16, color: Colors.grey),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _doctors.length,
+                              itemBuilder: (context, index) {
+                                return _buildDoctorInfoCard(_doctors[index]);
+                              },
+                            ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDoctorInfoCard(User doctor) {
+    final workingDays = doctor.getWorkingDaysList();
+    final hasSchedule = doctor.arrivalTime != null && doctor.departureTime != null;
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Doctor name and status
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.teal[50],
+                  child: Icon(
+                    Icons.medical_services,
+                    size: 30,
+                    color: Colors.teal[700],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Dr. ${doctor.fullName}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (doctor.email != null)
+                        Text(
+                          doctor.email!,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasSchedule && doctor.isCurrentlyWorking())
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle, color: Colors.green[600], size: 8),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Available Now',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Working schedule
+            if (hasSchedule) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.teal[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, color: Colors.teal[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Work Schedule',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.teal[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Hours: ${doctor.getFormattedTimeRange()}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Duration: ${doctor.getDurationInHours().toStringAsFixed(1)} hours',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
+            // Working days
+            if (workingDays.isNotEmpty) ...[
+              Text(
+                'Working Days:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: workingDays.map((day) {
+                  final isToday = day.toLowerCase() == _getDayName(DateTime.now().weekday);
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isToday ? Colors.teal[700] : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      day,
+                      style: TextStyle(
+                        color: isToday ? Colors.white : Colors.grey[700],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.orange[600], size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'No working days set',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

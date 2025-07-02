@@ -38,6 +38,15 @@ class UserDatabaseService {
       'createdAt': userMap['createdAt'] ?? DateTime.now().toIso8601String(),
     };
 
+    // Add optional fields
+    if (userMap['email'] != null) dbUserMap['email'] = userMap['email'];
+    if (userMap['contactNumber'] != null) dbUserMap['contactNumber'] = userMap['contactNumber'];
+    
+    // Add doctor schedule fields if provided (for doctors)
+    if (userMap['workingDays'] != null) dbUserMap['workingDays'] = userMap['workingDays'];
+    if (userMap['arrivalTime'] != null) dbUserMap['arrivalTime'] = userMap['arrivalTime'];
+    if (userMap['departureTime'] != null) dbUserMap['departureTime'] = userMap['departureTime'];
+
     // Validate that essential NOT NULL fields are present after defaults
     if (dbUserMap['username'] == null || dbUserMap['username'].isEmpty) {
       throw Exception("Username cannot be null or empty.");

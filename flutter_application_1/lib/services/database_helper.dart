@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 39;
+  static const int _databaseVersion = 41;
 
   // Tables
   static const String tableUsers = 'users';
@@ -57,8 +57,9 @@ class DatabaseHelper {
   static const String tablePatientQueue = 'patient_queue';
   static const String tableActivePatientQueue = 'active_patient_queue';
   static const String tableUserSessions = 'user_sessions';
-  static const String tableDoctorTimeSlots = 'doctor_time_slots';
-  static const String tableDoctorSchedules = 'doctor_schedules';
+  // REMOVED: Doctor schedule tables - using User model instead
+  // static const String tableDoctorTimeSlots = 'doctor_time_slots';
+  // static const String tableDoctorSchedules = 'doctor_schedules';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -394,6 +395,9 @@ class DatabaseHelper {
         securityAnswer2 TEXT,
         securityQuestion3 TEXT,
         securityAnswer3 TEXT,
+        workingDays TEXT,
+        arrivalTime TEXT,
+        departureTime TEXT,
         isActive INTEGER DEFAULT 1,
         createdAt TEXT,
         updatedAt TEXT 
@@ -709,9 +713,10 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Table doctor_availability created');
 
-    // Doctor Time Slots table (for time slot allocation and booking)
+    // REMOVED: Doctor Time Slots table - using User model instead
+    /*
     await db.execute('''
-      CREATE TABLE $tableDoctorTimeSlots (
+      CREATE TABLE tableDoctorTimeSlots (
         id TEXT PRIMARY KEY,
         doctorId TEXT NOT NULL,
         doctorName TEXT NOT NULL,
@@ -735,17 +740,19 @@ class DatabaseHelper {
         FOREIGN KEY (appointmentId) REFERENCES $tableAppointments (id) ON DELETE SET NULL
       )
     ''');
-    debugPrint('DATABASE_HELPER: Table $tableDoctorTimeSlots created');
+    debugPrint('DATABASE_HELPER: Table tableDoctorTimeSlots created');
+    */
 
-    // Doctor Schedules table (simple working hours and days)
+    // REMOVED: Doctor Schedules table - using User model instead
+    /*
     await db.execute('''
-      CREATE TABLE $tableDoctorSchedules (
+      CREATE TABLE tableDoctorSchedules (
         id TEXT PRIMARY KEY,
         doctor_id TEXT NOT NULL,
         doctor_name TEXT NOT NULL,
         working_days TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
+        arrival_time TEXT NOT NULL,
+        departure_time TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
         notes TEXT,
         created_at TEXT NOT NULL,
@@ -753,7 +760,8 @@ class DatabaseHelper {
         FOREIGN KEY (doctor_id) REFERENCES $tableUsers (id) ON DELETE CASCADE
       )
     ''');
-    debugPrint('DATABASE_HELPER: Table $tableDoctorSchedules created');
+    debugPrint('DATABASE_HELPER: Table tableDoctorSchedules created');
+    */
 
     // Create admin user by default
     await _createDefaultAdmin(db);
@@ -975,12 +983,14 @@ class DatabaseHelper {
       ''');
     }
 
+    // REMOVED: Doctor time slots upgrade - no longer using separate doctor schedule tables
+    /*
     if (oldVersion < 38) {
       debugPrint(
           "DATABASE_HELPER: Upgrading to version 38: Creating doctor_time_slots table for time slot allocation and booking.");
       
       await db.execute('''
-        CREATE TABLE IF NOT EXISTS $tableDoctorTimeSlots (
+        CREATE TABLE IF NOT EXISTS doctor_time_slots (
           id TEXT PRIMARY KEY,
           doctorId TEXT NOT NULL,
           doctorName TEXT NOT NULL,
@@ -1007,17 +1017,69 @@ class DatabaseHelper {
       
       // Create indexes for the new table
       await db.execute('''
-        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctorId ON $tableDoctorTimeSlots (doctorId)
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctorId ON doctor_time_slots (doctorId)
       ''');
       await db.execute('''
-        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_date ON $tableDoctorTimeSlots (date)
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_date ON doctor_time_slots (date)
       ''');
       await db.execute('''
-        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_status ON $tableDoctorTimeSlots (status)
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_status ON doctor_time_slots (status)
       ''');
       await db.execute('''
-        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctor_date ON $tableDoctorTimeSlots (doctorId, date)
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctor_date ON doctor_time_slots (doctorId, date)
       ''');
+    }
+    */
+
+    // REMOVED: Doctor schedules upgrade - no longer using separate doctor schedule tables
+    /*
+    if (oldVersion < 40) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 40: Creating/fixing doctor_schedules table.");
+      
+      // Drop existing table if it has wrong schema
+      await db.execute('DROP TABLE IF EXISTS doctor_schedules');
+      
+      // Create doctor_schedules table with correct schema
+      await db.execute('''
+        CREATE TABLE doctor_schedules (
+          id TEXT PRIMARY KEY,
+          doctor_id TEXT NOT NULL,
+          doctor_name TEXT NOT NULL,
+          working_days TEXT NOT NULL,
+          arrival_time TEXT NOT NULL,
+          departure_time TEXT NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (doctor_id) REFERENCES $tableUsers (id) ON DELETE CASCADE
+        )
+      ''');
+      
+      // Create indexes for doctor_schedules table
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor_id ON doctor_schedules (doctor_id)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_schedules_is_active ON doctor_schedules (is_active)
+      ''');
+      
+      debugPrint('DATABASE_HELPER: doctor_schedules table created with correct schema');
+    }
+    */
+
+    // Add doctor schedule columns to users table
+    if (oldVersion < 41) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 41: Adding doctor schedule columns to users table.");
+      
+      // Add working days, arrival time, and departure time columns for doctors
+      await _addColumnIfNotExists(db, tableUsers, 'workingDays', 'TEXT');
+      await _addColumnIfNotExists(db, tableUsers, 'arrivalTime', 'TEXT');
+      await _addColumnIfNotExists(db, tableUsers, 'departureTime', 'TEXT');
+      
+      debugPrint('DATABASE_HELPER: Doctor schedule columns added to users table');
     }
 
     debugPrint(
@@ -3038,7 +3100,7 @@ To view live changes in DB Browser:
       tablePatientQueue,
       tableActivePatientQueue,
       tablePatientHistory,
-      tableDoctorTimeSlots,
+      // REMOVED: tableDoctorTimeSlots - no longer using separate doctor schedule tables
     ];
 
     await db.transaction((txn) async {
@@ -3314,7 +3376,7 @@ To view live changes in DB Browser:
     // The 'id' in the JSON must be wrapped in quotes.
     try {
       final result = await db.rawQuery(
-        'SELECT COUNT(DISTINCT patientId) as count FROM $tableMedicalRecords WHERE selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ?',
+        'SELECT COUNT(DISTINCT patientId) as count FROM $tableMedicalRecords WHERE selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ''',
         ['%"id":"$serviceId"%', ''],
       );
       if (result.isNotEmpty && result.first['count'] != null) {

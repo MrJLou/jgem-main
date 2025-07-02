@@ -8,7 +8,6 @@ import 'package:flutter_application_1/screens/registration/patient_registration_
     show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
-import '../../services/doctor_schedule_service.dart'; // ADDED for simple doctor schedules
 // Legacy time slot imports removed - using simple work schedule system
 
 class AddAppointmentScreen extends StatefulWidget {
@@ -217,15 +216,22 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     try {
       final allUsers = await ApiService.getUsers();
       if (!mounted) return;
+      
+      final doctorUsers = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
+      debugPrint('AddAppointmentScreen: Found ${doctorUsers.length} doctors: ${doctorUsers.map((d) => d.fullName).join(', ')}');
+      
       setState(() {
-        _doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
+        _doctors = doctorUsers;
       });
-      await _updateAvailableDoctorsForDate();
+      
+      debugPrint('AddAppointmentScreen: Doctor list set with ${_doctors.length} doctors - all available for selection');
+      
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = "Failed to load patient/doctor list: ${e.toString()}";
       });
+      debugPrint('AddAppointmentScreen: Error loading doctors: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
@@ -239,36 +245,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     }
   }
   Future<void> _updateAvailableDoctorsForDate() async {
-    if (_doctors.isEmpty) return;
-
-    try {
-      final availableDoctors = <User>[];
-      
-      for (final doctor in _doctors) {
-        final schedule = await DoctorScheduleService.getDoctorSchedule(doctor.id);
-        if (schedule != null && schedule.isActive) {
-          availableDoctors.add(doctor);
-        }
-      }
-      
-      if (mounted) {
-        setState(() {
-          _doctors = availableDoctors;
-          // If currently selected doctor is not available on this date, clear selection
-          if (_selectedDoctor != null && !availableDoctors.contains(_selectedDoctor)) {
-            _selectedDoctor = null;
-            // Simple schedule system - no complex time slot management
-          }
-        });
-        
-        // Load doctors for selected date - simplified for work schedule system
-        if (_selectedDoctor != null) {
-          // Simple validation will happen during save
-        }
-      }
-    } catch (e) {
-      debugPrint('Error filtering doctors by schedule: $e');
-    }
+    // Allow all doctors to be selectable regardless of schedule
+    // This provides flexibility for users to select doctors they've spoken to
+    debugPrint('AddAppointmentScreen: All doctors available for selection - schedule validation disabled for flexibility');
   }
 
 
@@ -940,32 +919,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           return;
         }
 
-        // Check if appointment time is within doctor's work hours
-        final schedule = await DoctorScheduleService.getDoctorSchedule(_selectedDoctor!.id);
-        if (schedule == null || !schedule.isActive) {
-          if (!mounted) return;
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Selected doctor has no active work schedule.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        if (!schedule.isTimeWithinWorkHours(_selectedTime)) {
-          if (!mounted) return;
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Selected time is outside doctor\'s work hours (${schedule.getFormattedTimeRange()}).'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
+        // Allow appointment booking without schedule validation for flexibility
+        debugPrint('AddAppointmentScreen: Skipping doctor schedule validation for flexible appointment booking');
       }
 
       try {
@@ -1209,20 +1164,25 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         labelText: 'Select Doctor',
         border: OutlineInputBorder(),
         prefixIcon: Icon(Icons.medical_services_outlined),
+        helperText: 'All doctors are available for flexible scheduling',
       ),
       value: _selectedDoctor,
       items: _doctors.map((User doctor) {
         return DropdownMenuItem<User>(
           value: doctor,
-          child: Text(doctor.fullName),
+          child: Text('Dr. ${doctor.fullName}'),
         );
       }).toList(),
       onChanged: (User? newValue) {
+        debugPrint('AddAppointmentScreen: Doctor selected: ${newValue?.fullName}');
         setState(() {
           _selectedDoctor = newValue;
         });
       },
-      validator: (value) => value == null ? 'Please select a doctor' : null,
+      validator: (value) {
+        if (_isLaboratoryOnly) return null;
+        return value == null ? 'Please select a doctor' : null;
+      },
     );
   }
 

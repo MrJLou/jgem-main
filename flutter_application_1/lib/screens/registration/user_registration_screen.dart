@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../models/doctor_schedule.dart'; // This has workingDays
-import '../../services/doctor_schedule_service.dart';
 
 // Days of week enum for the registration form
 enum DayOfWeek {
@@ -75,11 +73,6 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
   // Doctor service hours (when they arrive and leave the clinic)
   TimeOfDay _arrivalTime = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _departureTime = const TimeOfDay(hour: 16, minute: 30);
-
-  // Simple configuration for doctor schedules
-  bool _enableTimeSlotAllocation = false; // Disable complex time slots
-  int _slotDurationMinutes = 30; // Keep for UI compatibility
-  final List<int> _availableSlotDurations = [15, 30, 45, 60]; // Keep for UI compatibility
 
   // Days of week for the UI
   final List<String> _allDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -251,17 +244,17 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           securityAnswer2: hashedSecurityAnswer2,
           securityQuestion3: _selectedSecurityQuestion3,
           securityAnswer3: hashedSecurityAnswer3,
+          // Include doctor schedule information during registration if it's a doctor
+          workingDays: _selectedRole == 'doctor' ? 
+            _selectedDays.entries
+                .where((entry) => entry.value)
+                .map((entry) => entry.key)
+                .join(',') : null,
+          arrivalTime: _selectedRole == 'doctor' ? 
+            '${_arrivalTime.hour.toString().padLeft(2, '0')}:${_arrivalTime.minute.toString().padLeft(2, '0')}' : null,
+          departureTime: _selectedRole == 'doctor' ? 
+            '${_departureTime.hour.toString().padLeft(2, '0')}:${_departureTime.minute.toString().padLeft(2, '0')}' : null,
         );
-
-        // If this is a doctor, create their availability schedule and time slots
-        if (_selectedRole == 'doctor' && mounted) {
-          try {
-            await _createDoctorAvailability();
-          } catch (e) {
-            // Log error but don't fail registration
-            debugPrint('Warning: Could not create doctor availability: $e');
-          }
-        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -297,44 +290,6 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           setState(() => _isLoading = false);
         }
       }
-    }
-  }
-
-  Future<void> _createDoctorAvailability() async {
-    try {
-      // Validate that required fields are not empty
-      if (_selectedDays.values.every((selected) => !selected)) {
-        throw Exception('At least one available day is required for doctor registration');
-      }
-
-      // Get the newly created user to get their ID
-      final users = await ApiService.getUsers();
-      final newUser = users.firstWhere(
-        (user) => user.username == _usernameController.text,
-        orElse: () => throw Exception('Could not find newly created user'),
-      );
-
-      // Create simple work schedule with selected days
-      final workingDaysMap = Map<String, bool>.from(_selectedDays);
-      
-      final newSchedule = DoctorSchedule(
-        id: 'schedule_${newUser.id}_${DateTime.now().millisecondsSinceEpoch}',
-        doctorId: newUser.id,
-        doctorName: newUser.fullName,
-        workingDays: workingDaysMap,
-        arrivalTime: _arrivalTime,
-        departureTime: _departureTime,
-        isActive: true,
-        notes: 'Created during registration',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      await DoctorScheduleService.saveDoctorSchedule(newSchedule);
-      debugPrint('Simple work schedule created successfully for doctor: ${newUser.fullName}');
-    } catch (e) {
-      debugPrint('Error creating doctor availability: $e');
-      rethrow;
     }
   }
 
@@ -1314,158 +1269,6 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
             ],
           ),
         ),
-        
-        const SizedBox(height: 16),
-        
-        // Time Slot Configuration
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.teal.shade300),
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.access_time, color: Colors.teal[700], size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Time Slot Configuration',
-                    style: TextStyle(
-                      color: Colors.teal[700],
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              // Enable Time Slot Allocation Toggle
-              Row(
-                children: [
-                  Switch(
-                    value: _enableTimeSlotAllocation,
-                    onChanged: (bool value) {
-                      setState(() {
-                        _enableTimeSlotAllocation = value;
-                      });
-                    },
-                    activeColor: Colors.teal[700],
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Enable Time Slot-Based Appointments',
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              if (_enableTimeSlotAllocation) ...[
-                const SizedBox(height: 16),
-                
-                // Slot Duration Selection
-                Text(
-                  'Appointment Slot Duration:',
-                  style: TextStyle(
-                    color: Colors.grey[700],
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                
-                Wrap(
-                  spacing: 8,
-                  children: _availableSlotDurations.map((duration) {
-                    final isSelected = _slotDurationMinutes == duration;
-                    return FilterChip(
-                      label: Text('$duration min'),
-                      selected: isSelected,
-                      onSelected: (bool selected) {
-                        if (selected) {
-                          setState(() {
-                            _slotDurationMinutes = duration;
-                          });
-                        }
-                      },
-                      selectedColor: Colors.teal.shade100,
-                      checkmarkColor: Colors.teal.shade700,
-                      backgroundColor: Colors.grey.shade100,
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.teal.shade700 : Colors.grey[700],
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                      side: BorderSide(
-                        color: isSelected ? Colors.teal.shade400 : Colors.grey.shade300,
-                      ),
-                    );
-                  }).toList(),
-                ),
-                
-                const SizedBox(height: 12),
-                
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.schedule, color: Colors.green.shade600, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Time slots will be automatically generated based on doctor availability and selected duration. This enables precise appointment scheduling and queue management.',
-                          style: TextStyle(
-                            color: Colors.green.shade700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              
-              if (!_enableTimeSlotAllocation) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info, color: Colors.orange.shade600, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Traditional appointment scheduling will be used without predefined time slots. Appointments can be scheduled at any time within working hours.',
-                          style: TextStyle(
-                            color: Colors.orange.shade700,
-                            fontSize: 12,                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],),
-          ),
       ]);
   }
 

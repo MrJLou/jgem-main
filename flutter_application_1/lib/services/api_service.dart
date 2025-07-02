@@ -64,12 +64,16 @@ class ApiService {
     required String securityAnswer2,
     required String securityQuestion3,
     required String securityAnswer3,
+    // Optional doctor schedule fields
+    String? workingDays,
+    String? arrivalTime,
+    String? departureTime,
   }) async {
     try {
       // Hash the password before storing
       final hashedPassword = AuthService.hashPassword(password);
 
-      await _dbHelper.insertUser({
+      final userData = {
         'username': username,
         'password': hashedPassword, // Store the hashed password
         'fullName': fullName,
@@ -82,7 +86,14 @@ class ApiService {
         'securityAnswer2': securityAnswer2,
         'securityQuestion3': securityQuestion3,
         'securityAnswer3': securityAnswer3,
-      });
+      };
+
+      // Add doctor schedule fields if provided
+      if (workingDays != null) userData['workingDays'] = workingDays;
+      if (arrivalTime != null) userData['arrivalTime'] = arrivalTime;
+      if (departureTime != null) userData['departureTime'] = departureTime;
+
+      await _dbHelper.insertUser(userData);
     } catch (e) {
       throw Exception('Registration failed: $e');
     }
@@ -853,6 +864,16 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService: Failed to get user by ID: $e');
       return null;
+    }
+  }
+
+  static Future<int> updateUser(String userId, Map<String, dynamic> userData) async {
+    try {
+      // Ensure the user data includes the ID
+      userData['id'] = userId;
+      return await _dbHelper.updateUser(userData);
+    } catch (e) {
+      throw Exception('Failed to update user: $e');
     }
   }
 
