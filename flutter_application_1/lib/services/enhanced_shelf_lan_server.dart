@@ -927,6 +927,43 @@ class EnhancedShelfServer {
           }
           break;
           
+        case 'force_immediate_session_sync':
+          // Handle CRITICAL session sync request - immediate priority
+          debugPrint('SERVER: CRITICAL - Force immediate session sync requested');
+          final tableName = data['table'] as String?;
+          final operation = data['operation'] as String?;
+          final recordId = data['recordId'] as String?;
+          
+          if (tableName == 'user_sessions') {
+            debugPrint('SERVER: IMMEDIATE SESSION SYNC - Processing user_sessions sync');
+            
+            // 1. Immediately send table data to requesting client
+            await _sendTableSyncToClient(webSocket, 'user_sessions');
+            
+            // 2. Force sync to ALL other clients immediately
+            await forceSyncTable('user_sessions');
+            
+            // 3. Broadcast session change notification
+            _broadcastToAllClients(jsonEncode({
+              'type': 'session_sync_completed',
+              'table': 'user_sessions',
+              'operation': operation,
+              'recordId': recordId,
+              'timestamp': DateTime.now().toIso8601String(),
+              'priority': 'critical',
+            }));
+            
+            // 4. Send confirmation back to requesting client
+            webSocket.sink.add(jsonEncode({
+              'type': 'session_sync_confirmed',
+              'table': 'user_sessions',
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+            
+            debugPrint('SERVER: IMMEDIATE SESSION SYNC completed for user_sessions');
+          }
+          break;
+          
         case 'force_table_sync':
           // Handle force table sync request from client
           final tableName = data['table'] as String?;

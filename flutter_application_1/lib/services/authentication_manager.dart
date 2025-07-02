@@ -87,27 +87,61 @@ class AuthenticationManager {
       debugPrint('AUTH_MANAGER: DEBUG - Session created successfully with token: ${sessionToken.substring(0, 8)}...');
       
       // CRITICAL: Verify session was created and synced across devices
-      debugPrint('AUTH_MANAGER: CRITICAL - Verifying session sync across devices...');
+      debugPrint('AUTH_MANAGER: CRITICAL - Verifying session creation and sync...');
+      
+      // First verify the session was properly created
+      final sessionCreated = await EnhancedUserTokenService.verifySessionCreationAndSync(username, sessionToken);
+      if (!sessionCreated) {
+        debugPrint('AUTH_MANAGER: ERROR - Session creation verification failed!');
+        // This is a critical error - we should throw an exception
+        throw Exception('Session creation failed - session not found in database');
+      }
       
       // Wait a moment for initial sync to complete
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 2000));
       
-      // Verify session sync
+      // Then verify the session exists locally with proper validation
+      final localSessionExists = await EnhancedUserTokenService.validateSessionToken(username, sessionToken);
+      if (!localSessionExists) {
+        debugPrint('AUTH_MANAGER: ERROR - Session token validation failed after creation!');
+        throw Exception('Session creation failed - token validation failed');
+      }
+      
+      // Finally verify session sync across devices
       final sessionSyncSuccessful = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
       
       if (!sessionSyncSuccessful) {
-        debugPrint('AUTH_MANAGER: WARNING - Session sync verification failed! This may cause cross-device issues.');
+        debugPrint('AUTH_MANAGER: WARNING - Session sync verification failed! Attempting additional sync...');
         
-        // Try one more time with a longer delay
-        await Future.delayed(const Duration(milliseconds: 2000));
+        // Force additional sync attempts
+        if (EnhancedShelfServer.isRunning) {
+          try {
+            await EnhancedShelfServer.forceSyncTable('user_sessions');
+            debugPrint('AUTH_MANAGER: Forced additional session sync from host');
+          } catch (e) {
+            debugPrint('AUTH_MANAGER: Error in additional host sync: $e');
+          }
+        }
+        
+        if (DatabaseSyncClient.isConnected) {
+          try {
+            await DatabaseSyncClient.forceSessionSync();
+            debugPrint('AUTH_MANAGER: Forced additional session sync from client');
+          } catch (e) {
+            debugPrint('AUTH_MANAGER: Error in additional client sync: $e');
+          }
+        }
+        
+        // Wait and retry verification
+        await Future.delayed(const Duration(milliseconds: 3000));
         final retrySync = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
         
         if (!retrySync) {
           debugPrint('AUTH_MANAGER: ERROR - Session sync still failed after retry!');
-          // Don't fail login, but log this issue
+          // Log this issue but don't fail the login
           await db.logUserActivity(
             username,
-            'Session sync verification failed during login',
+            'Session sync verification failed during login - potential cross-device sync issue',
             details: 'Session may not be properly synced across devices',
           );
         } else {
@@ -136,6 +170,9 @@ class AuthenticationManager {
         'User logged in successfully',
         details: 'Force logout: $forceLogout',
       );
+      
+      // Debug session table state after login
+      await EnhancedUserTokenService.debugSessionTableState(username);
       
       debugPrint('AUTH_MANAGER: Login successful for user: $username');
       

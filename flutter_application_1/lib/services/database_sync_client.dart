@@ -803,6 +803,7 @@ class DatabaseSyncClient {
           'data': data,
           'timestamp': DateTime.now().toIso8601String(),
           'source': 'client',
+          'deviceId': await _getDeviceId(),
         },
         'clientInfo': {
           'timestamp': DateTime.now().toIso8601String(),
@@ -811,30 +812,51 @@ class DatabaseSyncClient {
       };
 
       _wsChannel!.sink.add(jsonEncode(changeMessage));
-      debugPrint('Successfully sent local change to server');
+      debugPrint('Successfully sent local change to server: $table.$operation');
 
-      // Special handling for user_sessions table - request immediate sync back
+      // CRITICAL: Special handling for user_sessions table - IMMEDIATE sync required
       if (table == 'user_sessions') {
-        debugPrint('SESSION_SYNC: Session change detected - triggering IMMEDIATE bidirectional sync');
+        debugPrint('SESSION_SYNC: CRITICAL - User session $operation detected - triggering IMMEDIATE sync');
         
-        // 1. Request immediate sync back from server to ensure all devices are in sync (PRIORITY)
-        Future.delayed(const Duration(milliseconds: 200), () {
-          requestImmediateSessionSync();
+        // Send MULTIPLE sync requests to ensure data reaches server immediately
+        _wsChannel!.sink.add(jsonEncode({
+          'type': 'force_immediate_session_sync',
+          'table': 'user_sessions',
+          'priority': 'critical',
+          'operation': operation,
+          'recordId': recordId,
+          'data': data,
+          'timestamp': DateTime.now().toIso8601String(),
+        }));
+        
+        // IMMEDIATELY trigger all sync methods - NO DELAYS
+        requestImmediateSessionSync();
+        _requestSessionSync();
+        
+        // Force session sync immediately
+        Future.delayed(const Duration(milliseconds: 100), () async {
+          await forceSessionSync();
         });
         
-        // 2. Trigger manual sync to ensure session data reaches the host immediately
-        Future.delayed(const Duration(milliseconds: 800), () async {
+        // Trigger manual sync to ensure session data reaches the host
+        Future.delayed(const Duration(milliseconds: 300), () async {
           try {
             await manualSync();
-            debugPrint('SESSION_SYNC: Manual sync completed for session change');
+            debugPrint('SESSION_SYNC: Manual sync completed for session $operation');
           } catch (e) {
-            debugPrint('SESSION_SYNC: Error during manual sync for session change: $e');
+            debugPrint('SESSION_SYNC: Error during manual sync for session $operation: $e');
           }
         });
         
-        // 3. Request specific user_sessions table sync as well
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        // Send another sync request after short delay to ensure propagation
+        Future.delayed(const Duration(milliseconds: 500), () {
           _requestSessionSync();
+          requestImmediateSessionSync();
+        });
+        
+        // Final sync attempt
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          _requestUserSessionsSync();
         });
         
         // Notify listeners about session change
@@ -843,6 +865,7 @@ class DatabaseSyncClient {
           'table': table,
           'operation': operation,
           'recordId': recordId,
+          'data': data,
           'timestamp': DateTime.now().toIso8601String(),
         });
       }
@@ -1216,6 +1239,8 @@ class DatabaseSyncClient {
   static Future<void> forceSessionSync() async {
     if (_isConnected && _wsChannel != null) {
       try {
+        debugPrint('DatabaseSyncClient: Starting AGGRESSIVE session sync...');
+        
         // Request immediate session table sync with multiple redundant requests
         _wsChannel!.sink.add(jsonEncode({
           'type': 'request_immediate_table_sync',
@@ -1225,9 +1250,7 @@ class DatabaseSyncClient {
           'timestamp': DateTime.now().toIso8601String(),
         }));
         
-        // Wait briefly then send another request
-        await Future.delayed(const Duration(milliseconds: 300));
-        
+        // Send another request immediately
         _wsChannel!.sink.add(jsonEncode({
           'type': 'force_table_sync',
           'table': 'user_sessions',
@@ -1235,22 +1258,36 @@ class DatabaseSyncClient {
           'timestamp': DateTime.now().toIso8601String(),
         }));
         
-        // Wait a moment then perform manual sync
+        // Wait briefly then perform manual sync
+        await Future.delayed(const Duration(milliseconds: 500));
+        await manualSync();
+        
+        // Send a direct session update request
+        _wsChannel!.sink.add(jsonEncode({
+          'type': 'sync_user_sessions',
+          'immediate': true,
+          'timestamp': DateTime.now().toIso8601String(),
+        }));
+        
+        // Wait and do another manual sync
         await Future.delayed(const Duration(milliseconds: 1000));
         await manualSync();
         
-        // Request one more session sync to ensure consistency
+        // Final session sync request
         _wsChannel!.sink.add(jsonEncode({
           'type': 'request_table_sync',
           'table': 'user_sessions',
           'priority': 'high',
+          'force_refresh': true,
           'timestamp': DateTime.now().toIso8601String(),
         }));
         
-        debugPrint('DatabaseSyncClient: Forced AGGRESSIVE immediate session sync completed');
+        debugPrint('DatabaseSyncClient: AGGRESSIVE session sync completed');
       } catch (e) {
         debugPrint('DatabaseSyncClient: Error forcing session sync: $e');
       }
+    } else {
+      debugPrint('DatabaseSyncClient: Cannot force session sync - not connected');
     }
   }
 }

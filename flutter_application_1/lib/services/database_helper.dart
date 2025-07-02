@@ -1185,7 +1185,7 @@ class DatabaseHelper {
 
   // SESSION MANAGEMENT METHODS
   
-  /// Create a new user session when user logs in
+  /// Create a new user session when user logs in with enhanced sync support
   Future<String> createUserSession({
     required String userId,
     required String username,
@@ -1199,22 +1199,53 @@ class DatabaseHelper {
     final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}_$userId';
     final now = DateTime.now().toIso8601String();
     
-    await db.insert(tableUserSessions, {
+    final sessionData = {
       'id': sessionId,
+      'session_id': sessionId,
       'userId': userId,
       'username': username,
       'deviceId': deviceId,
       'deviceName': deviceName ?? 'Unknown Device',
       'loginTime': now,
       'lastActivity': now,
+      'created_at': now,
+      'expires_at': expiresAt.toIso8601String(),
+      'invalidated_at': null,
       'ipAddress': ipAddress,
       'isActive': 1,
       'sessionToken': sessionToken,
       'expiresAt': expiresAt.toIso8601String(),
-    });
+    };
     
-    await logChange(tableUserSessions, sessionId, 'insert');
+    await db.insert(tableUserSessions, sessionData, conflictAlgorithm: ConflictAlgorithm.replace);
+    
+    // Enhanced logging and sync triggering
+    await logChange(tableUserSessions, sessionId, 'insert', data: sessionData);
+    
+    // Manually trigger sync if callback exists
+    try {
+      if (_onDatabaseChanged != null) {
+        await _onDatabaseChanged!(tableUserSessions, 'insert', sessionId, sessionData);
+        debugPrint('DATABASE_HELPER: Session creation callback triggered for sync');
+      }
+    } catch (e) {
+      debugPrint('DATABASE_HELPER: Error triggering session sync callback: $e');
+    }
+    
     return sessionId;
+  }
+
+  /// Get all active sessions for a user by username
+  Future<List<Map<String, dynamic>>> getUserSessionsByUsername(String username) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    return await db.query(
+      tableUserSessions,
+      where: 'username = ? AND isActive = 1 AND expiresAt > ?',
+      whereArgs: [username, now],
+      orderBy: 'created_at DESC',
+    );
   }
 
   /// Check if user has active sessions on other devices
@@ -1240,16 +1271,32 @@ class DatabaseHelper {
   Future<void> invalidateUserSessions(String userId, {String? excludeDeviceId}) async {
     final db = await database;
     
-    String query = 'DELETE FROM $tableUserSessions WHERE userId = ?';
+    // Get sessions that will be deleted for proper sync logging
+    String selectQuery = 'SELECT * FROM $tableUserSessions WHERE userId = ?';
     List<dynamic> args = [userId];
     
     if (excludeDeviceId != null) {
-      query += ' AND deviceId != ?';
+      selectQuery += ' AND deviceId != ?';
       args.add(excludeDeviceId);
     }
     
-    await db.rawDelete(query, args);
-    await logChange(tableUserSessions, userId, 'delete');
+    final sessionsToDelete = await db.rawQuery(selectQuery, args);
+    
+    // Delete the sessions
+    String deleteQuery = 'DELETE FROM $tableUserSessions WHERE userId = ?';
+    List<dynamic> deleteArgs = [userId];
+    
+    if (excludeDeviceId != null) {
+      deleteQuery += ' AND deviceId != ?';
+      deleteArgs.add(excludeDeviceId);
+    }
+    
+    await db.rawDelete(deleteQuery, deleteArgs);
+    
+    // Log each deletion for proper sync
+    for (final session in sessionsToDelete) {
+      await logChange(tableUserSessions, session['id'].toString(), 'delete');
+    }
   }
 
   /// Update session activity timestamp
@@ -1550,6 +1597,32 @@ class DatabaseHelper {
   // Static method to clear database change callback
   static void clearDatabaseChangeCallback() {
     _onDatabaseChanged = null;
+  }
+
+  // Check if database change callback is set
+  static bool hasDatabaseChangeCallback() {
+    return _onDatabaseChanged != null;
+  }
+
+  // Manually trigger database change callback (for testing/debugging sync)
+  static Future<void> triggerDatabaseChangeCallback(
+    String table, 
+    String operation, 
+    String recordId, 
+    Map<String, dynamic>? data
+  ) async {
+    if (_onDatabaseChanged != null) {
+      debugPrint('DATABASE_HELPER: Manually triggering database change callback: $table.$operation');
+      try {
+        await _onDatabaseChanged!(table, operation, recordId, data);
+        debugPrint('DATABASE_HELPER: Database change callback completed successfully');
+      } catch (e) {
+        debugPrint('DATABASE_HELPER: Error in database change callback: $e');
+        rethrow;
+      }
+    } else {
+      debugPrint('DATABASE_HELPER: No database change callback set to trigger');
+    }
   }
 
   // Get pending changes for sync
@@ -1987,32 +2060,6 @@ To view live changes in DB Browser:
         'CREATE INDEX IF NOT EXISTS idx_medical_records_recordType ON $tableMedicalRecords (recordType)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_medical_records_recordDate ON $tableMedicalRecords (recordDate)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_medical_records_appointmentId ON $tableMedicalRecords (appointmentId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_medical_records_serviceId ON $tableMedicalRecords (serviceId)');
-
-    // Indexes for clinic_services table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_clinic_services_serviceName ON $tableClinicServices (serviceName)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_clinic_services_category ON $tableClinicServices (category)');
-
-    // Indexes for user_activity_log table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_userId ON $tableUserActivityLog (userId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_timestamp ON $tableUserActivityLog (timestamp)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_targetTable ON $tableUserActivityLog (targetTable)');
-
-    // Indexes for patient_bills table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_patient_bills_patientId ON $tablePatientBills (patientId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_patient_bills_status ON $tablePatientBills (status)');
-
-    // Indexes for bill_items table
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_bill_items_billId ON $tableBillItems (billId)');
     await db.execute(

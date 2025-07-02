@@ -7,6 +7,7 @@ import 'services/enhanced_shelf_lan_server.dart';
 import 'services/database_helper.dart';
 import 'services/backup_service.dart';
 import 'services/session_notification_service.dart';
+import 'services/enhanced_user_token_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/laboratory/laboratory_hub_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -63,13 +64,27 @@ void main() async {
   // Connect DatabaseHelper to EnhancedShelfServer for automatic sync
   DatabaseHelper.setDatabaseChangeCallback((table, operation, recordId, data) async {
     try {
+      debugPrint('MAIN: Database change detected: $table.$operation for record $recordId');
+      
       // Call the database change handler in EnhancedShelfServer
       await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
-      debugPrint('Database change notification sent to Enhanced Shelf Server: $table.$operation');
+      debugPrint('MAIN: Database change notification sent to Enhanced Shelf Server: $table.$operation');
+      
+      // Special logging for user_sessions table
+      if (table == 'user_sessions') {
+        debugPrint('MAIN: USER SESSION CHANGE DETECTED - Operation: $operation, Record: $recordId');
+        if (data != null) {
+          debugPrint('MAIN: Session data: username=${data['username']}, deviceId=${data['deviceId']}, isActive=${data['isActive']}');
+        }
+      }
     } catch (e) {
-      debugPrint('Error notifying Enhanced Shelf Server of database change: $e');
+      debugPrint('MAIN: Error notifying Enhanced Shelf Server of database change: $e');
     }
   });
+  
+  // Verify the callback was set
+  final hasCallback = DatabaseHelper.hasDatabaseChangeCallback();
+  debugPrint('MAIN: Database change callback set successfully: $hasCallback');
   
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
@@ -79,8 +94,26 @@ void main() async {
     if (update['type'] == 'session_invalidated' || 
         (update['type'] == 'remote_change_applied' && 
          update['change']?['table'] == 'user_sessions')) {
-      debugPrint('Session change detected from network: ${update['type']}');
-      // The AuthenticationManager will handle session validation during its monitoring
+      debugPrint('MAIN: Session change detected from network: ${update['type']}');
+      // Force immediate session refresh to ensure consistency
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        try {
+          final isLoggedIn = await AuthenticationManager.isLoggedIn();
+          if (isLoggedIn) {
+            final username = await AuthenticationManager.getCurrentUsername();
+            if (username != null) {
+              // Check for session conflicts and handle appropriately
+              final hasConflicts = await EnhancedUserTokenService.checkNetworkSessionConflicts(username);
+              if (hasConflicts) {
+                debugPrint('MAIN: Session conflict detected, triggering validation');
+                await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('MAIN: Error handling session sync update: $e');
+        }
+      });
     }
   });
   
