@@ -93,20 +93,28 @@ void main() async {
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
   
-  // Set up enhanced session sync every 2 minutes for auth consistency (reduced from 30s to prevent freezing)
-  Timer.periodic(const Duration(minutes: 2), (timer) async {
+  // Set up enhanced session sync every 5 minutes for auth consistency (increased from 2min to prevent loops)
+  Timer.periodic(const Duration(minutes: 5), (timer) async {
     try {
-      // Only sync if we have an active user session
-      final isLoggedIn = await AuthenticationManager.isLoggedIn();
-      if (!isLoggedIn) {
-        debugPrint('MAIN: No active session, skipping periodic sync');
+      // CRITICAL: Only sync if we have an ACTIVE user session to prevent login screen loops
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('MAIN: No stored session state, skipping periodic sync');
         return;
       }
       
-      // Only sync if connected and not currently syncing
+      // Double-check we actually have a valid session
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('MAIN: No active session after verification, skipping periodic sync');
+        return;
+      }
+      
+      // Only sync if connected and we have verified active session
       if ((DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning)) {
-        // Force session table sync less frequently to prevent device freezing
-        debugPrint('MAIN: Triggering periodic session sync (every 2 minutes)');
+        debugPrint('MAIN: Triggering periodic session sync (every 5 minutes) - authenticated user detected');
         await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
       }
     } catch (e) {

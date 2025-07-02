@@ -312,10 +312,25 @@ class AuthenticationManager {
     try {
       debugPrint('AUTH_MANAGER: Handling session invalidation from another device');
       
+      // CRITICAL: Check if user is actually logged in before processing invalidation
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool(_isLoggedInKey) ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('AUTH_MANAGER: No stored session state, ignoring invalidation request');
+        return;
+      }
+      
       // Stop session monitoring FIRST to prevent loops
       stopSessionMonitoring();
       
       final username = await getCurrentUsername();
+      
+      // Only proceed if we actually have a username (indicating we're logged in)
+      if (username == null) {
+        debugPrint('AUTH_MANAGER: No current username, ignoring invalidation request');
+        return;
+      }
       
       // Clear local authentication state
       await _clearAuthenticationState();
@@ -332,13 +347,11 @@ class AuthenticationManager {
       });
       
       // Log the invalidation
-      if (username != null) {
-        final db = DatabaseHelper();
-        await db.logUserActivity(
-          username,
-          'Session invalidated - logged out from another device',
-        );
-      }
+      final db = DatabaseHelper();
+      await db.logUserActivity(
+        username,
+        'Session invalidated - logged out from another device',
+      );
       
       debugPrint('AUTH_MANAGER: Session invalidation handling completed');
     } catch (e) {

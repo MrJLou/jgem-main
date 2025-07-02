@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'enhanced_user_token_service.dart';
 import 'database_sync_client.dart';
 import 'enhanced_shelf_lan_server.dart';
@@ -91,15 +92,25 @@ class CrossDeviceSessionMonitor {
         case 'session_table_synced':
           debugPrint('CROSS_DEVICE_MONITOR: Session table sync completed');
           // Wait a moment for sync to fully complete before validation
-          Future.delayed(const Duration(seconds: 2), () {
-            _checkCurrentSessionValidity();
+          Future.delayed(const Duration(seconds: 2), () async {
+            final isLoggedIn = await AuthenticationManager.isLoggedIn();
+            if (isLoggedIn) {
+              _checkCurrentSessionValidity();
+            } else {
+              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping session table sync validation');
+            }
           });
           break;
           
         case 'session_sync_validation_needed':
           debugPrint('CROSS_DEVICE_MONITOR: Session sync validation needed');
-          Future.delayed(const Duration(seconds: 2), () {
-            _checkCurrentSessionValidity();
+          Future.delayed(const Duration(seconds: 2), () async {
+            final isLoggedIn = await AuthenticationManager.isLoggedIn();
+            if (isLoggedIn) {
+              _checkCurrentSessionValidity();
+            } else {
+              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping session sync validation');
+            }
           });
           break;
           
@@ -107,8 +118,13 @@ class CrossDeviceSessionMonitor {
           if (update['table'] == 'user_sessions') {
             debugPrint('CROSS_DEVICE_MONITOR: User sessions table sync completed');
             // Wait for sync operations to complete before checking
-            Future.delayed(const Duration(seconds: 3), () {
-              _checkCurrentSessionValidity();
+            Future.delayed(const Duration(seconds: 3), () async {
+              final isLoggedIn = await AuthenticationManager.isLoggedIn();
+              if (isLoggedIn) {
+                _checkCurrentSessionValidity();
+              } else {
+                debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping table sync validation');
+              }
             });
           }
           break;
@@ -121,8 +137,13 @@ class CrossDeviceSessionMonitor {
           
         case 'auth_conflict_check_needed':
           debugPrint('CROSS_DEVICE_MONITOR: Authentication conflict check requested');
-          Future.delayed(const Duration(seconds: 2), () {
-            _checkForAuthenticationConflicts();
+          Future.delayed(const Duration(seconds: 2), () async {
+            final isLoggedIn = await AuthenticationManager.isLoggedIn();
+            if (isLoggedIn) {
+              _checkForAuthenticationConflicts();
+            } else {
+              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping auth conflict check');
+            }
           });
           break;
       }
@@ -132,7 +153,7 @@ class CrossDeviceSessionMonitor {
   }
   
   /// Handle changes to the user_sessions table
-  static void _handleSessionTableChange(Map<String, dynamic>? change) {
+  static void _handleSessionTableChange(Map<String, dynamic>? change) async {
     if (change == null) return;
     
     final operation = change['operation'] as String?;
@@ -141,8 +162,24 @@ class CrossDeviceSessionMonitor {
     
     debugPrint('CROSS_DEVICE_MONITOR: Session table change detected: $operation for $recordId on table $table');
     
-    // Always check session validity when user_sessions table changes
+    // Only check session validity if we have an active session
     if (table == 'user_sessions') {
+      // CRITICAL: First check if we're actually logged in before validating sessions
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session table change');
+        return;
+      }
+      
+      // Double-check authentication state
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session table change');
+        return;
+      }
+      
       switch (operation) {
         case 'insert':
           debugPrint('CROSS_DEVICE_MONITOR: New session created, checking for conflicts');
@@ -161,19 +198,51 @@ class CrossDeviceSessionMonitor {
   }
   
   /// Handle session invalidation messages
-  static void _handleSessionInvalidation(Map<String, dynamic>? data) {
+  static void _handleSessionInvalidation(Map<String, dynamic>? data) async {
     if (data == null) return;
     
     final username = data['username'] as String?;
     debugPrint('CROSS_DEVICE_MONITOR: Session invalidation received for user: $username');
+    
+    // CRITICAL: Only check if we're actually logged in to prevent false invalidations
+    final prefs = await SharedPreferences.getInstance();
+    final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+    
+    if (!hasStoredSession) {
+      debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session invalidation');
+      return;
+    }
+    
+    // Double-check authentication state
+    final isLoggedIn = await AuthenticationManager.isLoggedIn();
+    if (!isLoggedIn) {
+      debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session invalidation');
+      return;
+    }
     
     // Check if this affects the current user
     _checkCurrentSessionValidity();
   }
   
   /// Handle session update messages
-  static void _handleSessionUpdate(Map<String, dynamic> update) {
+  static void _handleSessionUpdate(Map<String, dynamic> update) async {
     debugPrint('CROSS_DEVICE_MONITOR: Session update received: ${update['action']}');
+    
+    // CRITICAL: Only check if we're actually logged in to prevent false triggers
+    final prefs = await SharedPreferences.getInstance();
+    final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+    
+    if (!hasStoredSession) {
+      debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session update');
+      return;
+    }
+    
+    // Double-check authentication state
+    final isLoggedIn = await AuthenticationManager.isLoggedIn();
+    if (!isLoggedIn) {
+      debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session update');
+      return;
+    }
     
     // Trigger session validation for current user
     _checkCurrentSessionValidity();
@@ -182,11 +251,29 @@ class CrossDeviceSessionMonitor {
   /// Check if current session is still valid
   static Future<void> _checkCurrentSessionValidity() async {
     try {
+      // CRITICAL: First check stored session state before making expensive calls
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping session validity check');
+        return;
+      }
+      
+      // Then check if we're actually logged in to avoid false triggers
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('CROSS_DEVICE_MONITOR: No active session to validate, skipping');
+        return;
+      }
+      
       final isValid = await EnhancedUserTokenService.isCurrentSessionValid();
       
       if (!isValid) {
         debugPrint('CROSS_DEVICE_MONITOR: Current session is no longer valid, triggering logout');
         await AuthenticationManager.handleSessionInvalidation();
+      } else {
+        debugPrint('CROSS_DEVICE_MONITOR: Current session is valid');
       }
     } catch (e) {
       debugPrint('CROSS_DEVICE_MONITOR: Error checking session validity: $e');
@@ -207,9 +294,20 @@ class CrossDeviceSessionMonitor {
     try {
       if (!_isMonitoring) return;
       
-      // Only check if we have an active session
+      // CRITICAL: Only check if we have an active session to prevent false triggers
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
-      if (!isLoggedIn) return;
+      if (!isLoggedIn) {
+        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping consistency check');
+        return;
+      }
+      
+      // Double-check we have a stored session state
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      if (!hasStoredSession) {
+        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping consistency check');
+        return;
+      }
       
       // Refresh session data from network
       await EnhancedUserTokenService.refreshSessionDataFromNetwork();
@@ -231,6 +329,22 @@ class CrossDeviceSessionMonitor {
   /// Trigger immediate session sync after login/logout
   static Future<void> triggerImmediateSessionSync() async {
     try {
+      // CRITICAL: Check stored session state first to prevent false triggers
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping immediate sync');
+        return;
+      }
+      
+      // Only sync if we have an active session to avoid triggering sync on login screen
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping immediate sync');
+        return;
+      }
+      
       // Throttle sync requests to prevent system overload
       final now = DateTime.now();
       if (_lastSyncRequest != null && 
@@ -301,6 +415,15 @@ class CrossDeviceSessionMonitor {
   /// Check for authentication conflicts after session sync
   static Future<void> _checkForAuthenticationConflicts() async {
     try {
+      // CRITICAL: Check stored session state first to prevent false triggers
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping conflict check');
+        return;
+      }
+      
       // Only check if we have an active session
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
