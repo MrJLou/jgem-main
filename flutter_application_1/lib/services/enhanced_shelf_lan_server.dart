@@ -76,8 +76,8 @@ class EnhancedShelfServer {
       // Detect server IP BEFORE starting the server
       final detectedIp = await _getActualServerIp();
       
-      // Set up database change callback for this server
-      DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
+      // Database change callback is now handled in main.dart to prevent conflicts
+      // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       
       // Create router with endpoints
       final router = _createRouter();
@@ -639,8 +639,8 @@ class EnhancedShelfServer {
         }
       }
       
-      // Re-enable change callback
-      DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
+      // Re-enable change callback - handled in main.dart now
+      // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       
       return Response.ok(
         jsonEncode({
@@ -655,8 +655,8 @@ class EnhancedShelfServer {
       );
     } catch (e) {
       debugPrint('Error syncing table: $e');
-      // Re-enable change callback even on error
-      DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
+      // Re-enable change callback even on error - handled in main.dart now
+      // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       return Response.internalServerError(body: 'Table sync failed');
     }
   }
@@ -1264,8 +1264,8 @@ class EnhancedShelfServer {
         _broadcastWebSocketChange(broadcastData);
         
       } finally {
-        // Re-enable change callback
-        DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
+        // Re-enable change callback - handled in main.dart now
+        // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       }
       
     } catch (e) {

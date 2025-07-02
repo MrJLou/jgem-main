@@ -36,8 +36,7 @@ class DatabaseSyncClient {
   static Future<void> initialize(DatabaseHelper dbHelper) async {
     _dbHelper = dbHelper;
     
-    // Set up database change callback for sending changes to server
-    DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
+    // NOTE: Database change callback is now handled in main.dart to prevent conflicts
     
     // Start periodic sync for queue updates (every 3 seconds)
     _startPeriodicSync();
@@ -325,8 +324,8 @@ class DatabaseSyncClient {
           }
         }
       } finally {
-        // Re-enable change callback
-        DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
+        // Re-enable change callback - handled in main.dart now
+        // DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
       }
 
       debugPrint('Full sync completed successfully');
@@ -370,115 +369,118 @@ class DatabaseSyncClient {
       DatabaseHelper.clearDatabaseChangeCallback();
       
       try {
-        switch (operation.toLowerCase()) {
-          case 'insert':
-            if (data != null) {
-              try {
-                // Special handling for user_sessions table to prevent duplicates
-                if (table == 'user_sessions') {
-                  // Check if session already exists by sessionToken to prevent duplicates
-                  if (data['sessionToken'] != null) {
-                    final existing = await db.query(
-                      table,
-                      where: 'sessionToken = ?',
-                      whereArgs: [data['sessionToken']],
-                    );
-                    
-                    if (existing.isNotEmpty) {
-                      // Update existing session instead of creating duplicate
-                      final rowsAffected = await db.update(
-                        table, 
-                        data, 
-                        where: 'sessionToken = ?', 
-                        whereArgs: [data['sessionToken']]
+        // Use transaction to prevent database locking issues
+        await db.transaction((txn) async {
+          switch (operation.toLowerCase()) {
+            case 'insert':
+              if (data != null) {
+                try {
+                  // Special handling for user_sessions table to prevent duplicates
+                  if (table == 'user_sessions') {
+                    // Check if session already exists by sessionToken to prevent duplicates
+                    if (data['sessionToken'] != null) {
+                      final existing = await txn.query(
+                        table,
+                        where: 'sessionToken = ?',
+                        whereArgs: [data['sessionToken']],
                       );
-                      debugPrint('Updated existing session instead of duplicate insert: $table.$recordId (rows affected: $rowsAffected)');
+                      
+                      if (existing.isNotEmpty) {
+                        // Update existing session instead of creating duplicate
+                        final rowsAffected = await txn.update(
+                          table, 
+                          data, 
+                          where: 'sessionToken = ?', 
+                          whereArgs: [data['sessionToken']]
+                        );
+                        debugPrint('Updated existing session instead of duplicate insert: $table.$recordId (rows affected: $rowsAffected)');
+                      } else {
+                        // Insert new session
+                        await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                        debugPrint('Successfully applied remote session insert: $table.$recordId');
+                      }
                     } else {
-                      // Insert new session
-                      await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                      debugPrint('Successfully applied remote session insert: $table.$recordId');
+                      // Fallback to normal insert if no sessionToken
+                      await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                      debugPrint('Successfully applied remote insert: $table.$recordId');
                     }
                   } else {
-                    // Fallback to normal insert if no sessionToken
-                    await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                    // Always use INSERT OR REPLACE for all other inserts to handle conflicts
+                    await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
                     debugPrint('Successfully applied remote insert: $table.$recordId');
                   }
-                } else {
-                  // Always use INSERT OR REPLACE for all other inserts to handle conflicts
-                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                  debugPrint('Successfully applied remote insert: $table.$recordId');
+                } catch (e) {
+                  debugPrint('Error applying remote insert: $e');
+                  // If insert fails, try update as fallback
+                  try {
+                    String whereColumn = 'id';
+                    if (table == 'active_patient_queue') {
+                      whereColumn = 'queueEntryId';
+                    } else if (table == 'user_sessions') {
+                      whereColumn = 'id';
+                    }
+                    
+                    final rowsAffected = await txn.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                    debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+                  } catch (updateError) {
+                    debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                  }
                 }
-              } catch (e) {
-                debugPrint('Error applying remote insert: $e');
-                // If insert fails, try update as fallback
+              }
+              break;
+            case 'update':
+              if (data != null) {
                 try {
                   String whereColumn = 'id';
+                  // Handle special cases for tables with different primary key columns
                   if (table == 'active_patient_queue') {
                     whereColumn = 'queueEntryId';
                   } else if (table == 'user_sessions') {
                     whereColumn = 'id';
                   }
                   
-                  final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
-                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
-                } catch (updateError) {
-                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                  final rowsAffected = await txn.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  
+                  // If no rows were affected, try inserting the record
+                  if (rowsAffected == 0) {
+                    debugPrint('No rows updated, attempting insert for $table.$recordId');
+                    await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                    debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                  } else {
+                    debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
+                  }
+                } catch (e) {
+                  debugPrint('Error applying remote update: $e');
                 }
               }
-            }
-            break;
-          case 'update':
-            if (data != null) {
+              break;
+            case 'delete':
               try {
                 String whereColumn = 'id';
+                String whereValue = recordId;
+                
                 // Handle special cases for tables with different primary key columns
                 if (table == 'active_patient_queue') {
                   whereColumn = 'queueEntryId';
                 } else if (table == 'user_sessions') {
-                  whereColumn = 'id';
+                  // For user_sessions, try to use sessionToken if available in the data
+                  if (data != null && data['sessionToken'] != null) {
+                    whereColumn = 'sessionToken';
+                    whereValue = data['sessionToken'];
+                    debugPrint('Using sessionToken for session deletion: $whereValue');
+                  } else {
+                    whereColumn = 'id';
+                  }
                 }
                 
-                final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
-                
-                // If no rows were affected, try inserting the record
-                if (rowsAffected == 0) {
-                  debugPrint('No rows updated, attempting insert for $table.$recordId');
-                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
-                } else {
-                  debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
-                }
+                final rowsAffected = await txn.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
+                debugPrint('Successfully applied remote delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
               } catch (e) {
-                debugPrint('Error applying remote update: $e');
+                debugPrint('Error applying remote delete: $e');
               }
-            }
-            break;
-          case 'delete':
-            try {
-              String whereColumn = 'id';
-              String whereValue = recordId;
-              
-              // Handle special cases for tables with different primary key columns
-              if (table == 'active_patient_queue') {
-                whereColumn = 'queueEntryId';
-              } else if (table == 'user_sessions') {
-                // For user_sessions, try to use sessionToken if available in the data
-                if (data != null && data['sessionToken'] != null) {
-                  whereColumn = 'sessionToken';
-                  whereValue = data['sessionToken'];
-                  debugPrint('Using sessionToken for session deletion: $whereValue');
-                } else {
-                  whereColumn = 'id';
-                }
-              }
-              
-              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
-              debugPrint('Successfully applied remote delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
-            } catch (e) {
-              debugPrint('Error applying remote delete: $e');
-            }
-            break;
-        }
+              break;
+          }
+        });
 
         // Trigger UI refresh for specific queue changes
         if (table == 'active_patient_queue') {
@@ -567,8 +569,8 @@ class DatabaseSyncClient {
           'timestamp': DateTime.now().toIso8601String(),
         });
       } finally {
-        // Re-enable change callback
-        DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
+        // Re-enable change callback - handled in main.dart now  
+        // DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
       }
     } catch (e) {
       debugPrint('Error handling remote database change: $e');
@@ -692,8 +694,8 @@ class DatabaseSyncClient {
           });
         }
       } finally {
-        // Re-enable change callback
-        DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
+        // Re-enable change callback - handled in main.dart now
+        // DatabaseHelper.setDatabaseChangeCallback(_onLocalDatabaseChange);
       }
     } catch (e) {
       debugPrint('Error applying table sync for $tableName: $e');
@@ -872,6 +874,11 @@ class DatabaseSyncClient {
     } catch (e) {
       debugPrint('Error sending local change to server: $e');
     }
+  }
+
+  /// Public method to notify local database changes (called from main.dart callback)
+  static Future<void> notifyLocalDatabaseChange(String table, String operation, String recordId, Map<String, dynamic>? data) async {
+    await _onLocalDatabaseChange(table, operation, recordId, data);
   }
 
   /// Get device ID for tracking

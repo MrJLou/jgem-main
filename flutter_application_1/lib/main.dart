@@ -61,24 +61,63 @@ void main() async {
   // Initialize backup service for database backup/restore functionality
   BackupService.initialize(dbHelper);
   
-  // Connect DatabaseHelper to EnhancedShelfServer for automatic sync
+  // Connect DatabaseHelper to BOTH EnhancedShelfServer AND DatabaseSyncClient for automatic sync
   DatabaseHelper.setDatabaseChangeCallback((table, operation, recordId, data) async {
     try {
       debugPrint('MAIN: Database change detected: $table.$operation for record $recordId');
       
-      // Call the database change handler in EnhancedShelfServer
-      await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
-      debugPrint('MAIN: Database change notification sent to Enhanced Shelf Server: $table.$operation');
+      // CRITICAL: Handle BOTH host and client scenarios
       
-      // Special logging for user_sessions table
+      // 1. If we're running as a HOST (server), notify clients via EnhancedShelfServer
+      if (EnhancedShelfServer.isRunning) {
+        try {
+          await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
+          debugPrint('MAIN: [HOST] Database change sent to all clients via Enhanced Shelf Server');
+        } catch (e) {
+          debugPrint('MAIN: [HOST] Error notifying clients via Enhanced Shelf Server: $e');
+        }
+      }
+      
+      // 2. If we're running as a CLIENT, notify server via DatabaseSyncClient  
+      if (DatabaseSyncClient.isConnected) {
+        try {
+          // Use the _onLocalDatabaseChange method from DatabaseSyncClient
+          await DatabaseSyncClient.notifyLocalDatabaseChange(table, operation, recordId, data);
+          debugPrint('MAIN: [CLIENT] Database change sent to host server via Database Sync Client');
+        } catch (e) {
+          debugPrint('MAIN: [CLIENT] Error notifying host server via Database Sync Client: $e');
+        }
+      }
+      
+      // Special handling for user_sessions table - CRITICAL for authentication sync
       if (table == 'user_sessions') {
-        debugPrint('MAIN: USER SESSION CHANGE DETECTED - Operation: $operation, Record: $recordId');
+        debugPrint('MAIN: CRITICAL SESSION CHANGE - Operation: $operation, Record: $recordId');
         if (data != null) {
           debugPrint('MAIN: Session data: username=${data['username']}, deviceId=${data['deviceId']}, isActive=${data['isActive']}');
         }
+        
+        // Force immediate session table sync for both host and client
+        if (EnhancedShelfServer.isRunning) {
+          try {
+            await EnhancedShelfServer.forceSyncTable('user_sessions');
+            debugPrint('MAIN: [HOST] Forced immediate user_sessions sync to all clients');
+          } catch (e) {
+            debugPrint('MAIN: [HOST] Error in forced session sync: $e');
+          }
+        }
+        
+        if (DatabaseSyncClient.isConnected) {
+          try {
+            await DatabaseSyncClient.forceSessionSync();
+            debugPrint('MAIN: [CLIENT] Forced immediate user_sessions sync to host');
+          } catch (e) {
+            debugPrint('MAIN: [CLIENT] Error in forced session sync: $e');
+          }
+        }
       }
+      
     } catch (e) {
-      debugPrint('MAIN: Error notifying Enhanced Shelf Server of database change: $e');
+      debugPrint('MAIN: Error handling database change: $e');
     }
   });
   

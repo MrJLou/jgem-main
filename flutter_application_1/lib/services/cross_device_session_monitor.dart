@@ -9,13 +9,14 @@ import 'authentication_manager.dart';
 /// Cross-Device Session Monitor
 /// 
 /// This service monitors session changes across all connected devices
-/// and ensures proper session invalidation when a user logs in from a new device.
+/// and ensures proper session validation when a user logs in from a new device.
 class CrossDeviceSessionMonitor {
   static Timer? _monitorTimer;
   static bool _isMonitoring = false;
   static StreamSubscription? _syncSubscription;
   static DateTime? _lastSyncRequest;
   static const Duration _syncCooldown = Duration(seconds: 10); // Throttle sync requests
+  static DateTime? _lastNoSessionLog; // Prevent excessive "no session" logs
   
   /// Initialize cross-device session monitoring
   static Future<void> initialize() async {
@@ -97,7 +98,7 @@ class CrossDeviceSessionMonitor {
             if (isLoggedIn) {
               _checkCurrentSessionValidity();
             } else {
-              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping session table sync validation');
+              _logNoActiveSession('session table sync validation');
             }
           });
           break;
@@ -109,7 +110,7 @@ class CrossDeviceSessionMonitor {
             if (isLoggedIn) {
               _checkCurrentSessionValidity();
             } else {
-              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping session sync validation');
+              _logNoActiveSession('session sync validation');
             }
           });
           break;
@@ -123,7 +124,7 @@ class CrossDeviceSessionMonitor {
               if (isLoggedIn) {
                 _checkCurrentSessionValidity();
               } else {
-                debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping table sync validation');
+                _logNoActiveSession('table sync validation');
               }
             });
           }
@@ -142,7 +143,7 @@ class CrossDeviceSessionMonitor {
             if (isLoggedIn) {
               _checkForAuthenticationConflicts();
             } else {
-              debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping auth conflict check');
+              _logNoActiveSession('auth conflict check');
             }
           });
           break;
@@ -169,14 +170,14 @@ class CrossDeviceSessionMonitor {
       final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
       
       if (!hasStoredSession) {
-        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session table change');
+        _logNoActiveSession('session table change (no stored state)');
         return;
       }
       
       // Double-check authentication state
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
-        debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session table change');
+        _logNoActiveSession('session table change');
         return;
       }
       
@@ -209,14 +210,14 @@ class CrossDeviceSessionMonitor {
     final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
     
     if (!hasStoredSession) {
-      debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session invalidation');
+      _logNoActiveSession('session invalidation (no stored state)');
       return;
     }
     
     // Double-check authentication state
     final isLoggedIn = await AuthenticationManager.isLoggedIn();
     if (!isLoggedIn) {
-      debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session invalidation');
+      _logNoActiveSession('session invalidation');
       return;
     }
     
@@ -233,14 +234,14 @@ class CrossDeviceSessionMonitor {
     final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
     
     if (!hasStoredSession) {
-      debugPrint('CROSS_DEVICE_MONITOR: No stored session state, ignoring session update');
+      _logNoActiveSession('session update (no stored state)');
       return;
     }
     
     // Double-check authentication state
     final isLoggedIn = await AuthenticationManager.isLoggedIn();
     if (!isLoggedIn) {
-      debugPrint('CROSS_DEVICE_MONITOR: No active session, ignoring session update');
+      _logNoActiveSession('session update');
       return;
     }
     
@@ -256,14 +257,14 @@ class CrossDeviceSessionMonitor {
       final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
       
       if (!hasStoredSession) {
-        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping session validity check');
+        _logNoActiveSession('session validity check (no stored state)');
         return;
       }
       
       // Then check if we're actually logged in to avoid false triggers
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
-        debugPrint('CROSS_DEVICE_MONITOR: No active session to validate, skipping');
+        _logNoActiveSession('session validation');
         return;
       }
       
@@ -297,7 +298,7 @@ class CrossDeviceSessionMonitor {
       // CRITICAL: Only check if we have an active session to prevent false triggers
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
-        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping consistency check');
+        _logNoActiveSession('consistency check');
         return;
       }
       
@@ -305,22 +306,27 @@ class CrossDeviceSessionMonitor {
       final prefs = await SharedPreferences.getInstance();
       final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
       if (!hasStoredSession) {
-        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping consistency check');
+        _logNoActiveSession('consistency check (no stored state)');
         return;
       }
       
-      // Refresh session data from network
-      await EnhancedUserTokenService.refreshSessionDataFromNetwork();
+      // Get username before checking session validity
+      final username = await AuthenticationManager.getCurrentUsername();
+      if (username == null) {
+        debugPrint('CROSS_DEVICE_MONITOR: No username found, skipping consistency check');
+        return;
+      }
       
-      // Check if current session is still valid
+      // Check session validity WITHOUT forcing network refresh to prevent loops
       final isValid = await EnhancedUserTokenService.isCurrentSessionValid();
       
       if (!isValid) {
         debugPrint('CROSS_DEVICE_MONITOR: Session inconsistency detected, logging out');
         await AuthenticationManager.handleSessionInvalidation();
+      } else {
+        debugPrint('CROSS_DEVICE_MONITOR: Session consistency check passed for user: $username');
       }
       
-      debugPrint('CROSS_DEVICE_MONITOR: Session consistency check completed');
     } catch (e) {
       debugPrint('CROSS_DEVICE_MONITOR: Error during session consistency check: $e');
     }
@@ -334,14 +340,14 @@ class CrossDeviceSessionMonitor {
       final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
       
       if (!hasStoredSession) {
-        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping immediate sync');
+        _logNoActiveSession('immediate sync (no stored state)');
         return;
       }
       
       // Only sync if we have an active session to avoid triggering sync on login screen
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
-        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping immediate sync');
+        _logNoActiveSession('immediate sync');
         return;
       }
       
@@ -420,14 +426,14 @@ class CrossDeviceSessionMonitor {
       final hasStoredSession = prefs.getBool('is_logged_in') ?? false;
       
       if (!hasStoredSession) {
-        debugPrint('CROSS_DEVICE_MONITOR: No stored session state, skipping conflict check');
+        _logNoActiveSession('conflict check (no stored state)');
         return;
       }
       
       // Only check if we have an active session
       final isLoggedIn = await AuthenticationManager.isLoggedIn();
       if (!isLoggedIn) {
-        debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping conflict check');
+        _logNoActiveSession('conflict check');
         return;
       }
       
@@ -458,6 +464,16 @@ class CrossDeviceSessionMonitor {
       }
     } catch (e) {
       debugPrint('CROSS_DEVICE_MONITOR: Error checking authentication conflicts: $e');
+    }
+  }
+
+  /// Log "no active session" message with throttling to prevent spam
+  static void _logNoActiveSession(String context) {
+    final now = DateTime.now();
+    if (_lastNoSessionLog == null || 
+        now.difference(_lastNoSessionLog!) > const Duration(minutes: 2)) {
+      debugPrint('CROSS_DEVICE_MONITOR: No active session, skipping $context');
+      _lastNoSessionLog = now;
     }
   }
 }

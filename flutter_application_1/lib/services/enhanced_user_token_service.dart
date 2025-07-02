@@ -150,98 +150,43 @@ class EnhancedUserTokenService {
         return createUserSession(username: username, deviceName: deviceName, forceLogout: forceLogout);
       }
       
-      // Insert new session record with robust error handling and verification
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - About to insert session into local database...');
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session data: $sessionData');
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Database path: ${db.path}');
+      // Insert session record - SIMPLIFIED to avoid long transactions that cause locking
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Inserting session into database...');
       
-      // First, let's see what's currently in the user_sessions table
       try {
-        final existingSessions = await db.query(DatabaseHelper.tableUserSessions);
-        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Current sessions in database: ${existingSessions.length}');
-        for (final session in existingSessions) {
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Existing session: username=${session['username']}, active=${session['isActive']}, device=${session['deviceId']}');
-        }
-      } catch (e) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Could not query existing sessions: $e');
-      }
-      
-      // Use a transaction to ensure atomicity
-      late int insertResult;
-      late List<Map<String, dynamic>> verifyResult;
-      
-      await db.transaction((txn) async {
-        try {
-          // First, check if a session with this ID already exists and clean it up
-          final deletedCount = await txn.delete(
-            DatabaseHelper.tableUserSessions,
-            where: 'id = ? OR sessionToken = ?',
-            whereArgs: [sessionId, sessionToken],
-          );
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Deleted $deletedCount existing sessions with same ID/token');
-          
-          // Insert the new session
-          insertResult = await txn.insert(
-            DatabaseHelper.tableUserSessions,
-            sessionData,
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-          
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session inserted with result: $insertResult');
-          
-          // Immediately verify within the same transaction
-          verifyResult = await txn.query(
-            DatabaseHelper.tableUserSessions,
-            where: 'sessionToken = ?',
-            whereArgs: [sessionToken],
-          );
-          
-          if (verifyResult.isEmpty) {
-            throw Exception('Session not found immediately after insert within transaction');
-          }
-          
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session verified within transaction: ${verifyResult.first}');
-          
-          // Double-check by querying all sessions for this user
-          final allUserSessions = await txn.query(
-            DatabaseHelper.tableUserSessions,
-            where: 'username = ?',
-            whereArgs: [username],
-          );
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - All sessions for user $username after insert: ${allUserSessions.length}');
-          
-        } catch (e) {
-          debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Transaction failed: $e');
-          rethrow;
-        }
-      });
-      
-      // Verify again outside the transaction to ensure persistence
-      final finalVerifyResult = await db.query(
-        DatabaseHelper.tableUserSessions,
-        where: 'sessionToken = ?',
-        whereArgs: [sessionToken],
-      );
-      
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Final verification found ${finalVerifyResult.length} sessions with this token');
-      if (finalVerifyResult.isNotEmpty) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session successfully persisted: ${finalVerifyResult.first}');
-      } else {
-        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Session was NOT found in database after transaction commit!');
-        
-        // Try to query all sessions for this user to see what's in the database
-        final allUserSessions = await db.query(
+        // Clean up any existing session with same ID first
+        await db.delete(
           DatabaseHelper.tableUserSessions,
-          where: 'username = ?',
-          whereArgs: [username],
+          where: 'id = ?',
+          whereArgs: [sessionId],
         );
-        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - All sessions for user $username: ${allUserSessions.length}');
-        for (final session in allUserSessions) {
-          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Existing session: ${session['sessionToken']}, active: ${session['isActive']}, expires: ${session['expiresAt']}');
+        
+        // Insert the new session
+        await db.insert(
+          DatabaseHelper.tableUserSessions,
+          sessionData,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session inserted successfully');
+        
+        // Immediately verify the session was created
+        final verifyResult = await db.query(
+          DatabaseHelper.tableUserSessions,
+          where: 'sessionToken = ?',
+          whereArgs: [sessionToken],
+          limit: 1,
+        );
+        
+        if (verifyResult.isEmpty) {
+          throw Exception('Session not found after insert - database error');
         }
         
-        // This is a critical error - we should throw an exception
-        throw Exception('Failed to create session: Session not found in database after transaction commit');
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session creation verified');
+        
+      } catch (e) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Session creation failed: $e');
+        rethrow;
       }
       
       // Store current session info locally
@@ -958,6 +903,11 @@ class EnhancedUserTokenService {
     return await _getCurrentUsername();
   }
 
+  /// Public method to get current session username (used by verification methods)
+  static Future<String?> getCurrentSessionUsername() async {
+    return await _getCurrentUsername();
+  }
+
   // ============== LAN SYNC BROADCASTING METHODS ==============
 
   /// Broadcast session deletions to all connected devices via LAN sync
@@ -1484,7 +1434,7 @@ class EnhancedUserTokenService {
       
       // 4. Verify current session info is stored
       final storedToken = await getCurrentSessionToken();
-      final storedUsername = await getCurrentUsername();
+      final storedUsername = await getCurrentSessionUsername();
       
       debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Stored session info: token=${storedToken != null ? 'present' : 'missing'}, username=$storedUsername');
       
