@@ -930,8 +930,8 @@ class DatabaseSyncClient {
     _periodicSyncTimer?.cancel();
     _queueRefreshTimer?.cancel();
     
-    // Start periodic sync check every 30 seconds for normal updates
-    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    // Start periodic sync check every 2 minutes for normal updates (reduced from 30s to prevent freezing)
+    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
       if (_isConnected && _wsChannel != null) {
         _requestQueueSync();
         _requestAppointmentSync(); // Also sync appointments
@@ -939,12 +939,12 @@ class DatabaseSyncClient {
         _requestSessionSync(); // CRITICAL: Also sync user sessions for auth consistency
         _requestPatientDataSync(); // NEW: Sync patient bills, payments, history
       } else {
-        // Even when not connected, trigger UI refresh for local changes
+        // Even when not connected, trigger UI refresh for local changes (now throttled)
         _broadcastUIRefresh();
       }
     });
     
-    debugPrint('Started enhanced periodic sync: queue/appointment/user/session/patient-data sync every 30s');
+    debugPrint('Started enhanced periodic sync: queue/appointment/user/session/patient-data sync every 2 minutes');
   }
 
   /// Request specific queue table sync
@@ -1029,11 +1029,20 @@ class DatabaseSyncClient {
     }
   }
 
-  /// Broadcast UI refresh event
+  /// Broadcast UI refresh event with throttling
+  static DateTime? _lastUIRefreshBroadcast;
   static void _broadcastUIRefresh() {
+    // Throttle UI refresh broadcasts to every 60 seconds minimum
+    final now = DateTime.now();
+    if (_lastUIRefreshBroadcast != null && 
+        now.difference(_lastUIRefreshBroadcast!).inSeconds < 60) {
+      return; // Skip this broadcast due to throttling
+    }
+    
+    _lastUIRefreshBroadcast = now;
     _syncUpdates.add({
       'type': 'ui_refresh_requested',
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': now.toIso8601String(),
       'tables': [
         'active_patient_queue', 
         'appointments', 
@@ -1048,7 +1057,7 @@ class DatabaseSyncClient {
         'clinic_services',
         'patient_queue'
       ],
-      'source': 'periodic_refresh',
+      'source': 'periodic_refresh_throttled',
     });
   }
 

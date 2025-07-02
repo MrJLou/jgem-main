@@ -93,25 +93,39 @@ void main() async {
   // Initialize cross-device session monitor for real-time session tracking
   await CrossDeviceSessionMonitor.initialize();
   
-  // Set up enhanced session sync every 5 seconds for critical auth consistency
-  Timer.periodic(const Duration(seconds: 5), (timer) async {
+  // Set up enhanced session sync every 2 minutes for auth consistency (reduced from 30s to prevent freezing)
+  Timer.periodic(const Duration(minutes: 2), (timer) async {
     try {
-      if (DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning) {
-        // Force session table sync more frequently for authentication integrity
+      // Only sync if we have an active user session
+      final isLoggedIn = await AuthenticationManager.isLoggedIn();
+      if (!isLoggedIn) {
+        debugPrint('MAIN: No active session, skipping periodic sync');
+        return;
+      }
+      
+      // Only sync if connected and not currently syncing
+      if ((DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning)) {
+        // Force session table sync less frequently to prevent device freezing
+        debugPrint('MAIN: Triggering periodic session sync (every 2 minutes)');
         await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
-        debugPrint('MAIN: Periodic session sync triggered (every 5s)');
       }
     } catch (e) {
       debugPrint('MAIN: Error during periodic session sync: $e');
     }
   });
   
-  // Trigger immediate session sync if connected to ensure all devices have current state
+  // Trigger initial session sync if connected (with longer delay to let things settle)
   if (DatabaseSyncClient.isConnected || EnhancedShelfServer.isRunning) {
-    Future.delayed(const Duration(seconds: 2), () async {
+    Future.delayed(const Duration(seconds: 10), () async {
       try {
-        await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
-        debugPrint('Initial session sync triggered successfully');
+        // Only sync if we're actually logged in
+        final isLoggedIn = await AuthenticationManager.isLoggedIn();
+        if (isLoggedIn) {
+          await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+          debugPrint('Initial session sync triggered successfully');
+        } else {
+          debugPrint('Skipping initial session sync - no active session');
+        }
       } catch (e) {
         debugPrint('Error triggering initial session sync: $e');
       }
@@ -129,9 +143,6 @@ class PatientRecordManagementApp extends StatelessWidget {
 
   @override // Added missing override annotation
   Widget build(BuildContext context) {
-    // Initialize session notification service with navigator key
-    SessionNotificationService.initialize(navigatorKey);
-    
     return MaterialApp(
       title: 'Patient Record Management',
       navigatorKey: navigatorKey, // Add navigator key for notifications
@@ -150,6 +161,13 @@ class PatientRecordManagementApp extends StatelessWidget {
             const LaboratoryHubScreen(),
       },
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        // Initialize session notification service after MaterialApp is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          SessionNotificationService.initialize(navigatorKey);
+        });
+        return child!;
+      },
     );
   }
 }
@@ -163,20 +181,25 @@ class _AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<_AuthWrapper> {
   late final Future<bool> _isLoggedInFuture;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-
     _isLoggedInFuture = _checkAuthAndInitialize();
   }
 
   Future<bool> _checkAuthAndInitialize() async {
+    if (_isInitialized) {
+      return await AuthenticationManager.isLoggedIn();
+    }
+    
     final isLoggedIn = await AuthenticationManager.isLoggedIn();
     if (isLoggedIn) {
       // Initialize the current user role when app starts
       await ApiService.initializeCurrentUserRole();
     }
+    _isInitialized = true;
     return isLoggedIn;
   }
 
@@ -187,7 +210,22 @@ class _AuthWrapperState extends State<_AuthWrapper> {
       builder: (context, AsyncSnapshot<bool> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Initializing...', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          debugPrint('AuthWrapper error: ${snapshot.error}');
+          return const LoginScreen();
         }
 
         if (snapshot.hasData && snapshot.data == true) {

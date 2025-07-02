@@ -13,6 +13,8 @@ class CrossDeviceSessionMonitor {
   static Timer? _monitorTimer;
   static bool _isMonitoring = false;
   static StreamSubscription? _syncSubscription;
+  static DateTime? _lastSyncRequest;
+  static const Duration _syncCooldown = Duration(seconds: 10); // Throttle sync requests
   
   /// Initialize cross-device session monitoring
   static Future<void> initialize() async {
@@ -36,11 +38,12 @@ class CrossDeviceSessionMonitor {
     if (_isMonitoring) return;
     
     _isMonitoring = true;
-    _monitorTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
+    // Increased interval to 5 minutes to reduce system load
+    _monitorTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
       await _checkSessionConsistency();
     });
     
-    debugPrint('CROSS_DEVICE_MONITOR: Started session monitoring');
+    debugPrint('CROSS_DEVICE_MONITOR: Started session monitoring (5-minute intervals)');
   }
   
   /// Stop monitoring
@@ -228,12 +231,20 @@ class CrossDeviceSessionMonitor {
   /// Trigger immediate session sync after login/logout
   static Future<void> triggerImmediateSessionSync() async {
     try {
+      // Throttle sync requests to prevent system overload
+      final now = DateTime.now();
+      if (_lastSyncRequest != null && 
+          now.difference(_lastSyncRequest!) < _syncCooldown) {
+        debugPrint('CROSS_DEVICE_MONITOR: Sync request throttled, cooldown period active');
+        return;
+      }
+      
+      _lastSyncRequest = now;
       debugPrint('CROSS_DEVICE_MONITOR: Triggering immediate session sync');
       
       // Request immediate sync via client if connected to host
       if (DatabaseSyncClient.isConnected) {
         await DatabaseSyncClient.forceSessionSync();
-        DatabaseSyncClient.requestImmediateSessionSync();
         debugPrint('CROSS_DEVICE_MONITOR: Sent immediate session sync request to host');
       }
       
@@ -243,8 +254,8 @@ class CrossDeviceSessionMonitor {
         debugPrint('CROSS_DEVICE_MONITOR: Forced session sync from host to all clients');
       }
       
-      // Also trigger immediate session validation
-      Future.delayed(const Duration(milliseconds: 2000), () {
+      // Also trigger immediate session validation after a longer delay
+      Future.delayed(const Duration(seconds: 3), () {
         _checkCurrentSessionValidity();
       });
       
