@@ -150,30 +150,62 @@ class EnhancedUserTokenService {
         return createUserSession(username: username, deviceName: deviceName, forceLogout: forceLogout);
       }
       
-      // Insert new session record with debug logging
+      // Insert new session record with robust error handling and verification
       debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - About to insert session into local database...');
       debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session data: $sessionData');
       
-      final insertResult = await db.insert(
-        DatabaseHelper.tableUserSessions,
-        sessionData,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      // Use a transaction to ensure atomicity
+      late int insertResult;
+      late List<Map<String, dynamic>> verifyResult;
       
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session inserted with result: $insertResult');
+      await db.transaction((txn) async {
+        try {
+          // First, check if a session with this ID already exists and clean it up
+          await txn.delete(
+            DatabaseHelper.tableUserSessions,
+            where: 'id = ? OR sessionToken = ?',
+            whereArgs: [sessionId, sessionToken],
+          );
+          
+          // Insert the new session
+          insertResult = await txn.insert(
+            DatabaseHelper.tableUserSessions,
+            sessionData,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          
+          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session inserted with result: $insertResult');
+          
+          // Immediately verify within the same transaction
+          verifyResult = await txn.query(
+            DatabaseHelper.tableUserSessions,
+            where: 'sessionToken = ?',
+            whereArgs: [sessionToken],
+          );
+          
+          if (verifyResult.isEmpty) {
+            throw Exception('Session not found immediately after insert within transaction');
+          }
+          
+          debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session verified within transaction: ${verifyResult.first}');
+        } catch (e) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Transaction failed: $e');
+          rethrow;
+        }
+      });
       
-      // Verify the session was actually inserted by querying it back immediately
-      final verifyResult = await db.query(
+      // Verify again outside the transaction to ensure persistence
+      final finalVerifyResult = await db.query(
         DatabaseHelper.tableUserSessions,
         where: 'sessionToken = ?',
         whereArgs: [sessionToken],
       );
       
-      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Verification query found ${verifyResult.length} sessions with this token');
-      if (verifyResult.isNotEmpty) {
-        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Inserted session verified: ${verifyResult.first}');
+      debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Final verification found ${finalVerifyResult.length} sessions with this token');
+      if (finalVerifyResult.isNotEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: DEBUG - Session successfully persisted: ${finalVerifyResult.first}');
       } else {
-        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Session was NOT found in database after insert!');
+        debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - Session was NOT found in database after transaction commit!');
         
         // Try to query all sessions for this user to see what's in the database
         final allUserSessions = await db.query(
@@ -187,7 +219,7 @@ class EnhancedUserTokenService {
         }
         
         // This is a critical error - we should throw an exception
-        throw Exception('Failed to create session: Session not found in database after insert');
+        throw Exception('Failed to create session: Session not found in database after transaction commit');
       }
       
       // Store current session info locally
@@ -1121,6 +1153,239 @@ class EnhancedUserTokenService {
       return false;
     }
   }
+
+  /// Verify that session was created on both host and client devices
+  /// This method should be called after login to ensure cross-device sync worked
+  static Future<bool> verifySessionSyncAcrossDevices(String username, String sessionToken) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Starting session sync verification for $username');
+      
+      // Step 1: Verify local session exists
+      final localSession = await _verifyLocalSession(username, sessionToken);
+      if (!localSession) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Local session NOT found!');
+        return false;
+      }
+      
+      // Step 2: Force network refresh to get latest state
+      await refreshSessionDataFromNetwork();
+      await Future.delayed(const Duration(milliseconds: 1000));
+      
+      // Step 3: Check if session exists on remote devices
+      final allSessions = await getActiveUserSessions(username);
+      final sessionExists = allSessions.any((session) => 
+        session['sessionToken'] == sessionToken && 
+        (session['isActive'] as int) == 1
+      );
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Found ${allSessions.length} total sessions, session exists: $sessionExists');
+      
+      if (!sessionExists) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Session not found in network! Attempting to recreate...');
+        
+        // Try to recreate the session data on this device
+        await _forceRecreateSession(username, sessionToken);
+        
+        // Trigger another immediate sync
+        await _triggerImmediateSessionSync();
+        
+        // Wait and check again
+        await Future.delayed(const Duration(milliseconds: 2000));
+        await refreshSessionDataFromNetwork();
+        
+        final retryCheck = await getActiveUserSessions(username);
+        final retryExists = retryCheck.any((session) => 
+          session['sessionToken'] == sessionToken && 
+          (session['isActive'] as int) == 1
+        );
+        
+        debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - After retry: ${retryCheck.length} sessions, exists: $retryExists');
+        return retryExists;
+      }
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Session sync verification successful');
+      return true;
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: VERIFY - Error during verification: $e');
+      return false;
+    }
+  }
+
+  /// Verify local session exists in database
+  static Future<bool> _verifyLocalSession(String username, String sessionToken) async {
+    try {
+      final db = await _dbHelper.database;
+      final result = await db.query(
+        DatabaseHelper.tableUserSessions,
+        where: 'username = ? AND sessionToken = ? AND isActive = 1',
+        whereArgs: [username, sessionToken],
+      );
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: Local session verification: ${result.length} sessions found');
+      return result.isNotEmpty;
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error verifying local session: $e');
+      return false;
+    }
+  }
+
+  /// Force recreate session data if it's missing
+  static Future<void> _forceRecreateSession(String username, String sessionToken) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Force recreating session for $username');
+      
+      final db = await _dbHelper.database;
+      final deviceId = await _getOrCreateDeviceId();
+      final now = DateTime.now();
+      final expiresAt = now.add(_defaultSessionDuration);
+      
+      // Create session record
+      final sessionData = {
+        'id': const Uuid().v4(),
+        'session_id': const Uuid().v4(),
+        'userId': await _getUserId(username) ?? 'unknown',
+        'username': username,
+        'deviceId': deviceId,
+        'deviceName': await _getDeviceName(),
+        'loginTime': now.toIso8601String(),
+        'lastActivity': now.toIso8601String(),
+        'created_at': now.toIso8601String(),
+        'expires_at': expiresAt.toIso8601String(),
+        'expiresAt': expiresAt.toIso8601String(),
+        'invalidated_at': null,
+        'ipAddress': await _getLocalIpAddress(),
+        'isActive': 1,
+        'sessionToken': sessionToken,
+      };
+      
+      await db.insert(
+        DatabaseHelper.tableUserSessions,
+        sessionData,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      
+      // Log the change for sync
+      await _dbHelper.logChange(DatabaseHelper.tableUserSessions, sessionData['id'] as String, 'insert');
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: Session forcibly recreated');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error force recreating session: $e');
+    }
+  }
+
+  /// Trigger immediate session sync across all devices
+  static Future<void> _triggerImmediateSessionSync() async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Triggering immediate session sync');
+      
+      // Broadcast via host server
+      if (EnhancedShelfServer.isRunning) {
+        await EnhancedShelfServer.forceSyncTable('user_sessions');
+        debugPrint('ENHANCED_TOKEN_SERVICE: Forced sync from host server');
+      }
+      
+      // Request sync via client
+      if (DatabaseSyncClient.isConnected) {
+        await DatabaseSyncClient.forceSessionSync();
+        debugPrint('ENHANCED_TOKEN_SERVICE: Requested sync from client');
+      }
+      
+      // Trigger cross-device monitor
+      await CrossDeviceSessionMonitor.triggerImmediateSessionSync();
+      
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error triggering immediate sync: $e');
+    }
+  }
+
+  /// Debug method to check current session table state
+  /// This is useful for diagnosing session sync issues
+  static Future<void> debugSessionTableState(String? username) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: === SESSION TABLE DEBUG ===');
+      
+      final db = await _dbHelper.database;
+      
+      // Get all sessions
+      final allSessions = await db.query(DatabaseHelper.tableUserSessions);
+      debugPrint('ENHANCED_TOKEN_SERVICE: Total sessions in table: ${allSessions.length}');
+      
+      if (allSessions.isEmpty) {
+        debugPrint('ENHANCED_TOKEN_SERVICE: SESSION TABLE IS EMPTY!');
+        
+        // Check if table exists
+        final tableExists = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'"
+        );
+        
+        if (tableExists.isEmpty) {
+          debugPrint('ENHANCED_TOKEN_SERVICE: ERROR - user_sessions table does not exist!');
+        } else {
+          debugPrint('ENHANCED_TOKEN_SERVICE: user_sessions table exists but is empty');
+          
+          // Check table schema
+          final schema = await db.rawQuery("PRAGMA table_info(user_sessions)");
+          debugPrint('ENHANCED_TOKEN_SERVICE: Table schema: $schema');
+        }
+        
+        return;
+      }
+      
+      // Show all sessions
+      for (int i = 0; i < allSessions.length; i++) {
+        final session = allSessions[i];
+        debugPrint('ENHANCED_TOKEN_SERVICE: Session $i: {');
+        debugPrint('  id: ${session['id']}');
+        debugPrint('  username: ${session['username']}');
+        debugPrint('  deviceId: ${session['deviceId']}');
+        debugPrint('  deviceName: ${session['deviceName']}');
+        debugPrint('  isActive: ${session['isActive']}');
+        debugPrint('  sessionToken: ${session['sessionToken']?.toString().substring(0, 8)}...');
+        debugPrint('  created_at: ${session['created_at']}');
+        debugPrint('  expires_at: ${session['expires_at']}');
+        debugPrint('  expiresAt: ${session['expiresAt']}');
+        debugPrint('  lastActivity: ${session['lastActivity']}');
+        debugPrint('  invalidated_at: ${session['invalidated_at']}');
+        debugPrint('}');
+      }
+      
+      // Show filtered sessions for specific user if provided
+      if (username != null) {
+        final userSessions = await db.query(
+          DatabaseHelper.tableUserSessions,
+          where: 'username = ?',
+          whereArgs: [username],
+        );
+        debugPrint('ENHANCED_TOKEN_SERVICE: Sessions for user $username: ${userSessions.length}');
+        
+        final activeSessions = await db.query(
+          DatabaseHelper.tableUserSessions,
+          where: 'username = ? AND isActive = 1',
+          whereArgs: [username],
+        );
+        debugPrint('ENHANCED_TOKEN_SERVICE: Active sessions for user $username: ${activeSessions.length}');
+      }
+      
+      // Check sync log for session changes
+      final syncLog = await db.query(
+        DatabaseHelper.tableSyncLog,
+        where: 'tableName = ?',
+        whereArgs: ['user_sessions'],
+        orderBy: 'timestamp DESC',
+        limit: 10,
+      );
+      debugPrint('ENHANCED_TOKEN_SERVICE: Recent sync log entries for user_sessions: ${syncLog.length}');
+      for (final entry in syncLog) {
+        debugPrint('  ${entry['timestamp']}: ${entry['action']} ${entry['recordId']} (synced: ${entry['synced']})');
+      }
+      
+      debugPrint('ENHANCED_TOKEN_SERVICE: === END SESSION TABLE DEBUG ===');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error during session table debug: $e');
+    }
+  }
+
+  // ...existing code...
 }
 
 /// Exception thrown when there's a session conflict (user already logged in)

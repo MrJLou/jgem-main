@@ -86,6 +86,37 @@ class AuthenticationManager {
       
       debugPrint('AUTH_MANAGER: DEBUG - Session created successfully with token: ${sessionToken.substring(0, 8)}...');
       
+      // CRITICAL: Verify session was created and synced across devices
+      debugPrint('AUTH_MANAGER: CRITICAL - Verifying session sync across devices...');
+      
+      // Wait a moment for initial sync to complete
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
+      // Verify session sync
+      final sessionSyncSuccessful = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
+      
+      if (!sessionSyncSuccessful) {
+        debugPrint('AUTH_MANAGER: WARNING - Session sync verification failed! This may cause cross-device issues.');
+        
+        // Try one more time with a longer delay
+        await Future.delayed(const Duration(milliseconds: 2000));
+        final retrySync = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
+        
+        if (!retrySync) {
+          debugPrint('AUTH_MANAGER: ERROR - Session sync still failed after retry!');
+          // Don't fail login, but log this issue
+          await db.logUserActivity(
+            username,
+            'Session sync verification failed during login',
+            details: 'Session may not be properly synced across devices',
+          );
+        } else {
+          debugPrint('AUTH_MANAGER: SUCCESS - Session sync verified on retry');
+        }
+      } else {
+        debugPrint('AUTH_MANAGER: SUCCESS - Session sync verified across devices');
+      }
+      
       // Save authentication state
       await _saveAuthenticationState(
         username: username,
