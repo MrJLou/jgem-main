@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -190,10 +189,10 @@ class HelpManualPdfService {
             _buildNumberedListItem('Real-time data synchronization across devices', 7),
             pw.SizedBox(height: 15),
             _buildSectionTitle('System Requirements'),
-            _buildNumberedListItem('Windows, macOS, or Linux operating system', 1),
+            _buildNumberedListItem('Windows 10 or 11 system', 1),
             _buildNumberedListItem('Internet connection for cloud synchronization', 2),
             _buildNumberedListItem('Local network (LAN) for multi-device access', 3),
-            _buildNumberedListItem('Minimum 4GB RAM, 2GB storage space', 4),
+            _buildNumberedListItem('Minimum 8GB of RAM, and at least 500GB of storage', 4),
           ],
         );
       },
@@ -217,22 +216,18 @@ class HelpManualPdfService {
             ),
             pw.SizedBox(height: 10),
             _buildSectionTitle('2.2 User Roles and Permissions'),
-            _buildSubsection('Administrator'),
+            _buildSubsection('Administrator/Admin'),
             _buildNumberedListItem('Full system access and configuration', 1),
             _buildNumberedListItem('User management and role assignment', 2),
             _buildNumberedListItem('System maintenance and server management', 3),
             _buildSubsection('Medical Technologist'),
             _buildNumberedListItem('Access to laboratory and diagnostic modules', 1),
             _buildNumberedListItem('Manages test requests and results', 2),
-            _buildNumberedListItem('Maintains laboratory inventory', 3),
+            _buildNumberedListItem('Maintains appointment and queue', 3),
             _buildSubsection('Doctor'),
             _buildNumberedListItem('Access to patient records and medical history', 1),
             _buildNumberedListItem('Manages patient consultations and treatments', 2),
             _buildNumberedListItem('Creates and manages patient schedules', 3),
-            _buildSubsection('Staff/Clerk'),
-            _buildNumberedListItem('Patient registration and appointment scheduling', 1),
-            _buildNumberedListItem('Billing and payment processing', 2),
-            _buildNumberedListItem('Manages patient queue and flow', 3),
             pw.SizedBox(height: 10),
             _buildSectionTitle('2.3 Dashboard Navigation'),
             _buildParagraph(
@@ -271,8 +266,8 @@ class HelpManualPdfService {
             _buildNumberedListItem('Demographic information', 1),
             _buildNumberedListItem('Medical history and allergies', 2),
             _buildNumberedListItem('Consultation notes and diagnoses', 3),
-            _buildNumberedListItem('Laboratory and imaging results', 4),
-            _buildNumberedListItem('Prescription history', 5),
+            _buildNumberedListItem('Laboratory results', 4),
+            _buildNumberedListItem('Queuing reports', 5),
             _buildNumberedListItem('Billing and payment history', 6),
           ],
         );
@@ -327,7 +322,7 @@ class HelpManualPdfService {
             pw.SizedBox(height: 10),
             _buildSectionTitle('6.2 Data Export'),
             _buildParagraph(
-              'Reports can be exported to PDF or CSV formats for further analysis or sharing. The data export function is designed to be flexible and user-friendly.',
+              'Reports can be exported to PDF formats for further analysis or sharing. The data export function is designed to be flexible and user-friendly.',
             ),
           ],
         );
@@ -639,7 +634,7 @@ class HelpManualPdfService {
             pw.SizedBox(height: 20),
             _buildSectionTitle('Password Policy'),
             _buildNumberedListItem('Use strong, unique passwords for your system account.', 1),
-            _buildNumberedListItem('Change your password every 90 days.', 2),
+            _buildNumberedListItem('Change your password every 90 days (optional).', 2),
             _buildNumberedListItem('Do not share your login credentials with anyone.', 3),
             pw.SizedBox(height: 15),
             _buildSectionTitle('Data Privacy'),

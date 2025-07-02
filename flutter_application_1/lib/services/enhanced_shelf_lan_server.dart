@@ -201,13 +201,29 @@ class EnhancedShelfServer {
       }
 
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'user_sessions'];
+      // COMPLETE table list - ALL database tables for full sync
+      final tables = [
+        'patients', 
+        'appointments', 
+        'medical_records', 
+        'users', 
+        'clinic_services', 
+        'user_sessions',
+        'active_patient_queue',
+        'patient_history',
+        'patient_bills',
+        'bill_items',
+        'payments',
+        'user_activity_log',
+        'patient_queue'
+      ];
       final data = <String, List<Map<String, dynamic>>>{};
       
       for (final table in tables) {
         try {
           final result = await db.query(table);
           data[table] = result;
+          debugPrint('Synced ${result.length} records from table $table');
         } catch (e) {
           debugPrint('Error querying table $table: $e');
           data[table] = [];
@@ -976,7 +992,23 @@ class EnhancedShelfServer {
       }
       
       final db = await _dbHelper!.database;
-      final tables = ['patients', 'appointments', 'medical_records', 'users', 'clinic_services', 'active_patient_queue', 'user_sessions'];
+      
+      // COMPLETE table list for WebSocket full sync
+      final tables = [
+        'patients', 
+        'appointments', 
+        'medical_records', 
+        'users', 
+        'clinic_services', 
+        'active_patient_queue', 
+        'user_sessions',
+        'patient_history',
+        'patient_bills',
+        'bill_items', 
+        'payments',
+        'user_activity_log',
+        'patient_queue'
+      ];
       
       final syncData = <String, dynamic>{};
       

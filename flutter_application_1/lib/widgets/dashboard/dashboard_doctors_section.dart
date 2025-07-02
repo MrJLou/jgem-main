@@ -532,9 +532,9 @@ class _DashboardDoctorsSectionState extends State<DashboardDoctorsSection> {
             ),
             Text(
               label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
-                color: Colors.white.withAlpha(30),
+                color: Colors.white,
               ),
             ),
           ],

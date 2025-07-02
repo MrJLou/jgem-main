@@ -521,6 +521,43 @@ class DatabaseSyncClient {
               });
             });
           }
+        } else if (table == 'patient_bills' || table == 'payments' || table == 'bill_items') {
+          _syncUpdates.add({
+            'type': 'billing_change_immediate',
+            'table': table,
+            'operation': operation,
+            'recordId': recordId,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'remote_sync',
+          });
+        } else if (table == 'patients' || table == 'patient_history' || table == 'medical_records') {
+          _syncUpdates.add({
+            'type': 'patient_data_change_immediate',
+            'table': table,
+            'operation': operation,
+            'recordId': recordId,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'remote_sync',
+          });
+        } else if (table == 'users' || table == 'user_activity_log') {
+          _syncUpdates.add({
+            'type': 'user_data_change_immediate',
+            'table': table,
+            'operation': operation,
+            'recordId': recordId,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'remote_sync',
+          });
+        } else {
+          // Generic immediate update for other tables
+          _syncUpdates.add({
+            'type': 'data_change_immediate',
+            'table': table,
+            'operation': operation,
+            'recordId': recordId,
+            'timestamp': DateTime.now().toIso8601String(),
+            'source': 'remote_sync',
+          });
         }
         
         // Add general change notification
@@ -900,13 +937,14 @@ class DatabaseSyncClient {
         _requestAppointmentSync(); // Also sync appointments
         _requestUserAndPasswordSync(); // Also sync user/password changes
         _requestSessionSync(); // CRITICAL: Also sync user sessions for auth consistency
+        _requestPatientDataSync(); // NEW: Sync patient bills, payments, history
       } else {
         // Even when not connected, trigger UI refresh for local changes
         _broadcastUIRefresh();
       }
     });
     
-    debugPrint('Started enhanced periodic sync: queue/appointment/user/session sync every 30s');
+    debugPrint('Started enhanced periodic sync: queue/appointment/user/session/patient-data sync every 30s');
   }
 
   /// Request specific queue table sync
@@ -952,12 +990,64 @@ class DatabaseSyncClient {
     }
   }
 
+  /// Request patient-related data sync (bills, payments, history)
+  static void _requestPatientDataSync() {
+    if (_isConnected && _wsChannel != null) {
+      // Sync patient bills and payment data
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'patient_bills',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'bill_items',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'payments',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'patient_history',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'patient_queue',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      _wsChannel!.sink.add(jsonEncode({
+        'type': 'request_table_sync',
+        'table': 'medical_records',
+        'timestamp': DateTime.now().toIso8601String(),
+      }));
+      
+      debugPrint('SYNC_CLIENT: Requested patient data sync (bills, payments, history, medical records)');
+    }
+  }
+
   /// Broadcast UI refresh event
   static void _broadcastUIRefresh() {
     _syncUpdates.add({
       'type': 'ui_refresh_requested',
       'timestamp': DateTime.now().toIso8601String(),
-      'tables': ['active_patient_queue', 'appointments', 'users', 'user_activity_log', 'patient_history', 'patient_bills', 'payments'],
+      'tables': [
+        'active_patient_queue', 
+        'appointments', 
+        'users', 
+        'user_activity_log', 
+        'patient_history', 
+        'patient_bills', 
+        'bill_items',
+        'payments',
+        'medical_records',
+        'patients',
+        'clinic_services',
+        'patient_queue'
+      ],
       'source': 'periodic_refresh',
     });
   }

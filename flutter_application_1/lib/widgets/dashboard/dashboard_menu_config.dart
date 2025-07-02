@@ -13,8 +13,6 @@ import '../../screens/reports/report_hub_screen.dart';
 import '../../screens/billing/billing_hub_screen.dart';
 import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
-import '../../screens/server_management_screen.dart';
-import '../../screens/lan_connection_screen.dart';
 
 import '../../screens/about_screen.dart';
 import '../../debug_service_analytics_test.dart';
@@ -100,14 +98,6 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
     },
-    'Server Management': {
-      'screen': (String accessLevel) => const ServerManagementScreen(),
-      'icon': Icons.dns_outlined
-    },
-    'LAN Connection': {
-      'screen': (String accessLevel) => const LanConnectionScreen(),
-      'icon': Icons.wifi_outlined
-    },
     '---': {
       'screen': (String accessLevel) =>
           const SizedBox.shrink(), // No screen for a divider
@@ -132,8 +122,6 @@ class DashboardMenuConfig {
       'Payment',
       'Billing',
       '---',
-      'Server Management',
-      '---',
       'About'
     ],
     'medtech': [
@@ -152,8 +140,6 @@ class DashboardMenuConfig {
       'Payment',
       'Billing',
       '---',
-      'LAN Connection',
-      '---',
       'About'
     ],
     'doctor': [
@@ -170,8 +156,6 @@ class DashboardMenuConfig {
       'Report',
       'Payment',
       'Billing',
-      '---',
-      'LAN Connection',
       '---',
       'About'
     ],

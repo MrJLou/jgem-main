@@ -5,7 +5,6 @@ import 'package:flutter_application_1/services/authentication_manager.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
 import '../services/help_manual_pdf_service.dart';
-import 'lan_connection_screen.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -173,26 +172,6 @@ class DashboardScreenState extends State<DashboardScreen> {
             onPressed: () => _showHelpManualOptions(context),
           ),
           IconButton(
-            icon: const Icon(Icons.lan, color: Colors.white),
-            tooltip: 'LAN Network',
-            onPressed: () {
-              // Show LAN network status info
-              _showLanNetworkInfo(context);
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.wifi, color: Colors.white),
-            tooltip: 'LAN Connection',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LanConnectionScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Logout',
             onPressed: _logout,
@@ -332,80 +311,6 @@ class DashboardScreenState extends State<DashboardScreen> {
               label: const Text('Download PDF'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue[700],
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showLanNetworkInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.lan, color: Colors.teal[700]),
-              const SizedBox(width: 10),
-              const Text('LAN Network Status'),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 20),
-                  SizedBox(width: 8),
-                  Text('Network Connection: Active'),
-                ],
-              ),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.network_check, color: Colors.blue, size: 20),
-                  SizedBox(width: 8),
-                  Text('LAN Interface: Enabled'),
-                ],
-              ),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.speed, color: Colors.orange, size: 20),
-                  SizedBox(width: 8),
-                  Text('Connection Speed: 1 Gbps'),
-                ],
-              ),
-              SizedBox(height: 16),
-              Text(
-                'For LAN connection settings and management, use the WiFi button to access the LAN Connection screen.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LanConnectionScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.settings),
-              label: const Text('Manage'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal[700],
                 foregroundColor: Colors.white,
               ),
             ),
