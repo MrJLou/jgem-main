@@ -28,6 +28,11 @@ class DatabaseSyncClient {
   // Timer for periodic sync checks
   static Timer? _periodicSyncTimer;
   static Timer? _queueRefreshTimer;
+  
+  // Prevent infinite sync loops
+  static DateTime? _lastAuthConflictCheck;
+  static DateTime? _lastSessionSyncRequest;
+  static bool _isProcessingSessionSync = false;
 
   static bool get isConnected => _isConnected;
   static Stream<Map<String, dynamic>> get syncUpdates => _syncUpdates.stream;
@@ -217,7 +222,38 @@ class DatabaseSyncClient {
           final tableName = data['table'] as String?;
           if (tableName != null) {
             debugPrint('Server requesting forced sync for table: $tableName');
-            // Request specific table sync
+            
+            // For user_sessions, implement stronger loop prevention
+            if (tableName == 'user_sessions') {
+              final now = DateTime.now();
+              
+              // Check if we're already processing session sync
+              if (_isProcessingSessionSync) {
+                debugPrint('SYNC_LOOP_PREVENTION: Ignoring force_table_sync for user_sessions - already processing');
+                break;
+              }
+              
+              // Check if we've recently processed this table (increased to 30 seconds)
+              if (_lastSessionSyncRequest != null && 
+                  now.difference(_lastSessionSyncRequest!).inSeconds < 30) {
+                debugPrint('SYNC_LOOP_PREVENTION: Ignoring force_table_sync for user_sessions - too recent (${now.difference(_lastSessionSyncRequest!).inSeconds}s ago)');
+                break;
+              }
+              
+              // Set processing flags
+              _lastSessionSyncRequest = now;
+              _isProcessingSessionSync = true;
+              
+              debugPrint('SYNC_LOOP_PREVENTION: Processing user_sessions sync (will block for 30s)');
+              
+              // Reset processing flag after longer delay
+              Future.delayed(const Duration(seconds: 30), () {
+                _isProcessingSessionSync = false;
+                debugPrint('SYNC_LOOP_PREVENTION: Released user_sessions sync lock');
+              });
+            }
+            
+            // Request specific table sync (only if not blocked)
             if (_wsChannel != null) {
               _wsChannel!.sink.add(jsonEncode({
                 'type': 'request_table_sync',
@@ -284,11 +320,20 @@ class DatabaseSyncClient {
   /// Request user sessions table sync - CRITICAL for authentication consistency
   static void _requestSessionSync() {
     if (_isConnected && _wsChannel != null) {
+      // Prevent excessive session sync requests - limit to once every 60 seconds (increased from 30s)
+      final now = DateTime.now();
+      if (_lastSessionSyncRequest != null && 
+          now.difference(_lastSessionSyncRequest!).inSeconds < 60) {
+        debugPrint('PERIODIC_SYNC: Skipping session sync - too recent (${now.difference(_lastSessionSyncRequest!).inSeconds}s ago)');
+        return;
+      }
+      
+      _lastSessionSyncRequest = now;
       _wsChannel!.sink.add(jsonEncode({
         'type': 'request_table_sync',
         'table': 'user_sessions',
         'priority': 'high',
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': now.toIso8601String(),
       }));
       debugPrint('PERIODIC_SYNC: Requested user_sessions table sync');
     }
@@ -369,16 +414,17 @@ class DatabaseSyncClient {
       DatabaseHelper.clearDatabaseChangeCallback();
       
       try {
-        // Use transaction to prevent database locking issues
-        await db.transaction((txn) async {
-          switch (operation.toLowerCase()) {
-            case 'insert':
-              if (data != null) {
-                try {
-                  // Special handling for user_sessions table to prevent duplicates
-                  if (table == 'user_sessions') {
-                    // Check if session already exists by sessionToken to prevent duplicates
-                    if (data['sessionToken'] != null) {
+        // Use shorter transactions to prevent database locking
+        // Apply each change individually to avoid long-running transactions
+        switch (operation.toLowerCase()) {
+          case 'insert':
+            if (data != null) {
+              try {
+                // Special handling for user_sessions table to prevent duplicates
+                if (table == 'user_sessions') {
+                  // Check if session already exists by sessionToken to prevent duplicates
+                  if (data['sessionToken'] != null) {
+                    await db.transaction((txn) async {
                       final existing = await txn.query(
                         table,
                         where: 'sessionToken = ?',
@@ -399,88 +445,88 @@ class DatabaseSyncClient {
                         await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
                         debugPrint('Successfully applied remote session insert: $table.$recordId');
                       }
-                    } else {
-                      // Fallback to normal insert if no sessionToken
-                      await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                      debugPrint('Successfully applied remote insert: $table.$recordId');
-                    }
+                    });
                   } else {
-                    // Always use INSERT OR REPLACE for all other inserts to handle conflicts
-                    await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                    // Fallback to normal insert if no sessionToken
+                    await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
                     debugPrint('Successfully applied remote insert: $table.$recordId');
                   }
-                } catch (e) {
-                  debugPrint('Error applying remote insert: $e');
-                  // If insert fails, try update as fallback
-                  try {
-                    String whereColumn = 'id';
-                    if (table == 'active_patient_queue') {
-                      whereColumn = 'queueEntryId';
-                    } else if (table == 'user_sessions') {
-                      whereColumn = 'id';
-                    }
-                    
-                    final rowsAffected = await txn.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
-                    debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
-                  } catch (updateError) {
-                    debugPrint('Both insert and update failed for $table.$recordId: $updateError');
-                  }
+                } else {
+                  // Always use INSERT OR REPLACE for all other inserts to handle conflicts
+                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  debugPrint('Successfully applied remote insert: $table.$recordId');
                 }
-              }
-              break;
-            case 'update':
-              if (data != null) {
+              } catch (e) {
+                debugPrint('Error applying remote insert: $e');
+                // If insert fails, try update as fallback
                 try {
                   String whereColumn = 'id';
-                  // Handle special cases for tables with different primary key columns
                   if (table == 'active_patient_queue') {
                     whereColumn = 'queueEntryId';
                   } else if (table == 'user_sessions') {
                     whereColumn = 'id';
                   }
                   
-                  final rowsAffected = await txn.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
-                  
-                  // If no rows were affected, try inserting the record
-                  if (rowsAffected == 0) {
-                    debugPrint('No rows updated, attempting insert for $table.$recordId');
-                    await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
-                    debugPrint('Successfully inserted instead of updated: $table.$recordId');
-                  } else {
-                    debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
-                  }
-                } catch (e) {
-                  debugPrint('Error applying remote update: $e');
+                  final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+                } catch (updateError) {
+                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
                 }
               }
-              break;
-            case 'delete':
+            }
+            break;
+          case 'update':
+            if (data != null) {
               try {
                 String whereColumn = 'id';
-                String whereValue = recordId;
-                
                 // Handle special cases for tables with different primary key columns
                 if (table == 'active_patient_queue') {
                   whereColumn = 'queueEntryId';
                 } else if (table == 'user_sessions') {
-                  // For user_sessions, try to use sessionToken if available in the data
-                  if (data != null && data['sessionToken'] != null) {
-                    whereColumn = 'sessionToken';
-                    whereValue = data['sessionToken'];
-                    debugPrint('Using sessionToken for session deletion: $whereValue');
-                  } else {
-                    whereColumn = 'id';
-                  }
+                  whereColumn = 'id';
                 }
                 
-                final rowsAffected = await txn.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
-                debugPrint('Successfully applied remote delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
+                final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                
+                // If no rows were affected, try inserting the record
+                if (rowsAffected == 0) {
+                  debugPrint('No rows updated, attempting insert for $table.$recordId');
+                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                } else {
+                  debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
+                }
               } catch (e) {
-                debugPrint('Error applying remote delete: $e');
+                debugPrint('Error applying remote update: $e');
               }
-              break;
-          }
-        });
+            }
+            break;
+          case 'delete':
+            try {
+              String whereColumn = 'id';
+              String whereValue = recordId;
+              
+              // Handle special cases for tables with different primary key columns
+              if (table == 'active_patient_queue') {
+                whereColumn = 'queueEntryId';
+              } else if (table == 'user_sessions') {
+                // For user_sessions, try to use sessionToken if available in the data
+                if (data != null && data['sessionToken'] != null) {
+                  whereColumn = 'sessionToken';
+                  whereValue = data['sessionToken'];
+                  debugPrint('Using sessionToken for session deletion: $whereValue');
+                } else {
+                  whereColumn = 'id';
+                }
+              }
+              
+              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
+              debugPrint('Successfully applied remote delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
+            } catch (e) {
+              debugPrint('Error applying remote delete: $e');
+            }
+            break;
+        }
 
         // Trigger UI refresh for specific queue changes
         if (table == 'active_patient_queue') {
@@ -600,66 +646,75 @@ class DatabaseSyncClient {
         if (tableName == 'user_sessions') {
           debugPrint('Performing selective merge for user_sessions table');
           
-          // Insert or replace each session record individually
-          for (final record in tableData) {
-            final recordMap = record as Map<String, dynamic>;
-            
-            try {
-              // For user_sessions, use the sessionToken as the unique identifier if available
-              // This prevents duplicate sessions for the same user/device combination
-              if (recordMap['sessionToken'] != null) {
-                // First check if a session with this token already exists
-                final existingSession = await db.query(
-                  tableName,
-                  where: 'sessionToken = ?',
-                  whereArgs: [recordMap['sessionToken']],
-                );
-                
-                if (existingSession.isNotEmpty) {
-                  // Update existing session record
-                  await db.update(
+          // Process user_sessions in a smaller transaction
+          // Since this table typically has very few records, we can process them in a single transaction
+          await db.transaction((txn) async {
+            // Insert or replace each session record individually
+            for (final record in tableData) {
+              final recordMap = record as Map<String, dynamic>;
+              
+              try {
+                // For user_sessions, use the sessionToken as the unique identifier if available
+                // This prevents duplicate sessions for the same user/device combination
+                if (recordMap['sessionToken'] != null) {
+                  // First check if a session with this token already exists
+                  final existingSession = await txn.query(
                     tableName,
-                    recordMap,
                     where: 'sessionToken = ?',
                     whereArgs: [recordMap['sessionToken']],
+                    columns: ['id'], // Only get ID to minimize data transfer
                   );
-                  debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                  
+                  if (existingSession.isNotEmpty) {
+                    // Update existing session record
+                    await txn.update(
+                      tableName,
+                      recordMap,
+                      where: 'sessionToken = ?',
+                      whereArgs: [recordMap['sessionToken']],
+                    );
+                    debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                  } else {
+                    // Insert new session record
+                    await txn.insert(
+                      tableName, 
+                      recordMap,
+                      conflictAlgorithm: ConflictAlgorithm.replace,
+                    );
+                    debugPrint('Inserted new session: ${recordMap['sessionToken']}');
+                  }
                 } else {
-                  // Insert new session record
-                  await db.insert(
+                  // Fallback to standard INSERT OR REPLACE by ID
+                  await txn.insert(
                     tableName, 
                     recordMap,
                     conflictAlgorithm: ConflictAlgorithm.replace,
                   );
-                  debugPrint('Inserted new session: ${recordMap['sessionToken']}');
                 }
-              } else {
-                // Fallback to standard INSERT OR REPLACE by ID
-                await db.insert(
-                  tableName, 
-                  recordMap,
-                  conflictAlgorithm: ConflictAlgorithm.replace,
-                );
+              } catch (e) {
+                debugPrint('Error syncing session record ${recordMap['id']}: $e');
               }
-            } catch (e) {
-              debugPrint('Error syncing session record ${recordMap['id']}: $e');
             }
-          }
+          });
         } else {
-          // For other tables, use the normal clear and insert approach
-          await db.delete(tableName);
-
-          // Insert new data using INSERT OR REPLACE to handle duplicates
+          // For other tables, use batch operations for better performance
+          final batch = db.batch();
+          
+          // Clear existing data first
+          batch.delete(tableName);
+          
+          // Add all records to the batch
           for (final record in tableData) {
             final recordMap = record as Map<String, dynamic>;
-            
-            // Use INSERT OR REPLACE to handle potential duplicate keys
-            await db.insert(
+            batch.insert(
               tableName, 
               recordMap,
               conflictAlgorithm: ConflictAlgorithm.replace,
             );
           }
+          
+          // Execute all operations in a single transaction
+          await batch.commit(noResult: true);
         }
 
         debugPrint('Table sync completed for $tableName (${tableData.length} records)');
@@ -681,17 +736,29 @@ class DatabaseSyncClient {
             'timestamp': DateTime.now().toIso8601String(),
           });
           
-          // Trigger session validation after sync
-          _syncUpdates.add({
-            'type': 'session_sync_validation_needed',
-            'table': tableName,
-            'timestamp': DateTime.now().toIso8601String(),
-          });
-          
-          // Also check for authentication conflicts immediately
-          Future.delayed(const Duration(seconds: 1), () {
-            _checkAuthenticationConflicts();
-          });
+          // Only trigger session validation if we're not already processing session sync
+          // and it's been at least 30 seconds since the last auth conflict check (increased from 10s)
+          final now = DateTime.now();
+          if (!_isProcessingSessionSync && 
+              (_lastAuthConflictCheck == null || 
+               now.difference(_lastAuthConflictCheck!).inSeconds >= 30)) {
+            
+            _lastAuthConflictCheck = now;
+            _syncUpdates.add({
+              'type': 'session_sync_validation_needed',
+              'table': tableName,
+              'timestamp': now.toIso8601String(),
+            });
+            
+            // Check for authentication conflicts with longer debouncing (increased from 2s)
+            Future.delayed(const Duration(seconds: 5), () {
+              if (!_isProcessingSessionSync) {
+                _checkAuthenticationConflicts();
+              }
+            });
+          } else {
+            debugPrint('CROSS_DEVICE_MONITOR: Skipping auth conflict check - too recent or already processing (${_lastAuthConflictCheck != null ? now.difference(_lastAuthConflictCheck!).inSeconds : 'N/A'}s ago)');
+          }
         }
       } finally {
         // Re-enable change callback - handled in main.dart now
@@ -820,46 +887,56 @@ class DatabaseSyncClient {
       if (table == 'user_sessions') {
         debugPrint('SESSION_SYNC: CRITICAL - User session $operation detected - triggering IMMEDIATE sync');
         
-        // Send MULTIPLE sync requests to ensure data reaches server immediately
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'force_immediate_session_sync',
-          'table': 'user_sessions',
-          'priority': 'critical',
-          'operation': operation,
-          'recordId': recordId,
-          'data': data,
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-        
-        // IMMEDIATELY trigger all sync methods - NO DELAYS
-        requestImmediateSessionSync();
-        _requestSessionSync();
-        
-        // Force session sync immediately
-        Future.delayed(const Duration(milliseconds: 100), () async {
-          await forceSessionSync();
-        });
-        
-        // Trigger manual sync to ensure session data reaches the host
-        Future.delayed(const Duration(milliseconds: 300), () async {
-          try {
-            await manualSync();
-            debugPrint('SESSION_SYNC: Manual sync completed for session $operation');
-          } catch (e) {
-            debugPrint('SESSION_SYNC: Error during manual sync for session $operation: $e');
-          }
-        });
-        
-        // Send another sync request after short delay to ensure propagation
-        Future.delayed(const Duration(milliseconds: 500), () {
-          _requestSessionSync();
-          requestImmediateSessionSync();
-        });
-        
-        // Final sync attempt
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          _requestUserSessionsSync();
-        });
+        // Check if we're already processing a session sync to prevent floods
+        final now = DateTime.now();
+        if (_isProcessingSessionSync) {
+          debugPrint('SESSION_SYNC: Already processing a session sync - skipping additional sync requests');
+        } else if (_lastSessionSyncRequest != null && 
+                  now.difference(_lastSessionSyncRequest!).inSeconds < 15) {
+          debugPrint('SESSION_SYNC: Recent sync detected (${now.difference(_lastSessionSyncRequest!).inSeconds}s ago) - using single sync request');
+          
+          // Just send one high-priority sync request
+          _wsChannel!.sink.add(jsonEncode({
+            'type': 'force_immediate_session_sync',
+            'table': 'user_sessions',
+            'priority': 'critical',
+            'operation': operation,
+            'recordId': recordId,
+            'data': data,
+            'timestamp': DateTime.now().toIso8601String(),
+          }));
+        } else {
+          // Set processing flag
+          _isProcessingSessionSync = true;
+          _lastSessionSyncRequest = now;
+          
+          // Send a single sync request with critical priority
+          _wsChannel!.sink.add(jsonEncode({
+            'type': 'force_immediate_session_sync',
+            'table': 'user_sessions',
+            'priority': 'critical',
+            'operation': operation,
+            'recordId': recordId,
+            'data': data,
+            'timestamp': now.toIso8601String(),
+          }));
+          
+          // Trigger manual sync to ensure session data reaches the host after a delay
+          Future.delayed(const Duration(seconds: 1), () async {
+            try {
+              await manualSync();
+              debugPrint('SESSION_SYNC: Manual sync completed for session $operation');
+            } catch (e) {
+              debugPrint('SESSION_SYNC: Error during manual sync for session $operation: $e');
+            }
+          });
+          
+          // Reset processing flag after some time
+          Future.delayed(const Duration(seconds: 30), () {
+            _isProcessingSessionSync = false;
+            debugPrint('SESSION_SYNC: Released session sync lock after 30s timeout');
+          });
+        }
         
         // Notify listeners about session change
         _syncUpdates.add({
@@ -960,21 +1037,39 @@ class DatabaseSyncClient {
     _periodicSyncTimer?.cancel();
     _queueRefreshTimer?.cancel();
     
-    // Start periodic sync check every 2 minutes for normal updates (reduced from 30s to prevent freezing)
-    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+    // Start periodic sync check every 3 minutes for normal updates (increased from 2 min to prevent overloading)
+    _periodicSyncTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
       if (_isConnected && _wsChannel != null) {
+        // Stagger requests to prevent database contention
         _requestQueueSync();
-        _requestAppointmentSync(); // Also sync appointments
-        _requestUserAndPasswordSync(); // Also sync user/password changes
-        _requestSessionSync(); // CRITICAL: Also sync user sessions for auth consistency
-        _requestPatientDataSync(); // NEW: Sync patient bills, payments, history
+        
+        // Delay each subsequent request to prevent overwhelming the database
+        Future.delayed(const Duration(seconds: 5), () {
+          _requestAppointmentSync();
+        });
+        
+        Future.delayed(const Duration(seconds: 10), () {
+          _requestUserAndPasswordSync();
+        });
+        
+        // Only sync sessions if not already processing a session sync
+        Future.delayed(const Duration(seconds: 15), () {
+          if (!_isProcessingSessionSync) {
+            _requestSessionSync();
+          }
+        });
+        
+        // Delay patient data sync to the end
+        Future.delayed(const Duration(seconds: 20), () {
+          _requestPatientDataSync();
+        });
       } else {
         // Even when not connected, trigger UI refresh for local changes (now throttled)
         _broadcastUIRefresh();
       }
     });
     
-    debugPrint('Started enhanced periodic sync: queue/appointment/user/session/patient-data sync every 2 minutes');
+    debugPrint('Started optimized periodic sync: staggered queue/appointment/user/session/patient-data sync every 3 minutes');
   }
 
   /// Request specific queue table sync
@@ -1187,10 +1282,20 @@ class DatabaseSyncClient {
   /// Check for authentication conflicts after session sync
   static void _checkAuthenticationConflicts() {
     try {
+      // Prevent excessive auth conflict checks - limit to once every 15 seconds
+      final now = DateTime.now();
+      if (_lastAuthConflictCheck != null && 
+          now.difference(_lastAuthConflictCheck!).inSeconds < 15) {
+        debugPrint('DatabaseSyncClient: Skipping auth conflict check - too recent (${now.difference(_lastAuthConflictCheck!).inSeconds}s ago)');
+        return;
+      }
+      
+      _lastAuthConflictCheck = now;
+      
       // Notify about potential authentication conflicts
       _syncUpdates.add({
         'type': 'auth_conflict_check_needed',
-        'timestamp': DateTime.now().toIso8601String(),
+        'timestamp': now.toIso8601String(),
         'reason': 'session_table_sync_completed',
       });
       
@@ -1204,38 +1309,49 @@ class DatabaseSyncClient {
   static void requestImmediateSessionSync() {
     if (_isConnected && _wsChannel != null) {
       try {
-        // Send multiple sync requests to ensure delivery
+        // Prevent excessive immediate session sync requests
+        final now = DateTime.now();
+        if (_isProcessingSessionSync) {
+          debugPrint('DatabaseSyncClient: Already processing session sync - skipping immediate sync');
+          return;
+        }
+        
+        if (_lastSessionSyncRequest != null && 
+            now.difference(_lastSessionSyncRequest!).inSeconds < 15) {
+          debugPrint('DatabaseSyncClient: Skipping immediate session sync - too recent (${now.difference(_lastSessionSyncRequest!).inSeconds}s ago)');
+          return;
+        }
+        
+        _lastSessionSyncRequest = now;
+        _isProcessingSessionSync = true;
+        
+        // Send single sync request to prevent loops
         _wsChannel!.sink.add(jsonEncode({
           'type': 'request_immediate_table_sync',
           'table': 'user_sessions',
           'priority': 'immediate',
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-        
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'request_table_sync',
-          'table': 'user_sessions',
-          'priority': 'high',
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-        
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'force_table_sync',
-          'table': 'user_sessions',
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': now.toIso8601String(),
         }));
         
         // Also trigger session validation
         _syncUpdates.add({
           'type': 'immediate_session_sync_requested',
           'table': 'user_sessions',
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': now.toIso8601String(),
           'source': 'real_time_login',
         });
         
-        debugPrint('DatabaseSyncClient: Requested MULTIPLE immediate session sync requests from host');
+        debugPrint('DatabaseSyncClient: Requested immediate session sync from host');
+        
+        // Reset processing flag after a delay
+        Future.delayed(const Duration(seconds: 15), () {
+          _isProcessingSessionSync = false;
+          debugPrint('DatabaseSyncClient: Released immediate sync lock');
+        });
       } catch (e) {
         debugPrint('DatabaseSyncClient: Error requesting immediate session sync: $e');
+        // Reset flag on error
+        _isProcessingSessionSync = false;
       }
     } else {
       debugPrint('DatabaseSyncClient: Cannot request immediate sync - not connected');
@@ -1246,52 +1362,49 @@ class DatabaseSyncClient {
   static Future<void> forceSessionSync() async {
     if (_isConnected && _wsChannel != null) {
       try {
-        debugPrint('DatabaseSyncClient: Starting AGGRESSIVE session sync...');
+        // Check if we're already processing or recently processed
+        final now = DateTime.now();
+        if (_isProcessingSessionSync) {
+          debugPrint('DatabaseSyncClient: Already processing session sync - skipping force sync');
+          return;
+        }
         
-        // Request immediate session table sync with multiple redundant requests
+        if (_lastSessionSyncRequest != null && 
+            now.difference(_lastSessionSyncRequest!).inSeconds < 15) {
+          debugPrint('DatabaseSyncClient: Recent session sync detected (${now.difference(_lastSessionSyncRequest!).inSeconds}s ago) - skipping force sync');
+          return;
+        }
+        
+        // Set processing flags
+        _isProcessingSessionSync = true;
+        _lastSessionSyncRequest = now;
+        
+        debugPrint('DatabaseSyncClient: Starting CONTROLLED session sync...');
+        
+        // Send a single critical priority request
         _wsChannel!.sink.add(jsonEncode({
           'type': 'request_immediate_table_sync',
           'table': 'user_sessions',
           'priority': 'critical',
           'reason': 'session_change',
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': now.toIso8601String(),
         }));
         
-        // Send another request immediately
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'force_table_sync',
-          'table': 'user_sessions',
-          'priority': 'immediate',
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-        
-        // Wait briefly then perform manual sync
-        await Future.delayed(const Duration(milliseconds: 500));
+        // Wait briefly then perform a single manual sync
+        await Future.delayed(const Duration(seconds: 1));
         await manualSync();
         
-        // Send a direct session update request
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'sync_user_sessions',
-          'immediate': true,
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
+        debugPrint('DatabaseSyncClient: CONTROLLED session sync completed');
         
-        // Wait and do another manual sync
-        await Future.delayed(const Duration(milliseconds: 1000));
-        await manualSync();
-        
-        // Final session sync request
-        _wsChannel!.sink.add(jsonEncode({
-          'type': 'request_table_sync',
-          'table': 'user_sessions',
-          'priority': 'high',
-          'force_refresh': true,
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-        
-        debugPrint('DatabaseSyncClient: AGGRESSIVE session sync completed');
+        // Reset processing flag after delay
+        Future.delayed(const Duration(seconds: 15), () {
+          _isProcessingSessionSync = false;
+          debugPrint('DatabaseSyncClient: Released session sync lock');
+        });
       } catch (e) {
         debugPrint('DatabaseSyncClient: Error forcing session sync: $e');
+        // Reset flag on error
+        _isProcessingSessionSync = false;
       }
     } else {
       debugPrint('DatabaseSyncClient: Cannot force session sync - not connected');
