@@ -459,7 +459,19 @@ class DatabaseSyncClient {
             filteredData.remove('action');
             filteredData.remove('timestamp'); // Use database-specific timestamp fields
             
+            // Map snake_case field names from server to camelCase for database
+            if (filteredData.containsKey('session_token')) {
+              filteredData['sessionToken'] = filteredData.remove('session_token');
+            }
+            if (filteredData.containsKey('device_id')) {
+              filteredData['deviceId'] = filteredData.remove('device_id');
+            }
+            if (filteredData.containsKey('device_name')) {
+              filteredData['deviceName'] = filteredData.remove('device_name');
+            }
+            
             debugPrint('SYNC_CLIENT: Filtered user_sessions data - removed non-schema fields (type, action, timestamp)');
+            debugPrint('SYNC_CLIENT: Mapped snake_case to camelCase field names');
             debugPrint('SYNC_CLIENT: Remaining fields: ${filteredData.keys.toList()}');
           }
         }
