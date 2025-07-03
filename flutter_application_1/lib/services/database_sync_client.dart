@@ -159,7 +159,32 @@ class DatabaseSyncClient {
 
         case 'database_change':
           debugPrint('Received database change from server');
-          _handleRemoteDatabaseChange(data['change'] as Map<String, dynamic>);
+          final changeData = data['change'] as Map<String, dynamic>?;
+          if (changeData != null) {
+            final table = changeData['table'] as String?;
+            final operation = changeData['operation'] as String?;
+            
+            // ENHANCED FIX: Add specific logging for queue changes
+            if (table == 'active_patient_queue') {
+              debugPrint('CLIENT: Received QUEUE CHANGE from server - operation=$operation');
+              debugPrint('CLIENT: Queue change data: $changeData');
+            }
+            
+            _handleRemoteDatabaseChange(changeData);
+            
+            // ADDITIONAL FIX: Trigger immediate UI refresh for queue changes
+            if (table == 'active_patient_queue') {
+              _syncUpdates.add({
+                'type': 'queue_change_immediate',
+                'table': table,
+                'operation': operation,
+                'timestamp': DateTime.now().toIso8601String(),
+                'source': 'server_broadcast',
+              });
+              
+              debugPrint('CLIENT: Triggered immediate queue UI refresh');
+            }
+          }
           break;
 
         case 'full_sync':
@@ -896,11 +921,34 @@ class DatabaseSyncClient {
         }
       };
 
-      _wsChannel!.sink.add(jsonEncode(changeMessage));
-      debugPrint('SYNC DEBUG: Successfully sent local change to server via WebSocket: $table.$operation');
-      
-      if (table == 'active_patient_queue') {
-        debugPrint('SYNC DEBUG: QUEUE CHANGE WebSocket message sent successfully');
+      // CRITICAL FIX: Add connection verification before sending
+      if (!_isConnected || _wsChannel == null) {
+        debugPrint('SYNC DEBUG: Connection lost, attempting reconnection...');
+        _scheduleReconnect();
+        return;
+      }
+
+      try {
+        _wsChannel!.sink.add(jsonEncode(changeMessage));
+        debugPrint('SYNC DEBUG: Successfully sent local change to server via WebSocket: $table.$operation');
+        
+        if (table == 'active_patient_queue') {
+          debugPrint('SYNC DEBUG: QUEUE CHANGE WebSocket message sent successfully');
+          
+          // ADDITIONAL FIX: Force immediate queue sync request as backup
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_isConnected && _wsChannel != null) {
+              _requestQueueSync();
+              debugPrint('SYNC DEBUG: Backup queue sync request sent');
+            }
+          });
+        }
+
+      } catch (sinkError) {
+        debugPrint('SYNC DEBUG: WebSocket sink error: $sinkError');
+        _isConnected = false;
+        _scheduleReconnect();
+        return;
       }
 
       // CRITICAL: Special handling for user_sessions table - IMMEDIATE sync required

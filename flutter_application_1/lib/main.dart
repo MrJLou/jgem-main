@@ -142,11 +142,18 @@ void main() async {
   
   // Set a timer to verify queue sync in 5 seconds after app startup
   Future.delayed(const Duration(seconds: 5), () async {
-    debugPrint('SYNC DEBUG: Running queue sync verification test');
+    debugPrint('SYNC DEBUG: Running comprehensive sync verification test');
     final isClient = DatabaseSyncClient.isConnected && !EnhancedShelfServer.isRunning;
+    final isHost = EnhancedShelfServer.isRunning;
+    
+    debugPrint('SYNC DEBUG: Device status - isClient: $isClient, isHost: $isHost');
+    debugPrint('SYNC DEBUG: Client connected: ${DatabaseSyncClient.isConnected}');
+    debugPrint('SYNC DEBUG: Database callback set: ${DatabaseHelper.hasDatabaseChangeCallback()}');
+    
     if (isClient) {
-      debugPrint('SYNC DEBUG: This is a client device, verifying database change callbacks');
-      // Manually trigger the database change callback to verify it works
+      debugPrint('SYNC DEBUG: This is a CLIENT device, testing queue sync chain...');
+      
+      // Test 1: Verify database change callback works
       try {
         final queueItemId = 'test-queue-item-${DateTime.now().millisecondsSinceEpoch}';
         final testData = {
@@ -154,19 +161,30 @@ void main() async {
           'patientName': 'Test Patient',
           'status': 'waiting'
         };
-        debugPrint('SYNC DEBUG: Triggering test notification for queue table');
+        debugPrint('SYNC DEBUG: TEST 1 - Testing database change callback');
         await DatabaseHelper.triggerDatabaseChangeCallback(
           'active_patient_queue',
           'insert',
           queueItemId,
           testData
         );
-        debugPrint('SYNC DEBUG: Test notification complete');
+        debugPrint('SYNC DEBUG: TEST 1 - Database change callback test complete');
       } catch (e) {
-        debugPrint('SYNC DEBUG: Test notification error: $e');
+        debugPrint('SYNC DEBUG: TEST 1 FAILED - Database change callback error: $e');
       }
+      
+      // Test 2: Verify WebSocket connection status
+      debugPrint('SYNC DEBUG: TEST 2 - WebSocket connection verification');
+      if (DatabaseSyncClient.isConnected) {
+        debugPrint('SYNC DEBUG: TEST 2 PASSED - WebSocket is connected');
+      } else {
+        debugPrint('SYNC DEBUG: TEST 2 FAILED - WebSocket is NOT connected');
+      }
+      
+    } else if (isHost) {
+      debugPrint('SYNC DEBUG: This is a HOST device, server should be ready for client connections');
     } else {
-      debugPrint('SYNC DEBUG: This is not a client device or client is not connected');
+      debugPrint('SYNC DEBUG: This device is not configured as host or client');
     }
   });
   

@@ -1121,7 +1121,15 @@ class EnhancedShelfServer {
         return;
       }
       
-      debugPrint('Applying WebSocket client change: $table.$operation for record $recordId');
+      debugPrint('SERVER: Applying WebSocket client change: $table.$operation for record $recordId');
+      
+      // CRITICAL FIX: Add specific queue change logging
+      if (table == 'active_patient_queue') {
+        debugPrint('SERVER: QUEUE CHANGE received from client - operation=$operation, recordId=$recordId');
+        if (recordData != null) {
+          debugPrint('SERVER: QUEUE DATA - patientName=${recordData['patientName']}, status=${recordData['status']}');
+        }
+      }
       
       if (_dbHelper == null) return;
       final db = await _dbHelper!.database;
@@ -1165,6 +1173,23 @@ class EnhancedShelfServer {
                     await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
                     await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
                     debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                  }
+                } else if (table == 'active_patient_queue') {
+                  // ENHANCED FIX: Better conflict handling for queue inserts
+                  final existing = await db.query(
+                    table,
+                    where: 'queueEntryId = ?',
+                    whereArgs: [recordId],
+                  );
+                  
+                  if (existing.isEmpty) {
+                    await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                    await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
+                    debugPrint('SERVER: Successfully inserted queue item: $recordId');
+                  } else {
+                    debugPrint('SERVER: Queue item already exists, updating instead: $recordId');
+                    await db.update(table, recordData, where: 'queueEntryId = ?', whereArgs: [recordId]);
+                    await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
                   }
                 } else {
                   // Use INSERT OR REPLACE to handle potential conflicts for other tables
@@ -1262,6 +1287,34 @@ class EnhancedShelfServer {
         
         // Broadcast this change to other connected clients (excluding sender)
         _broadcastWebSocketChange(broadcastData);
+        
+        // CRITICAL FIX: Special handling for queue changes
+        if (table == 'active_patient_queue') {
+          debugPrint('SERVER: QUEUE CHANGE broadcasted to all connected clients');
+          
+          // Also send immediate table sync to ensure consistency
+          Future.delayed(const Duration(milliseconds: 100), () async {
+            try {
+              if (_dbHelper != null) {
+                final db = await _dbHelper!.database;
+                final queueData = await db.query('active_patient_queue');
+                
+                _broadcastToAllClients(jsonEncode({
+                  'type': 'table_sync',
+                  'table': 'active_patient_queue',
+                  'data': queueData,
+                  'timestamp': DateTime.now().toIso8601String(),
+                  'recordCount': queueData.length,
+                  'reason': 'queue_change_immediate_sync',
+                }));
+                
+                debugPrint('SERVER: Sent immediate queue table sync to all clients (${queueData.length} records)');
+              }
+            } catch (e) {
+              debugPrint('SERVER: Error sending immediate queue sync: $e');
+            }
+          });
+        }
         
       } finally {
         // Re-enable change callback - handled in main.dart now
