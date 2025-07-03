@@ -447,46 +447,64 @@ class DatabaseSyncClient {
       DatabaseHelper.clearDatabaseChangeCallback();
       
       try {
+        // Filter data based on table schema before processing
+        Map<String, dynamic>? filteredData;
+        if (data != null) {
+          filteredData = Map<String, dynamic>.from(data);
+          
+          // Filter out non-database fields for user_sessions table
+          if (table == 'user_sessions') {
+            // Remove fields that don't exist in the database schema
+            filteredData.remove('type');
+            filteredData.remove('action');
+            filteredData.remove('timestamp'); // Use database-specific timestamp fields
+            
+            debugPrint('SYNC_CLIENT: Filtered user_sessions data - removed non-schema fields (type, action, timestamp)');
+            debugPrint('SYNC_CLIENT: Remaining fields: ${filteredData.keys.toList()}');
+          }
+        }
+
         // Use shorter transactions to prevent database locking
         // Apply each change individually to avoid long-running transactions
         switch (operation.toLowerCase()) {
           case 'insert':
-            if (data != null) {
+            if (filteredData != null) {
+              final dataToInsert = filteredData; // Create non-null reference
               try {
-                // Special handling for user_sessions table to prevent duplicates
                 if (table == 'user_sessions') {
                   // Check if session already exists by sessionToken to prevent duplicates
-                  if (data['sessionToken'] != null) {
+                  if (dataToInsert['sessionToken'] != null) {
+                    final sessionToken = dataToInsert['sessionToken'] as String;
                     await db.transaction((txn) async {
                       final existing = await txn.query(
                         table,
                         where: 'sessionToken = ?',
-                        whereArgs: [data['sessionToken']],
+                        whereArgs: [sessionToken],
                       );
                       
                       if (existing.isNotEmpty) {
                         // Update existing session instead of creating duplicate
                         final rowsAffected = await txn.update(
                           table, 
-                          data, 
+                          dataToInsert, 
                           where: 'sessionToken = ?', 
-                          whereArgs: [data['sessionToken']]
+                          whereArgs: [sessionToken]
                         );
                         debugPrint('Updated existing session instead of duplicate insert: $table.$recordId (rows affected: $rowsAffected)');
                       } else {
                         // Insert new session
-                        await txn.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                        await txn.insert(table, dataToInsert, conflictAlgorithm: ConflictAlgorithm.replace);
                         debugPrint('Successfully applied remote session insert: $table.$recordId');
                       }
                     });
                   } else {
                     // Fallback to normal insert if no sessionToken
-                    await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                    await db.insert(table, dataToInsert, conflictAlgorithm: ConflictAlgorithm.replace);
                     debugPrint('Successfully applied remote insert: $table.$recordId');
                   }
                 } else {
                   // Always use INSERT OR REPLACE for all other inserts to handle conflicts
-                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await db.insert(table, dataToInsert, conflictAlgorithm: ConflictAlgorithm.replace);
                   debugPrint('Successfully applied remote insert: $table.$recordId');
                 }
               } catch (e) {
@@ -500,7 +518,8 @@ class DatabaseSyncClient {
                     whereColumn = 'id';
                   }
                   
-                  final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                  // Use filtered data for fallback update as well
+                  final rowsAffected = await db.update(table, dataToInsert, where: '$whereColumn = ?', whereArgs: [recordId]);
                   debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
                 } catch (updateError) {
                   debugPrint('Both insert and update failed for $table.$recordId: $updateError');
@@ -509,7 +528,8 @@ class DatabaseSyncClient {
             }
             break;
           case 'update':
-            if (data != null) {
+            if (filteredData != null) {
+              final dataToUpdate = filteredData; // Create non-null reference
               try {
                 String whereColumn = 'id';
                 // Handle special cases for tables with different primary key columns
@@ -519,12 +539,12 @@ class DatabaseSyncClient {
                   whereColumn = 'id';
                 }
                 
-                final rowsAffected = await db.update(table, data, where: '$whereColumn = ?', whereArgs: [recordId]);
+                final rowsAffected = await db.update(table, dataToUpdate, where: '$whereColumn = ?', whereArgs: [recordId]);
                 
                 // If no rows were affected, try inserting the record
                 if (rowsAffected == 0) {
                   debugPrint('No rows updated, attempting insert for $table.$recordId');
-                  await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await db.insert(table, dataToUpdate, conflictAlgorithm: ConflictAlgorithm.replace);
                   debugPrint('Successfully inserted instead of updated: $table.$recordId');
                 } else {
                   debugPrint('Successfully applied remote update: $table.$recordId (rows affected: $rowsAffected)');
