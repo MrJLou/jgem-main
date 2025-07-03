@@ -396,8 +396,8 @@ class DatabaseSyncClient {
 
       final db = await _dbHelper!.database;
 
-      // Temporarily disable change callback to prevent sync loops during full sync
-      DatabaseHelper.clearDatabaseChangeCallback();
+      // NOTE: Keep callback enabled to allow local changes to sync properly
+      // Loop prevention is handled by checking 'source' in the data
 
       try {
         // Sync each table
@@ -411,10 +411,18 @@ class DatabaseSyncClient {
           // Clear existing data (you might want to be more selective here)
           await db.delete(tableName);
 
-          // Insert new data
+          // Insert new data with remote source marker
           for (final record in tableData) {
             final recordMap = record as Map<String, dynamic>;
-            await db.insert(tableName, recordMap);
+
+            // Add remote source marker to prevent sync loops
+            final recordWithSource = Map<String, dynamic>.from(recordMap);
+            recordWithSource['source'] = 'remote_sync';
+            recordWithSource['sync_timestamp'] =
+                DateTime.now().toIso8601String();
+
+            await db.insert(tableName, recordWithSource,
+                conflictAlgorithm: ConflictAlgorithm.replace);
           }
         }
       } finally {
@@ -461,14 +469,18 @@ class DatabaseSyncClient {
 
       final db = await _dbHelper!.database;
 
-      // Temporarily disable change callback to prevent sync loops
-      DatabaseHelper.clearDatabaseChangeCallback();
+      // NOTE: Keep callback enabled to allow local changes to sync properly
+      // Loop prevention is handled by checking device ID and 'source' in the data
 
       try {
         // Filter data based on table schema before processing
         Map<String, dynamic>? filteredData;
         if (data != null) {
           filteredData = Map<String, dynamic>.from(data);
+
+          // Add remote source marker to prevent sync loops
+          filteredData['source'] = 'remote_sync';
+          filteredData['sync_timestamp'] = DateTime.now().toIso8601String();
 
           // Filter out non-database fields for user_sessions table
           if (table == 'user_sessions') {
@@ -750,8 +762,8 @@ class DatabaseSyncClient {
 
       final db = await _dbHelper!.database;
 
-      // Temporarily disable change callback to prevent sync loops during table sync
-      DatabaseHelper.clearDatabaseChangeCallback();
+      // NOTE: Keep callback enabled to allow local changes to sync properly
+      // Loop prevention is handled by checking 'source' in the data and device ID tracking
 
       try {
         // For user_sessions table, use selective merge instead of clearing all data
@@ -765,15 +777,21 @@ class DatabaseSyncClient {
             for (final record in tableData) {
               final recordMap = record as Map<String, dynamic>;
 
+              // Add remote source marker to prevent sync loops
+              final recordWithSource = Map<String, dynamic>.from(recordMap);
+              recordWithSource['source'] = 'remote_sync';
+              recordWithSource['sync_timestamp'] =
+                  DateTime.now().toIso8601String();
+
               try {
                 // For user_sessions, use the sessionToken as the unique identifier if available
                 // This prevents duplicate sessions for the same user/device combination
-                if (recordMap['sessionToken'] != null) {
+                if (recordWithSource['sessionToken'] != null) {
                   // First check if a session with this token already exists
                   final existingSession = await txn.query(
                     tableName,
                     where: 'sessionToken = ?',
-                    whereArgs: [recordMap['sessionToken']],
+                    whereArgs: [recordWithSource['sessionToken']],
                     columns: ['id'], // Only get ID to minimize data transfer
                   );
 
@@ -781,33 +799,33 @@ class DatabaseSyncClient {
                     // Update existing session record
                     await txn.update(
                       tableName,
-                      recordMap,
+                      recordWithSource,
                       where: 'sessionToken = ?',
-                      whereArgs: [recordMap['sessionToken']],
+                      whereArgs: [recordWithSource['sessionToken']],
                     );
                     debugPrint(
-                        'Updated existing session: ${recordMap['sessionToken']}');
+                        'Updated existing session: ${recordWithSource['sessionToken']}');
                   } else {
                     // Insert new session record
                     await txn.insert(
                       tableName,
-                      recordMap,
+                      recordWithSource,
                       conflictAlgorithm: ConflictAlgorithm.replace,
                     );
                     debugPrint(
-                        'Inserted new session: ${recordMap['sessionToken']}');
+                        'Inserted new session: ${recordWithSource['sessionToken']}');
                   }
                 } else {
                   // Fallback to standard INSERT OR REPLACE by ID
                   await txn.insert(
                     tableName,
-                    recordMap,
+                    recordWithSource,
                     conflictAlgorithm: ConflictAlgorithm.replace,
                   );
                 }
               } catch (e) {
                 debugPrint(
-                    'Error syncing session record ${recordMap['id']}: $e');
+                    'Error syncing session record ${recordWithSource['id']}: $e');
               }
             }
           });
@@ -818,12 +836,19 @@ class DatabaseSyncClient {
           // Clear existing data first
           batch.delete(tableName);
 
-          // Add all records to the batch
+          // Add all records to the batch with remote source markers
           for (final record in tableData) {
             final recordMap = record as Map<String, dynamic>;
+
+            // Add remote source marker to prevent sync loops
+            final recordWithSource = Map<String, dynamic>.from(recordMap);
+            recordWithSource['source'] = 'remote_sync';
+            recordWithSource['sync_timestamp'] =
+                DateTime.now().toIso8601String();
+
             batch.insert(
               tableName,
-              recordMap,
+              recordWithSource,
               conflictAlgorithm: ConflictAlgorithm.replace,
             );
           }

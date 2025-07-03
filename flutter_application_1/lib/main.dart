@@ -319,9 +319,9 @@ void main() async {
     });
   }
 
-  // CRITICAL FIX: Add periodic callback restoration check
+  // CRITICAL FIX: Add periodic callback restoration check with more frequent checking during critical operations
   // This ensures the database change callback is restored if cleared during sync operations
-  Timer.periodic(const Duration(seconds: 10), (timer) async {
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
     try {
       if (!DatabaseHelper.hasDatabaseChangeCallback()) {
         debugPrint('MAIN: Database callback was cleared - restoring it');
@@ -587,5 +587,133 @@ Future<void> _clearStaleSyncSettings() async {
     }
   } catch (e) {
     debugPrint('Error checking/clearing sync settings: $e');
+  }
+}
+
+/// Global function to immediately restore database callback if missing
+/// This can be called by other services when they detect the callback is missing
+Future<void> restoreMainDatabaseCallbackIfMissing() async {
+  try {
+    if (!DatabaseHelper.hasDatabaseChangeCallback()) {
+      debugPrint('MAIN: IMMEDIATE callback restoration requested');
+
+      // Re-register the main database change callback immediately
+      DatabaseHelper.setDatabaseChangeCallback(
+          (table, operation, recordId, data) async {
+        try {
+          debugPrint(
+              'MAIN: Database change detected: $table.$operation for record $recordId');
+
+          // Extra debug for queue changes
+          if (table == 'active_patient_queue') {
+            debugPrint(
+                'MAIN: QUEUE CHANGE DETECTED - operation=$operation, recordId=$recordId');
+            if (data != null) {
+              final patientName = data['patientName'] ?? 'Unknown';
+              final status = data['status'] ?? 'Unknown';
+              debugPrint(
+                  'MAIN: QUEUE CHANGE DETAILS - Patient: $patientName, Status: $status');
+            }
+          }
+
+          // CRITICAL FIX: Determine if this is a local change or a remote change being applied
+          // If the change has 'source' info, it means it came from a remote client
+          final isRemoteChange = data != null &&
+              (data.containsKey('source') ||
+                  data.containsKey('_isRemoteChange'));
+
+          debugPrint(
+              'MAIN: Change analysis - isRemoteChange: $isRemoteChange, hasData: ${data != null}');
+
+          // 1. If we're running as a HOST/SERVER, notify all clients ONLY for local changes
+          if (EnhancedShelfServer.isRunning &&
+              !isRemoteChange &&
+              !DatabaseSyncClient.isConnected) {
+            try {
+              debugPrint(
+                  'MAIN: [HOST] Sending LOCAL change to all clients: $table.$operation');
+              await EnhancedShelfServer.onDatabaseChange(
+                  table, operation, recordId, data);
+              debugPrint(
+                  'MAIN: [HOST] Local database change sent to all clients via Enhanced Shelf Server');
+            } catch (e) {
+              debugPrint(
+                  'MAIN: [HOST] Error notifying clients via Enhanced Shelf Server: $e');
+            }
+          } else if (EnhancedShelfServer.isRunning && isRemoteChange) {
+            debugPrint(
+                'MAIN: [HOST] Skipping notification for REMOTE change (already handled by WebSocket)');
+          }
+
+          // 2. If we're running as a CLIENT, notify server ONLY for local changes
+          if (DatabaseSyncClient.isConnected &&
+              !isRemoteChange &&
+              !EnhancedShelfServer.isRunning) {
+            try {
+              debugPrint(
+                  'MAIN: [CLIENT] Sending LOCAL change to host: $table.$operation');
+              await DatabaseSyncClient.notifyLocalDatabaseChange(
+                  table, operation, recordId, data);
+              debugPrint(
+                  'MAIN: [CLIENT] Local database change sent to host server via Database Sync Client');
+            } catch (e) {
+              debugPrint(
+                  'MAIN: [CLIENT] Error notifying host server via Database Sync Client: $e');
+            }
+          } else if (DatabaseSyncClient.isConnected && isRemoteChange) {
+            debugPrint(
+                'MAIN: [CLIENT] Skipping notification for REMOTE change (came from server)');
+          } else if (DatabaseSyncClient.isConnected &&
+              EnhancedShelfServer.isRunning) {
+            debugPrint(
+                'MAIN: [CLIENT] Device is both host and client - not sending to self');
+          }
+
+          // Special handling for user_sessions table - CRITICAL for authentication sync
+          if (table == 'user_sessions' && !isRemoteChange) {
+            debugPrint(
+                'MAIN: CRITICAL LOCAL SESSION CHANGE - Operation: $operation, Record: $recordId');
+            if (data != null) {
+              debugPrint(
+                  'MAIN: Session data: username=${data['username']}, deviceId=${data['deviceId']}, isActive=${data['isActive']}');
+            }
+
+            // Force immediate session table sync for both host and client (only for local changes)
+            if (EnhancedShelfServer.isRunning) {
+              try {
+                await EnhancedShelfServer.forceSyncTable('user_sessions');
+                debugPrint(
+                    'MAIN: [HOST] Forced immediate user_sessions sync to all clients');
+              } catch (e) {
+                debugPrint('MAIN: [HOST] Error in forced session sync: $e');
+              }
+            }
+
+            if (DatabaseSyncClient.isConnected &&
+                !EnhancedShelfServer.isRunning) {
+              try {
+                await DatabaseSyncClient.forceSessionSync();
+                debugPrint(
+                    'MAIN: [CLIENT] Forced immediate user_sessions sync to host');
+              } catch (e) {
+                debugPrint('MAIN: [CLIENT] Error in forced session sync: $e');
+              }
+            }
+          } else if (table == 'user_sessions' && isRemoteChange) {
+            debugPrint(
+                'MAIN: CRITICAL REMOTE SESSION CHANGE - Skipping additional sync (already handled)');
+          }
+        } catch (e) {
+          debugPrint('MAIN: Error handling database change: $e');
+        }
+      });
+
+      debugPrint('MAIN: Database callback restored immediately');
+    } else {
+      debugPrint(
+          'MAIN: Database callback already present - no restoration needed');
+    }
+  } catch (e) {
+    debugPrint('MAIN: Error in immediate callback restoration: $e');
   }
 }

@@ -27,7 +27,7 @@ class EnhancedShelfServer {
   // Database change tracking
   static DateTime _lastSyncTime = DateTime.now();
   static final Map<String, DateTime> _tableLastModified = {};
-  
+
   // Change log for tracking database changes since timestamp
   static final List<Map<String, dynamic>> _changeLog = [];
 
@@ -41,22 +41,24 @@ class EnhancedShelfServer {
   static String? get accessCode => _accessCode;
   static List<String> get allowedIpRanges => List.from(_allowedIpRanges);
   static Stream<Map<String, dynamic>> get syncUpdates => _syncUpdates.stream;
-  static int get activeWebSocketConnections => _activeWebSocketConnections.length;
+  static int get activeWebSocketConnections =>
+      _activeWebSocketConnections.length;
 
   /// Initialize the server
   static Future<void> initialize(DatabaseHelper dbHelper) async {
     try {
       _dbHelper = dbHelper;
-      
+
       // Load or generate access code
       final prefs = await SharedPreferences.getInstance();
       _accessCode = prefs.getString(_accessCodeKey) ?? _generateAccessCode();
       await prefs.setString(_accessCodeKey, _accessCode!);
-      
+
       // Configure allowed IP ranges
       await _configureLanIpRanges();
-      
-      debugPrint('Enhanced Shelf Server initialized with access code: $_accessCode');
+
+      debugPrint(
+          'Enhanced Shelf Server initialized with access code: $_accessCode');
     } catch (e) {
       debugPrint('Enhanced Shelf Server initialization failed: $e');
       rethrow;
@@ -72,16 +74,16 @@ class EnhancedShelfServer {
 
     try {
       _currentPort = port;
-      
+
       // Detect server IP BEFORE starting the server
       final detectedIp = await _getActualServerIp();
-      
+
       // Database change callback is now handled in main.dart to prevent conflicts
       // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
-      
+
       // Create router with endpoints
       final router = _createRouter();
-      
+
       // Create handler with middleware
       final handler = const Pipeline()
           .addMiddleware(_corsMiddleware())
@@ -92,7 +94,7 @@ class EnhancedShelfServer {
       // Start HTTP server on all interfaces (0.0.0.0)
       _server = await shelf_io.serve(handler, '0.0.0.0', port);
       _isRunning = true;
-      
+
       // Enhanced startup logging
       debugPrint('');
       debugPrint('🚀 === ENHANCED SHELF SERVER STARTED ===');
@@ -109,7 +111,7 @@ class EnhancedShelfServer {
       debugPrint('   Access Code: $_accessCode');
       debugPrint('==========================================');
       debugPrint('');
-      
+
       return true;
     } catch (e) {
       debugPrint('Failed to start Enhanced Shelf Server: $e');
@@ -126,14 +128,14 @@ class EnhancedShelfServer {
         await connection.sink.close();
       }
       _activeWebSocketConnections.clear();
-      
+
       await _server?.close(force: true);
       _server = null;
       _isRunning = false;
-      
-      // Clear database callback
-      DatabaseHelper.clearDatabaseChangeCallback();
-      
+
+      // NOTE: Don't clear database callback when stopping server
+      // This allows the main.dart callback to remain active for ongoing sync operations
+
       debugPrint('Enhanced Shelf Server stopped');
     } catch (e) {
       debugPrint('Error stopping server: $e');
@@ -149,7 +151,7 @@ class EnhancedShelfServer {
     router.get('/db/download', _handleDatabaseDownload);
     router.post('/db/sync', _handleDatabaseSync);
     router.get('/db/changes/<since>', _handleDatabaseChanges);
-    
+
     // Table-specific endpoints
     router.get('/tables/<table>', _handleTableData);
     router.post('/tables/<table>/sync', _handleTableSync);
@@ -161,14 +163,17 @@ class EnhancedShelfServer {
   }
 
   /// Database change callback (public method for external access)
-  static Future<void> onDatabaseChange(String table, String operation, String recordId, Map<String, dynamic>? data) async {
+  static Future<void> onDatabaseChange(String table, String operation,
+      String recordId, Map<String, dynamic>? data) async {
     await _onDatabaseChange(table, operation, recordId, data);
   }
 
   /// Database change callback (internal)
-  static Future<void> _onDatabaseChange(String table, String operation, String recordId, Map<String, dynamic>? data) async {
-    debugPrint('Database change detected: $table.$operation for record $recordId');
-    
+  static Future<void> _onDatabaseChange(String table, String operation,
+      String recordId, Map<String, dynamic>? data) async {
+    debugPrint(
+        'Database change detected: $table.$operation for record $recordId');
+
     final change = {
       'table': table,
       'operation': operation,
@@ -176,19 +181,19 @@ class EnhancedShelfServer {
       'data': data,
       'timestamp': DateTime.now().toIso8601String(),
     };
-    
+
     // Update last modified time for table
     _tableLastModified[table] = DateTime.now();
     _lastSyncTime = DateTime.now();
-    
+
     // Add change to log for tracking
     _changeLog.add(change);
-    
+
     // Keep only last 1000 changes to prevent memory issues
     if (_changeLog.length > 1000) {
       _changeLog.removeAt(0);
     }
-    
+
     // Notify WebSocket clients of the change
     _broadcastWebSocketChange(change);
   }
@@ -203,11 +208,11 @@ class EnhancedShelfServer {
       final db = await _dbHelper!.database;
       // COMPLETE table list - ALL database tables for full sync
       final tables = [
-        'patients', 
-        'appointments', 
-        'medical_records', 
-        'users', 
-        'clinic_services', 
+        'patients',
+        'appointments',
+        'medical_records',
+        'users',
+        'clinic_services',
         'user_sessions',
         'active_patient_queue',
         'patient_history',
@@ -218,7 +223,7 @@ class EnhancedShelfServer {
         'patient_queue'
       ];
       final data = <String, List<Map<String, dynamic>>>{};
-      
+
       for (final table in tables) {
         try {
           final result = await db.query(table);
@@ -229,7 +234,7 @@ class EnhancedShelfServer {
           data[table] = [];
         }
       }
-      
+
       return Response.ok(
         jsonEncode({
           'data': data,
@@ -249,12 +254,12 @@ class EnhancedShelfServer {
     try {
       final body = await request.readAsString();
       final data = jsonDecode(body) as Map<String, dynamic>;
-      
+
       final changes = data['changes'] as List<dynamic>?;
       if (changes != null) {
         await _handleUploadChanges(changes);
       }
-      
+
       return Response.ok(
         jsonEncode({
           'status': 'success',
@@ -272,16 +277,16 @@ class EnhancedShelfServer {
   /// Handle uploaded changes from clients
   static Future<void> _handleUploadChanges(List<dynamic>? changes) async {
     if (changes == null || _dbHelper == null) return;
-    
+
     try {
       final db = await _dbHelper!.database;
-      
+
       for (final change in changes) {
         final changeMap = change as Map<String, dynamic>;
         final table = changeMap['table'] as String;
         final operation = changeMap['operation'] as String;
         final data = changeMap['data'] as Map<String, dynamic>?;
-        
+
         switch (operation.toLowerCase()) {
           case 'insert':
             if (data != null) {
@@ -322,7 +327,7 @@ class EnhancedShelfServer {
       'lastSyncTime': _lastSyncTime.toIso8601String(),
       'allowedIpRanges': _allowedIpRanges,
     };
-    
+
     return Response.ok(
       jsonEncode(status),
       headers: {'Content-Type': 'application/json'},
@@ -336,7 +341,7 @@ class EnhancedShelfServer {
       if (since == null) {
         return Response.badRequest(body: 'Missing since parameter');
       }
-      
+
       // Parse the since timestamp
       DateTime sinceTime;
       try {
@@ -344,13 +349,13 @@ class EnhancedShelfServer {
       } catch (e) {
         return Response.badRequest(body: 'Invalid timestamp format');
       }
-      
+
       // Filter changes from the change log that are newer than the since timestamp
       final recentChanges = _changeLog.where((change) {
         final changeTimestamp = DateTime.parse(change['timestamp'] as String);
         return changeTimestamp.isAfter(sinceTime);
       }).toList();
-      
+
       return Response.ok(
         jsonEncode({
           'changes': recentChanges,
@@ -374,7 +379,8 @@ class EnhancedShelfServer {
         return response.change(headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, Access-Code',
+          'Access-Control-Allow-Headers':
+              'Content-Type, Authorization, Access-Code',
         });
       };
     };
@@ -388,14 +394,15 @@ class EnhancedShelfServer {
           return Response.ok('', headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, Access-Code',
+            'Access-Control-Allow-Headers':
+                'Content-Type, Authorization, Access-Code',
           });
         }
 
         if (request.url.path != 'status') {
-          final accessCode = request.headers['access-code'] ?? 
-                            request.url.queryParameters['access_code'];
-          
+          final accessCode = request.headers['access-code'] ??
+              request.url.queryParameters['access_code'];
+
           if (accessCode != _accessCode) {
             return Response.unauthorized('Invalid access code');
           }
@@ -411,7 +418,7 @@ class EnhancedShelfServer {
     return (handler) {
       return (request) async {
         final clientIp = request.headers['x-forwarded-for'] ?? 'localhost';
-        
+
         if (!_isLanIp(clientIp)) {
           return Response.forbidden('Access denied: Not a LAN IP');
         }
@@ -425,20 +432,20 @@ class EnhancedShelfServer {
   static bool _isLanIp(String ip) {
     if (ip == 'localhost') return true;
     if (ip == '127.0.0.1' || ip == '::1') return true;
-    
+
     // Your specific network ranges
     if (ip.startsWith('192.168.68.')) return true; // Your current network
-    
+
     // Standard private network ranges
     final lanRanges = [
-      '192.168.',   // Class C private networks
-      '10.',        // Class A private networks
+      '192.168.', // Class C private networks
+      '10.', // Class A private networks
       '172.16.', '172.17.', '172.18.', '172.19.',
       '172.20.', '172.21.', '172.22.', '172.23.',
       '172.24.', '172.25.', '172.26.', '172.27.',
-      '172.28.', '172.29.', '172.30.', '172.31.',  // Class B private networks
+      '172.28.', '172.29.', '172.30.', '172.31.', // Class B private networks
     ];
-    
+
     return lanRanges.any((range) => ip.startsWith(range));
   }
 
@@ -446,7 +453,8 @@ class EnhancedShelfServer {
   static String _generateAccessCode() {
     final random = Random();
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    return List.generate(8, (index) => chars[random.nextInt(chars.length)]).join();
+    return List.generate(8, (index) => chars[random.nextInt(chars.length)])
+        .join();
   }
 
   /// Configure LAN IP ranges
@@ -454,7 +462,7 @@ class EnhancedShelfServer {
     try {
       final interfaces = await NetworkInterface.list();
       _allowedIpRanges.clear();
-      
+
       for (final interface in interfaces) {
         for (final address in interface.addresses) {
           if (address.type == InternetAddressType.IPv4) {
@@ -471,11 +479,11 @@ class EnhancedShelfServer {
           }
         }
       }
-      
+
       if (!_allowedIpRanges.contains('127.0.0')) {
         _allowedIpRanges.add('127.0.0');
       }
-      
+
       debugPrint('Configured LAN IP ranges: $_allowedIpRanges');
     } catch (e) {
       debugPrint('Error configuring LAN IP ranges: $e');
@@ -510,7 +518,7 @@ class EnhancedShelfServer {
 
       final db = await _dbHelper!.database;
       final result = await db.query(table);
-      
+
       return Response.ok(
         jsonEncode({
           'table': table,
@@ -536,7 +544,7 @@ class EnhancedShelfServer {
 
       final body = await request.readAsString();
       final data = jsonDecode(body) as Map<String, dynamic>;
-      
+
       final records = data['records'] as List<dynamic>?;
       if (records == null) {
         return Response.badRequest(body: 'Records data required');
@@ -547,17 +555,17 @@ class EnhancedShelfServer {
       }
 
       final db = await _dbHelper!.database;
-      
-      // Temporarily disable change callback to avoid loops
-      DatabaseHelper.clearDatabaseChangeCallback();
-      
+
+      // NOTE: Keep callback enabled to allow local changes to sync properly
+      // Loop prevention is handled by checking 'source' in the data
+
       int insertedCount = 0;
       int updatedCount = 0;
-      
+
       for (final record in records) {
         final recordMap = record as Map<String, dynamic>;
         final id = recordMap['id'];
-        
+
         if (id != null) {
           try {
             // Special handling for user_sessions table to prevent duplicates
@@ -569,37 +577,41 @@ class EnhancedShelfServer {
                   where: 'sessionToken = ?',
                   whereArgs: [recordMap['sessionToken']],
                 );
-                
+
                 if (existing.isNotEmpty) {
                   // Update existing session instead of creating duplicate
-                  await db.update(
-                    table, 
-                    recordMap, 
-                    where: 'sessionToken = ?', 
-                    whereArgs: [recordMap['sessionToken']]
-                  );
+                  await db.update(table, recordMap,
+                      where: 'sessionToken = ?',
+                      whereArgs: [recordMap['sessionToken']]);
                   updatedCount++;
-                  debugPrint('Updated existing session: ${recordMap['sessionToken']}');
+                  debugPrint(
+                      'Updated existing session: ${recordMap['sessionToken']}');
                 } else {
                   // Insert new session
-                  await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await db.insert(table, recordMap,
+                      conflictAlgorithm: ConflictAlgorithm.replace);
                   insertedCount++;
-                  debugPrint('Inserted new session: ${recordMap['sessionToken']}');
+                  debugPrint(
+                      'Inserted new session: ${recordMap['sessionToken']}');
                 }
               } else {
                 // Fallback to normal insert if no sessionToken
-                await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
+                await db.insert(table, recordMap,
+                    conflictAlgorithm: ConflictAlgorithm.replace);
                 insertedCount++;
               }
             } else {
               // Use INSERT OR REPLACE to handle conflicts gracefully for other tables
-              await db.insert(table, recordMap, conflictAlgorithm: ConflictAlgorithm.replace);
-              
+              await db.insert(table, recordMap,
+                  conflictAlgorithm: ConflictAlgorithm.replace);
+
               // Check if this was an insert or update
-              final existing = await db.query(table, where: 'id = ?', whereArgs: [id], limit: 1);
+              final existing = await db.query(table,
+                  where: 'id = ?', whereArgs: [id], limit: 1);
               if (existing.isNotEmpty) {
                 final existingRecord = existing.first;
-                final isUpdate = existingRecord.toString() != recordMap.toString();
+                final isUpdate =
+                    existingRecord.toString() != recordMap.toString();
                 if (isUpdate) {
                   updatedCount++;
                 } else {
@@ -613,11 +625,13 @@ class EnhancedShelfServer {
             debugPrint('Error syncing record $id in table $table: $e');
             // Try alternative approach with explicit update/insert
             try {
-              final existing = await db.query(table, where: 'id = ?', whereArgs: [id]);
-              
+              final existing =
+                  await db.query(table, where: 'id = ?', whereArgs: [id]);
+
               if (existing.isNotEmpty) {
                 // Update existing record
-                await db.update(table, recordMap, where: 'id = ?', whereArgs: [id]);
+                await db
+                    .update(table, recordMap, where: 'id = ?', whereArgs: [id]);
                 updatedCount++;
               } else {
                 // Insert new record
@@ -638,10 +652,10 @@ class EnhancedShelfServer {
           }
         }
       }
-      
+
       // Re-enable change callback - handled in main.dart now
       // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
-      
+
       return Response.ok(
         jsonEncode({
           'status': 'success',
@@ -666,7 +680,8 @@ class EnhancedShelfServer {
     try {
       final message = jsonEncode(data);
       _broadcastToAllClients(message);
-      debugPrint('EnhancedShelfServer: Broadcasted real-time data to ${_activeWebSocketConnections.length} clients');
+      debugPrint(
+          'EnhancedShelfServer: Broadcasted real-time data to ${_activeWebSocketConnections.length} clients');
     } catch (e) {
       debugPrint('EnhancedShelfServer: Error broadcasting real-time data: $e');
     }
@@ -728,52 +743,55 @@ class EnhancedShelfServer {
     try {
       final interfaces = await NetworkInterface.list();
       final validIps = <Map<String, String>>[];
-      
+
       debugPrint('=== IP Detection Debug ===');
-      
+
       for (final interface in interfaces) {
         for (final address in interface.addresses) {
           if (address.type == InternetAddressType.IPv4) {
             final ip = address.address;
             final interfaceName = interface.name;
-            
+
             debugPrint('Found IPv4: $ip on $interfaceName');
-            
+
             if (_isLanIp(ip) && !ip.startsWith('127.') && !address.isLoopback) {
               validIps.add({
                 'ip': ip,
                 'interface': interfaceName,
                 'priority': _getIpPriority(ip).toString(),
               });
-              debugPrint('✓ Valid LAN IP: $ip on interface: $interfaceName (priority: ${_getIpPriority(ip)})');
+              debugPrint(
+                  '✓ Valid LAN IP: $ip on interface: $interfaceName (priority: ${_getIpPriority(ip)})');
             } else {
               debugPrint('✗ Skipped IP: $ip (not suitable for LAN)');
             }
           }
         }
       }
-      
+
       debugPrint('Found ${validIps.length} valid LAN IPs');
-      
+
       if (validIps.isNotEmpty) {
         // Sort by priority (higher number = higher priority)
-        validIps.sort((a, b) => int.parse(b['priority']!) - int.parse(a['priority']!));
-        
+        validIps.sort(
+            (a, b) => int.parse(b['priority']!) - int.parse(a['priority']!));
+
         final selectedIp = validIps.first['ip']!;
         final selectedInterface = validIps.first['interface']!;
-        
+
         debugPrint('=== SELECTED IP ===');
         debugPrint('✓ Primary LAN IP: $selectedIp');
         debugPrint('✓ Interface: $selectedInterface');
         debugPrint('✓ Clients should connect to: $selectedIp:$_currentPort');
         debugPrint('==================');
-        
+
         return selectedIp;
       }
-      
+
       // Fallback to localhost if no LAN IP found
       debugPrint('❌ No LAN IP found, using localhost');
-      debugPrint('NOTE: Clients will not be able to connect from other devices!');
+      debugPrint(
+          'NOTE: Clients will not be able to connect from other devices!');
       return 'localhost';
     } catch (e) {
       debugPrint('Error getting server IP: $e');
@@ -785,20 +803,22 @@ class EnhancedShelfServer {
   static int _getIpPriority(String ip) {
     // Prioritize based on common network patterns
     if (ip.startsWith('192.168.68.')) return 100; // Your specific network
-    if (ip.startsWith('172.30.')) return 95;       // Corporate network pattern
-    if (ip.startsWith('192.168.1.')) return 90;    // Common home network
-    if (ip.startsWith('192.168.0.')) return 85;    // Common home network
-    if (ip.startsWith('192.168.')) return 80;      // Other 192.168.x.x networks
-    if (ip.startsWith('10.')) return 70;           // Class A private networks
-    if (ip.startsWith('172.')) return 60;          // Other Class B private networks
+    if (ip.startsWith('172.30.')) return 95; // Corporate network pattern
+    if (ip.startsWith('192.168.1.')) return 90; // Common home network
+    if (ip.startsWith('192.168.0.')) return 85; // Common home network
+    if (ip.startsWith('192.168.')) return 80; // Other 192.168.x.x networks
+    if (ip.startsWith('10.')) return 70; // Class A private networks
+    if (ip.startsWith('172.')) return 60; // Other Class B private networks
     return 10; // Other IPs (lowest priority)
   }
 
   /// Handle WebSocket connections for real-time sync
-  static void _handleWebSocketConnection(WebSocketChannel webSocket, String? protocol) {
-    debugPrint('New WebSocket connection established (Total: ${_activeWebSocketConnections.length + 1})');
+  static void _handleWebSocketConnection(
+      WebSocketChannel webSocket, String? protocol) {
+    debugPrint(
+        'New WebSocket connection established (Total: ${_activeWebSocketConnections.length + 1})');
     _activeWebSocketConnections.add(webSocket);
-    
+
     // Send initial connection confirmation
     webSocket.sink.add(jsonEncode({
       'type': 'connected',
@@ -808,10 +828,15 @@ class EnhancedShelfServer {
         'version': '2.0.0',
         'activeConnections': _activeWebSocketConnections.length,
         'accessCode': _accessCode,
-        'features': ['real_time_sync', 'full_sync', 'heartbeat', 'database_changes'],
+        'features': [
+          'real_time_sync',
+          'full_sync',
+          'heartbeat',
+          'database_changes'
+        ],
       }
     }));
-    
+
     // Listen for messages from client
     webSocket.stream.listen(
       (message) async {
@@ -824,7 +849,8 @@ class EnhancedShelfServer {
         }
       },
       onDone: () {
-        debugPrint('WebSocket connection closed (Remaining: ${_activeWebSocketConnections.length - 1})');
+        debugPrint(
+            'WebSocket connection closed (Remaining: ${_activeWebSocketConnections.length - 1})');
         _activeWebSocketConnections.remove(webSocket);
       },
       onError: (error) {
@@ -835,10 +861,11 @@ class EnhancedShelfServer {
   }
 
   /// Handle incoming WebSocket messages
-  static Future<void> _handleWebSocketMessage(WebSocketChannel webSocket, Map<String, dynamic> data) async {
+  static Future<void> _handleWebSocketMessage(
+      WebSocketChannel webSocket, Map<String, dynamic> data) async {
     final type = data['type'] as String?;
     debugPrint('Received WebSocket message: $type');
-    
+
     try {
       switch (type) {
         case 'ping':
@@ -850,19 +877,19 @@ class EnhancedShelfServer {
             'activeConnections': _activeWebSocketConnections.length,
           }));
           break;
-          
+
         case 'request_full_sync':
-        case 'request_sync':  // Handle both message types for compatibility
+        case 'request_sync': // Handle both message types for compatibility
           debugPrint('Client requested full sync');
           // Send full database sync to this client
           _sendWebSocketFullSync(webSocket);
           break;
-          
+
         case 'database_change':
           // Handle incoming database change from client
           _handleWebSocketDatabaseChange(data);
           break;
-          
+
         case 'heartbeat':
           // Respond to heartbeat
           webSocket.sink.add(jsonEncode({
@@ -871,7 +898,7 @@ class EnhancedShelfServer {
             'serverTime': DateTime.now().toIso8601String(),
           }));
           break;
-          
+
         case 'sync_status':
           // Handle sync status from client
           final clientStatus = data['status'] as Map<String, dynamic>?;
@@ -880,7 +907,7 @@ class EnhancedShelfServer {
             // Could store client status for monitoring
           }
           break;
-          
+
         case 'client_info':
           // Handle client information
           final clientInfo = data['info'] as Map<String, dynamic>?;
@@ -888,34 +915,36 @@ class EnhancedShelfServer {
             debugPrint('Client info: $clientInfo');
           }
           break;
-          
+
         case 'request_table_sync':
           // Send specific table data to client
           final tableName = data['table'] as String?;
           if (tableName != null) {
             debugPrint('SERVER: Table sync requested for: $tableName');
             _sendTableSyncToClient(webSocket, tableName);
-            
+
             // For user_sessions, also broadcast to all other clients to ensure consistency
             if (tableName == 'user_sessions') {
-              debugPrint('SERVER: Broadcasting user_sessions to all clients due to sync request');
+              debugPrint(
+                  'SERVER: Broadcasting user_sessions to all clients due to sync request');
               await forceSyncTable('user_sessions');
             }
           }
           break;
-          
+
         case 'request_immediate_table_sync':
           // Handle immediate table sync request with priority
           final tableName = data['table'] as String?;
           if (tableName != null) {
             debugPrint('SERVER: IMMEDIATE SYNC REQUEST for: $tableName');
             _sendTableSyncToClient(webSocket, tableName);
-            
+
             // If it's user_sessions, broadcast to ALL clients immediately
             if (tableName == 'user_sessions') {
-              debugPrint('SERVER: IMMEDIATE SYNC - Force broadcasting user_sessions to all clients');
+              debugPrint(
+                  'SERVER: IMMEDIATE SYNC - Force broadcasting user_sessions to all clients');
               await forceSyncTable('user_sessions');
-              
+
               // Also broadcast a general session update notification
               _broadcastToAllClients(jsonEncode({
                 'type': 'session_table_updated',
@@ -926,23 +955,25 @@ class EnhancedShelfServer {
             }
           }
           break;
-          
+
         case 'force_immediate_session_sync':
           // Handle CRITICAL session sync request - immediate priority
-          debugPrint('SERVER: CRITICAL - Force immediate session sync requested');
+          debugPrint(
+              'SERVER: CRITICAL - Force immediate session sync requested');
           final tableName = data['table'] as String?;
           final operation = data['operation'] as String?;
           final recordId = data['recordId'] as String?;
-          
+
           if (tableName == 'user_sessions') {
-            debugPrint('SERVER: IMMEDIATE SESSION SYNC - Processing user_sessions sync');
-            
+            debugPrint(
+                'SERVER: IMMEDIATE SESSION SYNC - Processing user_sessions sync');
+
             // 1. Immediately send table data to requesting client
             await _sendTableSyncToClient(webSocket, 'user_sessions');
-            
+
             // 2. Force sync to ALL other clients immediately
             await forceSyncTable('user_sessions');
-            
+
             // 3. Broadcast session change notification
             _broadcastToAllClients(jsonEncode({
               'type': 'session_sync_completed',
@@ -952,53 +983,56 @@ class EnhancedShelfServer {
               'timestamp': DateTime.now().toIso8601String(),
               'priority': 'critical',
             }));
-            
+
             // 4. Send confirmation back to requesting client
             webSocket.sink.add(jsonEncode({
               'type': 'session_sync_confirmed',
               'table': 'user_sessions',
               'timestamp': DateTime.now().toIso8601String(),
             }));
-            
-            debugPrint('SERVER: IMMEDIATE SESSION SYNC completed for user_sessions');
+
+            debugPrint(
+                'SERVER: IMMEDIATE SESSION SYNC completed for user_sessions');
           }
           break;
-          
+
         case 'force_table_sync':
           // Handle force table sync request from client
           final tableName = data['table'] as String?;
           if (tableName != null) {
             debugPrint('SERVER: FORCE TABLE SYNC requested for: $tableName');
             await _sendTableSyncToClient(webSocket, tableName);
-            
+
             // For user_sessions, ensure all clients get the update
             if (tableName == 'user_sessions') {
-              debugPrint('SERVER: FORCE SYNC - Broadcasting user_sessions to all clients');
+              debugPrint(
+                  'SERVER: FORCE SYNC - Broadcasting user_sessions to all clients');
               await forceSyncTable('user_sessions');
             }
           }
           break;
-          
+
         case 'acknowledge':
           // Handle acknowledgment from client
           final ackId = data['ackId'] as String?;
           debugPrint('Received acknowledgment for: $ackId');
           break;
-          
+
         case 'pong':
           // Handle pong response from client (to our ping)
           debugPrint('Received pong from client');
           break;
-          
+
         case 'session_invalidated':
           // Handle session invalidation message and broadcast to all clients
           debugPrint('Received session invalidation message from client');
           _broadcastToAllClients(jsonEncode(data));
           break;
-          
+
         default:
           debugPrint('Unknown WebSocket message type: $type');
-          debugPrint('Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong, session_invalidated');
+          debugPrint(
+              'Available message types: ping, request_full_sync, request_sync, database_change, heartbeat, sync_status, client_info, request_table_sync, acknowledge, pong, session_invalidated');
           _sendWebSocketError(webSocket, 'Unknown message type: $type');
       }
     } catch (e) {
@@ -1027,28 +1061,28 @@ class EnhancedShelfServer {
         _sendWebSocketError(webSocket, 'Database not initialized');
         return;
       }
-      
+
       final db = await _dbHelper!.database;
-      
+
       // COMPLETE table list for WebSocket full sync
       final tables = [
-        'patients', 
-        'appointments', 
-        'medical_records', 
-        'users', 
-        'clinic_services', 
-        'active_patient_queue', 
+        'patients',
+        'appointments',
+        'medical_records',
+        'users',
+        'clinic_services',
+        'active_patient_queue',
         'user_sessions',
         'patient_history',
         'patient_bills',
-        'bill_items', 
+        'bill_items',
         'payments',
         'user_activity_log',
         'patient_queue'
       ];
-      
+
       final syncData = <String, dynamic>{};
-      
+
       for (final table in tables) {
         try {
           final data = await db.query(table);
@@ -1059,15 +1093,16 @@ class EnhancedShelfServer {
           syncData[table] = [];
         }
       }
-      
+
       webSocket.sink.add(jsonEncode({
         'type': 'full_sync',
         'data': syncData,
         'timestamp': DateTime.now().toIso8601String(),
         'tablesCount': syncData.length,
       }));
-      
-      debugPrint('Full sync sent to WebSocket client (${syncData.length} tables)');
+
+      debugPrint(
+          'Full sync sent to WebSocket client (${syncData.length} tables)');
     } catch (e) {
       debugPrint('Error sending WebSocket full sync: $e');
       _sendWebSocketError(webSocket, 'Failed to send full sync');
@@ -1075,16 +1110,17 @@ class EnhancedShelfServer {
   }
 
   /// Send specific table sync to a WebSocket client
-  static Future<void> _sendTableSyncToClient(WebSocketChannel webSocket, String tableName) async {
+  static Future<void> _sendTableSyncToClient(
+      WebSocketChannel webSocket, String tableName) async {
     try {
       if (_dbHelper == null) {
         _sendWebSocketError(webSocket, 'Database not initialized');
         return;
       }
-      
+
       final db = await _dbHelper!.database;
       final data = await db.query(tableName);
-      
+
       webSocket.sink.add(jsonEncode({
         'type': 'table_sync',
         'table': tableName,
@@ -1092,8 +1128,9 @@ class EnhancedShelfServer {
         'timestamp': DateTime.now().toIso8601String(),
         'recordCount': data.length,
       }));
-      
-      debugPrint('Sent table sync for $tableName to client (${data.length} records)');
+
+      debugPrint(
+          'Sent table sync for $tableName to client (${data.length} records)');
     } catch (e) {
       debugPrint('Error sending table sync for $tableName: $e');
       _sendWebSocketError(webSocket, 'Failed to sync table: $tableName');
@@ -1101,78 +1138,96 @@ class EnhancedShelfServer {
   }
 
   /// Handle database change from WebSocket client
-  static Future<void> _handleWebSocketDatabaseChange(Map<String, dynamic> data) async {
+  static Future<void> _handleWebSocketDatabaseChange(
+      Map<String, dynamic> data) async {
     try {
       final changeData = data['change'] as Map<String, dynamic>?;
       final clientInfo = data['clientInfo'] as Map<String, dynamic>?;
-      
+
       if (changeData == null) {
         debugPrint('Invalid WebSocket database change data');
         return;
       }
-      
+
       final table = changeData['table'] as String?;
       final operation = changeData['operation'] as String?;
       final recordId = changeData['recordId'] as String?;
       final recordData = changeData['data'] as Map<String, dynamic>?;
-      
+
       if (table == null || operation == null || recordId == null) {
         debugPrint('Invalid database change data received via WebSocket');
         return;
       }
-      
-      debugPrint('SERVER: Applying WebSocket client change: $table.$operation for record $recordId');
-      
+
+      debugPrint(
+          'SERVER: Applying WebSocket client change: $table.$operation for record $recordId');
+
+      // Add source markers to prevent sync loops
+      Map<String, dynamic>? processedData;
+      if (recordData != null) {
+        processedData = Map<String, dynamic>.from(recordData);
+        processedData['source'] = 'client_websocket';
+        processedData['clientInfo'] = clientInfo;
+        processedData['sync_timestamp'] = DateTime.now().toIso8601String();
+      }
+
       // CRITICAL FIX: Add specific queue change logging
       if (table == 'active_patient_queue') {
-        debugPrint('SERVER: QUEUE CHANGE received from client - operation=$operation, recordId=$recordId');
-        if (recordData != null) {
-          debugPrint('SERVER: QUEUE DATA - patientName=${recordData['patientName']}, status=${recordData['status']}');
+        debugPrint(
+            'SERVER: QUEUE CHANGE received from client - operation=$operation, recordId=$recordId');
+        if (processedData != null) {
+          debugPrint(
+              'SERVER: QUEUE DATA - patientName=${processedData['patientName']}, status=${processedData['status']}');
         }
       }
-      
+
       if (_dbHelper == null) return;
       final db = await _dbHelper!.database;
-      
-      // Temporarily disable change callback to avoid loops
-      DatabaseHelper.clearDatabaseChangeCallback();
-      
+
+      // NOTE: Keep callback enabled to allow local changes to sync properly
+      // Loop prevention is handled by checking 'source' and 'clientInfo' in the data
+
       try {
         switch (operation.toLowerCase()) {
           case 'insert':
-            if (recordData != null) {
+            if (processedData != null) {
               try {
                 // Special handling for user_sessions table to prevent duplicates
                 if (table == 'user_sessions') {
                   // Check if session already exists by sessionToken to prevent duplicates
-                  if (recordData['sessionToken'] != null) {
+                  if (processedData['sessionToken'] != null) {
                     final existing = await db.query(
                       table,
                       where: 'sessionToken = ?',
-                      whereArgs: [recordData['sessionToken']],
+                      whereArgs: [processedData['sessionToken']],
                     );
-                    
+
                     if (existing.isNotEmpty) {
                       // Update existing session instead of creating duplicate
-                      await db.update(
-                        table, 
-                        recordData, 
-                        where: 'sessionToken = ?', 
-                        whereArgs: [recordData['sessionToken']]
-                      );
-                      await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
-                      debugPrint('Updated existing session via WebSocket: ${recordData['sessionToken']}');
+                      await db.update(table, processedData,
+                          where: 'sessionToken = ?',
+                          whereArgs: [processedData['sessionToken']]);
+                      await _dbHelper!.logChange(table, recordId, 'update',
+                          data: processedData);
+                      debugPrint(
+                          'Updated existing session via WebSocket: ${processedData['sessionToken']}');
                     } else {
                       // Insert new session
-                      await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                      await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                      debugPrint('Successfully applied WebSocket session insert: $table.$recordId');
+                      await db.insert(table, processedData,
+                          conflictAlgorithm: ConflictAlgorithm.replace);
+                      await _dbHelper!.logChange(table, recordId, 'insert',
+                          data: processedData);
+                      debugPrint(
+                          'Successfully applied WebSocket session insert: $table.$recordId');
                     }
                   } else {
                     // Fallback to normal insert if no sessionToken
-                    await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                    await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                    debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                    await db.insert(table, processedData,
+                        conflictAlgorithm: ConflictAlgorithm.replace);
+                    await _dbHelper!.logChange(table, recordId, 'insert',
+                        data: processedData);
+                    debugPrint(
+                        'Successfully applied WebSocket insert: $table.$recordId');
                   }
                 } else if (table == 'active_patient_queue') {
                   // ENHANCED FIX: Better conflict handling for queue inserts
@@ -1181,22 +1236,31 @@ class EnhancedShelfServer {
                     where: 'queueEntryId = ?',
                     whereArgs: [recordId],
                   );
-                  
+
                   if (existing.isEmpty) {
-                    await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                    await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                    debugPrint('SERVER: Successfully inserted queue item: $recordId');
+                    await db.insert(table, processedData,
+                        conflictAlgorithm: ConflictAlgorithm.replace);
+                    await _dbHelper!.logChange(table, recordId, 'insert',
+                        data: processedData);
+                    debugPrint(
+                        'SERVER: Successfully inserted queue item: $recordId');
                   } else {
-                    debugPrint('SERVER: Queue item already exists, updating instead: $recordId');
-                    await db.update(table, recordData, where: 'queueEntryId = ?', whereArgs: [recordId]);
-                    await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
+                    debugPrint(
+                        'SERVER: Queue item already exists, updating instead: $recordId');
+                    await db.update(table, processedData,
+                        where: 'queueEntryId = ?', whereArgs: [recordId]);
+                    await _dbHelper!.logChange(table, recordId, 'update',
+                        data: processedData);
                   }
                 } else {
                   // Use INSERT OR REPLACE to handle potential conflicts for other tables
-                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
+                  await db.insert(table, processedData,
+                      conflictAlgorithm: ConflictAlgorithm.replace);
                   // Log the change to trigger sync notifications
-                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                  debugPrint('Successfully applied WebSocket insert: $table.$recordId');
+                  await _dbHelper!.logChange(table, recordId, 'insert',
+                      data: processedData);
+                  debugPrint(
+                      'Successfully applied WebSocket insert: $table.$recordId');
                 }
               } catch (e) {
                 debugPrint('Error applying WebSocket insert: $e');
@@ -1208,18 +1272,22 @@ class EnhancedShelfServer {
                   } else if (table == 'user_sessions') {
                     whereColumn = 'id';
                   }
-                  
-                  final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
-                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
-                  debugPrint('Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
+
+                  final rowsAffected = await db.update(table, processedData,
+                      where: '$whereColumn = ?', whereArgs: [recordId]);
+                  await _dbHelper!.logChange(table, recordId, 'update',
+                      data: processedData);
+                  debugPrint(
+                      'Fallback update successful: $table.$recordId (rows affected: $rowsAffected)');
                 } catch (updateError) {
-                  debugPrint('Both insert and update failed for $table.$recordId: $updateError');
+                  debugPrint(
+                      'Both insert and update failed for $table.$recordId: $updateError');
                 }
               }
             }
             break;
           case 'update':
-            if (recordData != null) {
+            if (processedData != null) {
               try {
                 String whereColumn = 'id';
                 // Handle special cases for tables with different primary key columns
@@ -1228,19 +1296,26 @@ class EnhancedShelfServer {
                 } else if (table == 'user_sessions') {
                   whereColumn = 'id';
                 }
-                
-                final rowsAffected = await db.update(table, recordData, where: '$whereColumn = ?', whereArgs: [recordId]);
-                
+
+                final rowsAffected = await db.update(table, processedData,
+                    where: '$whereColumn = ?', whereArgs: [recordId]);
+
                 // If no rows were affected, try inserting the record
                 if (rowsAffected == 0) {
-                  debugPrint('No rows updated, attempting insert for $table.$recordId');
-                  await db.insert(table, recordData, conflictAlgorithm: ConflictAlgorithm.replace);
-                  await _dbHelper!.logChange(table, recordId, 'insert', data: recordData);
-                  debugPrint('Successfully inserted instead of updated: $table.$recordId');
+                  debugPrint(
+                      'No rows updated, attempting insert for $table.$recordId');
+                  await db.insert(table, processedData,
+                      conflictAlgorithm: ConflictAlgorithm.replace);
+                  await _dbHelper!.logChange(table, recordId, 'insert',
+                      data: processedData);
+                  debugPrint(
+                      'Successfully inserted instead of updated: $table.$recordId');
                 } else {
                   // Log the change to trigger sync notifications
-                  await _dbHelper!.logChange(table, recordId, 'update', data: recordData);
-                  debugPrint('Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
+                  await _dbHelper!.logChange(table, recordId, 'update',
+                      data: processedData);
+                  debugPrint(
+                      'Successfully applied WebSocket update: $table.$recordId (rows affected: $rowsAffected)');
                 }
               } catch (e) {
                 debugPrint('Error applying WebSocket update: $e');
@@ -1251,7 +1326,7 @@ class EnhancedShelfServer {
             try {
               String whereColumn = 'id';
               String whereValue = recordId;
-              
+
               // Handle special cases for tables with different primary key columns
               if (table == 'active_patient_queue') {
                 whereColumn = 'queueEntryId';
@@ -1260,16 +1335,19 @@ class EnhancedShelfServer {
                 if (recordData != null && recordData['sessionToken'] != null) {
                   whereColumn = 'sessionToken';
                   whereValue = recordData['sessionToken'];
-                  debugPrint('Using sessionToken for session deletion: $whereValue');
+                  debugPrint(
+                      'Using sessionToken for session deletion: $whereValue');
                 } else {
                   whereColumn = 'id';
                 }
               }
-              
-              final rowsAffected = await db.delete(table, where: '$whereColumn = ?', whereArgs: [whereValue]);
+
+              final rowsAffected = await db.delete(table,
+                  where: '$whereColumn = ?', whereArgs: [whereValue]);
               // Log the change to trigger sync notifications
               await _dbHelper!.logChange(table, recordId, 'delete');
-              debugPrint('Successfully applied WebSocket delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
+              debugPrint(
+                  'Successfully applied WebSocket delete: $table.$recordId using $whereColumn=$whereValue (rows affected: $rowsAffected)');
             } catch (e) {
               debugPrint('Error applying WebSocket delete: $e');
             }
@@ -1277,28 +1355,29 @@ class EnhancedShelfServer {
           default:
             debugPrint('Unknown WebSocket operation: $operation');
         }
-        
+
         // Add client info to the change data for tracking
         final broadcastData = Map<String, dynamic>.from(changeData);
         broadcastData['source'] = 'client';
         if (clientInfo != null) {
           broadcastData['clientInfo'] = clientInfo;
         }
-        
+
         // Broadcast this change to other connected clients (excluding sender)
         _broadcastWebSocketChange(broadcastData);
-        
+
         // CRITICAL FIX: Special handling for queue and user_sessions changes
         if (table == 'active_patient_queue') {
-          debugPrint('SERVER: QUEUE CHANGE broadcasted to all connected clients');
-          
+          debugPrint(
+              'SERVER: QUEUE CHANGE broadcasted to all connected clients');
+
           // Also send immediate table sync to ensure consistency
           Future.delayed(const Duration(milliseconds: 100), () async {
             try {
               if (_dbHelper != null) {
                 final db = await _dbHelper!.database;
                 final queueData = await db.query('active_patient_queue');
-                
+
                 _broadcastToAllClients(jsonEncode({
                   'type': 'table_sync',
                   'table': 'active_patient_queue',
@@ -1307,8 +1386,9 @@ class EnhancedShelfServer {
                   'recordCount': queueData.length,
                   'reason': 'queue_change_immediate_sync',
                 }));
-                
-                debugPrint('SERVER: Sent immediate queue table sync to all clients (${queueData.length} records)');
+
+                debugPrint(
+                    'SERVER: Sent immediate queue table sync to all clients (${queueData.length} records)');
               }
             } catch (e) {
               debugPrint('SERVER: Error sending immediate queue sync: $e');
@@ -1317,15 +1397,16 @@ class EnhancedShelfServer {
         }
         // CRITICAL FIX: Special handling for user_sessions table to ensure proper bidirectional sync
         else if (table == 'user_sessions') {
-          debugPrint('SERVER: USER SESSIONS CHANGE broadcasted to all connected clients');
-          
+          debugPrint(
+              'SERVER: USER SESSIONS CHANGE broadcasted to all connected clients');
+
           // Force immediate session sync to all clients
           Future.delayed(const Duration(milliseconds: 100), () async {
             try {
               if (_dbHelper != null) {
                 final db = await _dbHelper!.database;
                 final sessionsData = await db.query('user_sessions');
-                
+
                 _broadcastToAllClients(jsonEncode({
                   'type': 'table_sync',
                   'table': 'user_sessions',
@@ -1335,20 +1416,20 @@ class EnhancedShelfServer {
                   'reason': 'session_change_immediate_sync',
                   'priority': 'critical',
                 }));
-                
-                debugPrint('SERVER: Sent immediate user_sessions table sync to all clients (${sessionsData.length} records)');
+
+                debugPrint(
+                    'SERVER: Sent immediate user_sessions table sync to all clients (${sessionsData.length} records)');
               }
             } catch (e) {
-              debugPrint('SERVER: Error sending immediate user_sessions sync: $e');
+              debugPrint(
+                  'SERVER: Error sending immediate user_sessions sync: $e');
             }
           });
         }
-        
       } finally {
         // Re-enable change callback - handled in main.dart now
         // DatabaseHelper.setDatabaseChangeCallback(_onDatabaseChange);
       }
-      
     } catch (e) {
       debugPrint('Error handling WebSocket database change: $e');
     }
@@ -1361,9 +1442,9 @@ class EnhancedShelfServer {
       'change': change,
       'timestamp': DateTime.now().toIso8601String(),
     });
-    
+
     final deadConnections = <WebSocketChannel>[];
-    
+
     for (final connection in _activeWebSocketConnections) {
       try {
         connection.sink.add(message);
@@ -1372,20 +1453,22 @@ class EnhancedShelfServer {
         deadConnections.add(connection);
       }
     }
-    
+
     // Remove dead connections
     for (final deadConnection in deadConnections) {
       _activeWebSocketConnections.remove(deadConnection);
     }
-    
+
     if (deadConnections.isNotEmpty) {
-      debugPrint('Removed ${deadConnections.length} dead WebSocket connections');
+      debugPrint(
+          'Removed ${deadConnections.length} dead WebSocket connections');
     }
-    
+
     // Add to sync updates stream
     _syncUpdates.add(change);
-    
-    debugPrint('Broadcasted change to ${_activeWebSocketConnections.length} WebSocket clients');
+
+    debugPrint(
+        'Broadcasted change to ${_activeWebSocketConnections.length} WebSocket clients');
   }
 
   /// Send ping to all connected WebSocket clients to check connection health
@@ -1395,9 +1478,9 @@ class EnhancedShelfServer {
       'timestamp': DateTime.now().toIso8601String(),
       'from': 'server',
     });
-    
+
     final deadConnections = <WebSocketChannel>[];
-    
+
     for (final connection in _activeWebSocketConnections) {
       try {
         connection.sink.add(pingMessage);
@@ -1406,14 +1489,15 @@ class EnhancedShelfServer {
         deadConnections.add(connection);
       }
     }
-    
+
     // Remove dead connections
     for (final deadConnection in deadConnections) {
       _activeWebSocketConnections.remove(deadConnection);
     }
-    
+
     if (deadConnections.isNotEmpty) {
-      debugPrint('Removed ${deadConnections.length} dead connections during ping');
+      debugPrint(
+          'Removed ${deadConnections.length} dead connections during ping');
     }
   }
 
@@ -1423,7 +1507,7 @@ class EnhancedShelfServer {
       'type': 'request_sync_status',
       'timestamp': DateTime.now().toIso8601String(),
     });
-    
+
     _broadcastToAllClients(message);
     debugPrint('Requested sync status from all clients');
   }
@@ -1431,7 +1515,7 @@ class EnhancedShelfServer {
   /// Broadcast a message to all connected WebSocket clients
   static void _broadcastToAllClients(String message) {
     final deadConnections = <WebSocketChannel>[];
-    
+
     for (final connection in _activeWebSocketConnections) {
       try {
         connection.sink.add(message);
@@ -1440,7 +1524,7 @@ class EnhancedShelfServer {
         deadConnections.add(connection);
       }
     }
-    
+
     // Remove dead connections
     for (final deadConnection in deadConnections) {
       _activeWebSocketConnections.remove(deadConnection);
@@ -1459,7 +1543,8 @@ class EnhancedShelfServer {
       'totalChangeLogEntries': _changeLog.length,
       'lastSyncTime': _lastSyncTime.toIso8601String(),
       'allowedIpRanges': List.from(_allowedIpRanges),
-      'uptime': _isRunning ? DateTime.now().difference(_lastSyncTime).inMinutes : 0,
+      'uptime':
+          _isRunning ? DateTime.now().difference(_lastSyncTime).inMinutes : 0,
       'endpoints': [
         'GET /status',
         'GET /db/download',
@@ -1490,10 +1575,10 @@ class EnhancedShelfServer {
         debugPrint('Cannot force sync: Database not initialized');
         return;
       }
-      
+
       final db = await _dbHelper!.database;
       final data = await db.query(tableName);
-      
+
       final syncMessage = jsonEncode({
         'type': 'force_table_sync',
         'table': tableName,
@@ -1501,9 +1586,10 @@ class EnhancedShelfServer {
         'timestamp': DateTime.now().toIso8601String(),
         'recordCount': data.length,
       });
-      
+
       _broadcastToAllClients(syncMessage);
-      debugPrint('Force synced table $tableName to all clients (${data.length} records)');
+      debugPrint(
+          'Force synced table $tableName to all clients (${data.length} records)');
     } catch (e) {
       debugPrint('Error force syncing table $tableName: $e');
     }
@@ -1513,12 +1599,12 @@ class EnhancedShelfServer {
   static void cleanupChangeLog() {
     final cutoffTime = DateTime.now().subtract(const Duration(hours: 24));
     final originalCount = _changeLog.length;
-    
+
     _changeLog.removeWhere((change) {
       final changeTime = DateTime.parse(change['timestamp'] as String);
       return changeTime.isBefore(cutoffTime);
     });
-    
+
     final removedCount = originalCount - _changeLog.length;
     if (removedCount > 0) {
       debugPrint('Cleaned up $removedCount old change log entries');
@@ -1526,14 +1612,15 @@ class EnhancedShelfServer {
   }
 
   /// Send server announcement to all clients
-  static void announceToClients(String message, {String type = 'announcement'}) {
+  static void announceToClients(String message,
+      {String type = 'announcement'}) {
     final announcement = jsonEncode({
       'type': type,
       'message': message,
       'timestamp': DateTime.now().toIso8601String(),
       'from': 'server',
     });
-    
+
     _broadcastToAllClients(announcement);
     debugPrint('Announced to all clients: $message');
   }

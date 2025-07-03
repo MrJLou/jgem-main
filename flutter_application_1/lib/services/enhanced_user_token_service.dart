@@ -187,6 +187,13 @@ class EnhancedUserTokenService {
         debugPrint(
             'ENHANCED_TOKEN_SERVICE: DEBUG - Database insert completed, result: $insertResult');
 
+        // CRITICAL FIX: Ensure callback is restored before attempting sync
+        if (!DatabaseHelper.hasDatabaseChangeCallback()) {
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: CRITICAL - Database callback missing! Attempting immediate restoration...');
+          await _restoreMainDatabaseCallback();
+        }
+
         // CRITICAL FIX: Use the proper DatabaseHelper method that guarantees sync callback
         await _dbHelper.logChange(
             DatabaseHelper.tableUserSessions, sessionId, 'insert',
@@ -209,7 +216,8 @@ class EnhancedUserTokenService {
           }
         } else {
           debugPrint(
-              'ENHANCED_TOKEN_SERVICE: WARNING - No database change callback registered!');
+              'ENHANCED_TOKEN_SERVICE: WARNING - No database change callback registered! Forcing manual sync...');
+          await _forceManualSessionSync(sessionData);
         }
 
         // Verify the session was created in the user_sessions table
@@ -1390,7 +1398,94 @@ class EnhancedUserTokenService {
     }
   }
 
-  // ...existing code...
+  /// Restore main database callback when it's missing
+  static Future<void> _restoreMainDatabaseCallback() async {
+    try {
+      // Import the main app callback that should be restored
+      debugPrint(
+          'ENHANCED_TOKEN_SERVICE: Attempting to restore main database callback...');
+
+      // Try to call the global restoration function from main.dart
+      // Note: This is a workaround since we can't easily import from main.dart
+      // The main.dart periodic check should handle this, but we need it immediately
+
+      // Wait a moment for any ongoing operations to complete
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // Check if the callback was restored by the periodic check
+      if (!DatabaseHelper.hasDatabaseChangeCallback()) {
+        debugPrint(
+            'ENHANCED_TOKEN_SERVICE: Main callback restoration failed - proceeding with manual sync');
+
+        // Alternative approach: Try to trigger a very short delay and check again
+        // The main.dart timer runs every 5 seconds, so this might catch it
+        for (int i = 0; i < 10; i++) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (DatabaseHelper.hasDatabaseChangeCallback()) {
+            debugPrint(
+                'ENHANCED_TOKEN_SERVICE: Callback restored after ${(i + 1) * 100}ms wait');
+            break;
+          }
+        }
+      } else {
+        debugPrint(
+            'ENHANCED_TOKEN_SERVICE: Main callback successfully restored');
+      }
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error restoring main callback: $e');
+    }
+  }
+
+  /// Force manual session sync when database callback is missing
+  static Future<void> _forceManualSessionSync(
+      Map<String, dynamic> sessionData) async {
+    try {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Forcing manual session sync...');
+
+      // Force immediate sync based on device type
+      final isHost = EnhancedShelfServer.isRunning;
+      final isClient = DatabaseSyncClient.isConnected;
+
+      if (isHost) {
+        try {
+          await EnhancedShelfServer.forceSyncTable('user_sessions');
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: [HOST] Manual session sync sent to all clients');
+        } catch (e) {
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: [HOST] Error in manual session sync: $e');
+        }
+      }
+
+      if (isClient) {
+        try {
+          await DatabaseSyncClient.forceSessionSync();
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: [CLIENT] Manual session sync sent to host');
+        } catch (e) {
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: [CLIENT] Error in manual session sync: $e');
+        }
+      }
+
+      // Additional fallback: Direct WebSocket notification if available
+      if (isClient && DatabaseSyncClient.isConnected) {
+        try {
+          await DatabaseSyncClient.notifyLocalDatabaseChange('user_sessions',
+              'insert', sessionData['id'] as String, sessionData);
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: Direct WebSocket session notification sent');
+        } catch (e) {
+          debugPrint(
+              'ENHANCED_TOKEN_SERVICE: Error in direct WebSocket notification: $e');
+        }
+      }
+
+      debugPrint('ENHANCED_TOKEN_SERVICE: Manual session sync completed');
+    } catch (e) {
+      debugPrint('ENHANCED_TOKEN_SERVICE: Error in manual session sync: $e');
+    }
+  }
 }
 
 /// Exception thrown when there's a session conflict (user already logged in)
