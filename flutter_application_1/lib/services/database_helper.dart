@@ -1577,12 +1577,22 @@ class DatabaseHelper {
     // Use a callback-based approach to avoid circular imports
     if (_onDatabaseChanged != null) {
       try {
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Calling database change callback: $table.$operation');
         await _onDatabaseChanged!(table, operation, recordId, data);
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Callback completed successfully');
         debugPrint('Real-time sync notification sent: $table.$operation for record $recordId');
+        
+        // Extra logging for queue changes
+        if (table == 'active_patient_queue') {
+          debugPrint('DATABASE_HELPER: SYNC DEBUG - QUEUE CHANGE notification sent');
+        }
       } catch (e) {
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Callback error: $e');
         debugPrint('Real-time sync notification failed: $e');
         // Don't rethrow to avoid breaking database operations
       }
+    } else {
+      debugPrint('DATABASE_HELPER: SYNC DEBUG - No callback registered, sync notification NOT sent');
     }
   }
 
@@ -2231,19 +2241,26 @@ To view live changes in DB Browser:
   Future<ActivePatientQueueItem> addToActiveQueue(
       ActivePatientQueueItem item) async {
     final db = await database;
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Starting addToActiveQueue for ${item.patientName}');
+    
     await db.insert(DatabaseHelper.tableActivePatientQueue, item.toJson());
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Database insert completed');
+    
     await logChange(
         DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - logChange completed');
     
     debugPrint('DatabaseHelper: Patient added to queue ${item.queueEntryId} - sync notification sent');
     
     // Trigger immediate sync to notify all connected devices
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Before _notifyDatabaseChange');
     await _notifyDatabaseChange(
       DatabaseHelper.tableActivePatientQueue, 
       'insert', 
       item.queueEntryId, 
       data: item.toJson()
     );
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - After _notifyDatabaseChange');
     
     return item;
   }

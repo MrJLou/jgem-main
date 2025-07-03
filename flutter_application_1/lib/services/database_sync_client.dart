@@ -86,17 +86,25 @@ class DatabaseSyncClient {
   static Future<void> _connectWebSocket() async {
     try {
       final wsUrl = 'ws://$_serverIp:$_serverPort/ws?access_code=$_accessCode';
-      _wsChannel = IOWebSocketChannel.connect(wsUrl);
+      debugPrint('SYNC DEBUG: Connecting to WebSocket at $wsUrl');
+      _wsChannel = IOWebSocketChannel.connect(wsUrl, pingInterval: const Duration(seconds: 10));
 
       _wsSubscription = _wsChannel!.stream.listen(
-        _handleWebSocketMessage,
+        (message) {
+          try {
+            debugPrint('SYNC DEBUG: WebSocket message received');
+            _handleWebSocketMessage(message);
+          } catch (e) {
+            debugPrint('SYNC DEBUG: Error handling WebSocket message: $e');
+          }
+        },
         onDone: () {
-          debugPrint('WebSocket connection closed');
+          debugPrint('SYNC DEBUG: WebSocket connection closed');
           _isConnected = false;
           _scheduleReconnect();
         },
         onError: (error) {
-          debugPrint('WebSocket error: $error');
+          debugPrint('SYNC DEBUG: WebSocket error: $error');
           _isConnected = false;
           _scheduleReconnect();
         },
@@ -857,11 +865,19 @@ class DatabaseSyncClient {
   static Future<void> _onLocalDatabaseChange(String table, String operation, String recordId, Map<String, dynamic>? data) async {
     try {
       if (!_isConnected || _wsChannel == null) {
-        debugPrint('Not connected to server, change will sync later: $table.$operation');
+        debugPrint('SYNC DEBUG: Not connected to server, change will sync later: $table.$operation');
         return;
       }
 
-      debugPrint('Sending local change to server: $table.$operation for record $recordId');
+      debugPrint('SYNC DEBUG: Sending local change to server: $table.$operation for record $recordId');
+      
+      // Extra debug for queue changes
+      if (table == 'active_patient_queue') {
+        debugPrint('SYNC DEBUG: QUEUE CHANGE - operation=$operation, recordId=$recordId');
+        if (data != null) {
+          debugPrint('SYNC DEBUG: QUEUE DATA - patientName=${data['patientName']}, status=${data['status']}');
+        }
+      }
 
       final changeMessage = {
         'type': 'database_change',
@@ -881,7 +897,11 @@ class DatabaseSyncClient {
       };
 
       _wsChannel!.sink.add(jsonEncode(changeMessage));
-      debugPrint('Successfully sent local change to server: $table.$operation');
+      debugPrint('SYNC DEBUG: Successfully sent local change to server via WebSocket: $table.$operation');
+      
+      if (table == 'active_patient_queue') {
+        debugPrint('SYNC DEBUG: QUEUE CHANGE WebSocket message sent successfully');
+      }
 
       // CRITICAL: Special handling for user_sessions table - IMMEDIATE sync required
       if (table == 'user_sessions') {
@@ -1075,11 +1095,17 @@ class DatabaseSyncClient {
   /// Request specific queue table sync
   static void _requestQueueSync() {
     if (_isConnected && _wsChannel != null) {
-      _wsChannel!.sink.add(jsonEncode({
+      debugPrint('SYNC DEBUG: Sending queue sync request via WebSocket');
+      final message = jsonEncode({
         'type': 'request_table_sync',
         'table': 'active_patient_queue',
         'timestamp': DateTime.now().toIso8601String(),
-      }));
+      });
+      
+      _wsChannel!.sink.add(message);
+      debugPrint('SYNC DEBUG: Queue sync request sent to server: $message');
+    } else {
+      debugPrint('SYNC DEBUG: Cannot request queue sync - WebSocket not connected');
     }
   }
 
@@ -1188,6 +1214,8 @@ class DatabaseSyncClient {
 
   /// Trigger immediate UI refresh for queue changes
   static void triggerQueueRefresh() {
+    debugPrint('SYNC DEBUG: triggerQueueRefresh called, connected=${_isConnected}');
+    
     _syncUpdates.add({
       'type': 'queue_change_immediate',
       'table': 'active_patient_queue',
@@ -1197,7 +1225,10 @@ class DatabaseSyncClient {
     
     // Also request immediate sync if connected
     if (_isConnected && _wsChannel != null) {
+      debugPrint('SYNC DEBUG: WebSocket is connected, requesting queue sync');
       _requestQueueSync();
+    } else {
+      debugPrint('SYNC DEBUG: WebSocket is NOT connected, skipping queue sync request');
     }
   }
 

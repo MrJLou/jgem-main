@@ -66,11 +66,22 @@ void main() async {
     try {
       debugPrint('MAIN: Database change detected: $table.$operation for record $recordId');
       
+      // Extra debug for queue changes
+      if (table == 'active_patient_queue') {
+        debugPrint('MAIN: QUEUE CHANGE DETECTED - operation=$operation, recordId=$recordId');
+        if (data != null) {
+          final patientName = data['patientName'] ?? 'Unknown';
+          final status = data['status'] ?? 'Unknown';
+          debugPrint('MAIN: QUEUE CHANGE DETAILS - Patient: $patientName, Status: $status');
+        }
+      }
+      
       // CRITICAL: Handle BOTH host and client scenarios
       
       // 1. If we're running as a HOST (server), notify clients via EnhancedShelfServer
       if (EnhancedShelfServer.isRunning) {
         try {
+          debugPrint('MAIN: [HOST] Sending change to clients: $table.$operation');
           await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
           debugPrint('MAIN: [HOST] Database change sent to all clients via Enhanced Shelf Server');
         } catch (e) {
@@ -82,6 +93,7 @@ void main() async {
       if (DatabaseSyncClient.isConnected) {
         try {
           // Use the _onLocalDatabaseChange method from DatabaseSyncClient
+          debugPrint('MAIN: [CLIENT] Sending change to host: $table.$operation');
           await DatabaseSyncClient.notifyLocalDatabaseChange(table, operation, recordId, data);
           debugPrint('MAIN: [CLIENT] Database change sent to host server via Database Sync Client');
         } catch (e) {
@@ -127,6 +139,36 @@ void main() async {
   
   // Initialize sync client for connecting to other servers
   await DatabaseSyncClient.initialize(dbHelper);
+  
+  // Set a timer to verify queue sync in 5 seconds after app startup
+  Future.delayed(const Duration(seconds: 5), () async {
+    debugPrint('SYNC DEBUG: Running queue sync verification test');
+    final isClient = DatabaseSyncClient.isConnected && !EnhancedShelfServer.isRunning;
+    if (isClient) {
+      debugPrint('SYNC DEBUG: This is a client device, verifying database change callbacks');
+      // Manually trigger the database change callback to verify it works
+      try {
+        final queueItemId = 'test-queue-item-${DateTime.now().millisecondsSinceEpoch}';
+        final testData = {
+          'queueEntryId': queueItemId,
+          'patientName': 'Test Patient',
+          'status': 'waiting'
+        };
+        debugPrint('SYNC DEBUG: Triggering test notification for queue table');
+        await DatabaseHelper.triggerDatabaseChangeCallback(
+          'active_patient_queue',
+          'insert',
+          queueItemId,
+          testData
+        );
+        debugPrint('SYNC DEBUG: Test notification complete');
+      } catch (e) {
+        debugPrint('SYNC DEBUG: Test notification error: $e');
+      }
+    } else {
+      debugPrint('SYNC DEBUG: This is not a client device or client is not connected');
+    }
+  });
   
   // Set up session sync listener for cross-device session management
   DatabaseSyncClient.syncUpdates.listen((update) {

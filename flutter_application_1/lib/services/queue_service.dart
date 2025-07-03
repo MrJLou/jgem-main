@@ -8,6 +8,7 @@ import '../models/active_patient_queue_item.dart';
 import '../models/appointment.dart';
 import 'auth_service.dart';
 import 'database_sync_client.dart'; // Added for sync triggering
+import 'enhanced_shelf_lan_server.dart'; // Added for server status checking
 import 'dart:math';
 import 'api_service.dart';
 import 'package:uuid/uuid.dart';
@@ -55,6 +56,12 @@ class QueueService {
     String queueEntryId = patientData['queueId']?.toString() ??
         'qentry-${now.millisecondsSinceEpoch}-${Random().nextInt(9999)}';
 
+    if (kDebugMode) {
+      print('QueueService: SYNC DEBUG - Creating queue entry with ID: $queueEntryId');
+      print('QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
+      print('QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
+    }
+
     final nextQueueNumber = await _getNextQueueNumber();
 
     final newItem = ActivePatientQueueItem(
@@ -86,7 +93,13 @@ class QueueService {
     );
 
     // Add to database - this will automatically trigger sync notifications via logChange
+    if (kDebugMode) {
+      print('QueueService: SYNC DEBUG - Before calling addToActiveQueue');
+    }
     final addedItem = await _dbHelper.addToActiveQueue(newItem);
+    if (kDebugMode) {
+      print('QueueService: SYNC DEBUG - After calling addToActiveQueue');
+    }
     
     // Trigger immediate sync to notify connected devices
     _triggerImmediateSync();
@@ -867,6 +880,12 @@ class QueueService {
 
   /// Trigger immediate sync to notify connected devices of queue changes
   void _triggerImmediateSync() {
+    if (kDebugMode) {
+      print('QueueService: SYNC DEBUG - Start _triggerImmediateSync()');
+      print('QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
+      print('QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
+    }
+    
     // Use DatabaseSyncClient to trigger queue refresh
     DatabaseSyncClient.triggerQueueRefresh();
     
@@ -874,6 +893,7 @@ class QueueService {
     DatabaseSyncClient.forceQueueRefresh();
     
     if (kDebugMode) {
+      print('QueueService: SYNC DEBUG - End _triggerImmediateSync()');
       print('QueueService: Triggered immediate sync notification');
     }
   }
