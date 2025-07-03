@@ -76,39 +76,50 @@ void main() async {
         }
       }
       
-      // CRITICAL: Handle BOTH host and client scenarios
+      // CRITICAL FIX: Determine if this is a local change or a remote change being applied
+      // If the change has 'source' info, it means it came from a remote client
+      final isRemoteChange = data != null && (data.containsKey('source') || data.containsKey('clientInfo'));
       
-      // 1. If we're running as a HOST (server), notify clients via EnhancedShelfServer
-      if (EnhancedShelfServer.isRunning) {
+      debugPrint('MAIN: Change analysis - isRemoteChange: $isRemoteChange, hasData: ${data != null}');
+      
+      // CRITICAL: Handle BOTH host and client scenarios correctly
+      
+      // 1. If we're running as a HOST (server), notify OTHER clients (not the sender)
+      if (EnhancedShelfServer.isRunning && !isRemoteChange) {
         try {
-          debugPrint('MAIN: [HOST] Sending change to clients: $table.$operation');
+          debugPrint('MAIN: [HOST] Sending LOCAL change to clients: $table.$operation');
           await EnhancedShelfServer.onDatabaseChange(table, operation, recordId, data);
-          debugPrint('MAIN: [HOST] Database change sent to all clients via Enhanced Shelf Server');
+          debugPrint('MAIN: [HOST] Local database change sent to all clients via Enhanced Shelf Server');
         } catch (e) {
           debugPrint('MAIN: [HOST] Error notifying clients via Enhanced Shelf Server: $e');
         }
+      } else if (EnhancedShelfServer.isRunning && isRemoteChange) {
+        debugPrint('MAIN: [HOST] Skipping notification for REMOTE change (already handled by WebSocket)');
       }
       
-      // 2. If we're running as a CLIENT, notify server via DatabaseSyncClient  
-      if (DatabaseSyncClient.isConnected) {
+      // 2. If we're running as a CLIENT, notify server ONLY for local changes
+      if (DatabaseSyncClient.isConnected && !isRemoteChange && !EnhancedShelfServer.isRunning) {
         try {
-          // Use the _onLocalDatabaseChange method from DatabaseSyncClient
-          debugPrint('MAIN: [CLIENT] Sending change to host: $table.$operation');
+          debugPrint('MAIN: [CLIENT] Sending LOCAL change to host: $table.$operation');
           await DatabaseSyncClient.notifyLocalDatabaseChange(table, operation, recordId, data);
-          debugPrint('MAIN: [CLIENT] Database change sent to host server via Database Sync Client');
+          debugPrint('MAIN: [CLIENT] Local database change sent to host server via Database Sync Client');
         } catch (e) {
           debugPrint('MAIN: [CLIENT] Error notifying host server via Database Sync Client: $e');
         }
+      } else if (DatabaseSyncClient.isConnected && isRemoteChange) {
+        debugPrint('MAIN: [CLIENT] Skipping notification for REMOTE change (came from server)');
+      } else if (DatabaseSyncClient.isConnected && EnhancedShelfServer.isRunning) {
+        debugPrint('MAIN: [CLIENT] Device is both host and client - not sending to self');
       }
       
       // Special handling for user_sessions table - CRITICAL for authentication sync
-      if (table == 'user_sessions') {
-        debugPrint('MAIN: CRITICAL SESSION CHANGE - Operation: $operation, Record: $recordId');
+      if (table == 'user_sessions' && !isRemoteChange) {
+        debugPrint('MAIN: CRITICAL LOCAL SESSION CHANGE - Operation: $operation, Record: $recordId');
         if (data != null) {
           debugPrint('MAIN: Session data: username=${data['username']}, deviceId=${data['deviceId']}, isActive=${data['isActive']}');
         }
         
-        // Force immediate session table sync for both host and client
+        // Force immediate session table sync for both host and client (only for local changes)
         if (EnhancedShelfServer.isRunning) {
           try {
             await EnhancedShelfServer.forceSyncTable('user_sessions');
@@ -118,7 +129,7 @@ void main() async {
           }
         }
         
-        if (DatabaseSyncClient.isConnected) {
+        if (DatabaseSyncClient.isConnected && !EnhancedShelfServer.isRunning) {
           try {
             await DatabaseSyncClient.forceSessionSync();
             debugPrint('MAIN: [CLIENT] Forced immediate user_sessions sync to host');
@@ -126,6 +137,8 @@ void main() async {
             debugPrint('MAIN: [CLIENT] Error in forced session sync: $e');
           }
         }
+      } else if (table == 'user_sessions' && isRemoteChange) {
+        debugPrint('MAIN: CRITICAL REMOTE SESSION CHANGE - Skipping additional sync (already handled)');
       }
       
     } catch (e) {

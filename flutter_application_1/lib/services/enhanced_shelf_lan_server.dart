@@ -1288,7 +1288,7 @@ class EnhancedShelfServer {
         // Broadcast this change to other connected clients (excluding sender)
         _broadcastWebSocketChange(broadcastData);
         
-        // CRITICAL FIX: Special handling for queue changes
+        // CRITICAL FIX: Special handling for queue and user_sessions changes
         if (table == 'active_patient_queue') {
           debugPrint('SERVER: QUEUE CHANGE broadcasted to all connected clients');
           
@@ -1312,6 +1312,34 @@ class EnhancedShelfServer {
               }
             } catch (e) {
               debugPrint('SERVER: Error sending immediate queue sync: $e');
+            }
+          });
+        }
+        // CRITICAL FIX: Special handling for user_sessions table to ensure proper bidirectional sync
+        else if (table == 'user_sessions') {
+          debugPrint('SERVER: USER SESSIONS CHANGE broadcasted to all connected clients');
+          
+          // Force immediate session sync to all clients
+          Future.delayed(const Duration(milliseconds: 100), () async {
+            try {
+              if (_dbHelper != null) {
+                final db = await _dbHelper!.database;
+                final sessionsData = await db.query('user_sessions');
+                
+                _broadcastToAllClients(jsonEncode({
+                  'type': 'table_sync',
+                  'table': 'user_sessions',
+                  'data': sessionsData,
+                  'timestamp': DateTime.now().toIso8601String(),
+                  'recordCount': sessionsData.length,
+                  'reason': 'session_change_immediate_sync',
+                  'priority': 'critical',
+                }));
+                
+                debugPrint('SERVER: Sent immediate user_sessions table sync to all clients (${sessionsData.length} records)');
+              }
+            } catch (e) {
+              debugPrint('SERVER: Error sending immediate user_sessions sync: $e');
             }
           });
         }
