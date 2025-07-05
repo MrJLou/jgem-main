@@ -58,9 +58,12 @@ class QueueService {
         'qentry-${now.millisecondsSinceEpoch}-${Random().nextInt(9999)}';
 
     if (kDebugMode) {
-      print('QueueService: SYNC DEBUG - Creating queue entry with ID: $queueEntryId');
-      print('QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
-      print('QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
+      print(
+          'QueueService: SYNC DEBUG - Creating queue entry with ID: $queueEntryId');
+      print(
+          'QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
+      print(
+          'QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
     }
 
     final nextQueueNumber = await _getNextQueueNumber();
@@ -101,16 +104,18 @@ class QueueService {
     if (kDebugMode) {
       print('QueueService: SYNC DEBUG - After calling addToActiveQueue');
     }
-    
+
     // Trigger immediate sync to notify connected devices
     _triggerImmediateSync();
-    
+
     // Log successful queue addition for debugging
     if (kDebugMode) {
-      print('QueueService: Successfully added ${addedItem.patientName} to queue (ID: ${addedItem.queueEntryId}, Queue #${addedItem.queueNumber})');
-      print('QueueService: Queue addition should trigger real-time sync to connected devices');
+      print(
+          'QueueService: Successfully added ${addedItem.patientName} to queue (ID: ${addedItem.queueEntryId}, Queue #${addedItem.queueNumber})');
+      print(
+          'QueueService: Queue addition should trigger real-time sync to connected devices');
     }
-    
+
     return addedItem;
   }
 
@@ -162,7 +167,6 @@ class QueueService {
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
 
     if (result > 0) {
-      
       if (updatedItem.originalAppointmentId != null) {
         try {
           await ApiService.updateAppointmentStatus(
@@ -324,14 +328,15 @@ class QueueService {
           }
         }
 
-      // NO LONGER CREATING APPOINTMENT RECORDS FOR WALK-IN PATIENTS
-      // Queue and appointment systems are now completely separate
-      // Walk-in patients exist only in the queue system, not in appointments
-      
-      if (kDebugMode) {
-        print('QueueService: Status updated for ${updatedItem.isWalkIn ? "walk-in" : "scheduled"} patient ${updatedItem.patientName} to $newStatus');
-      }
-        
+        // NO LONGER CREATING APPOINTMENT RECORDS FOR WALK-IN PATIENTS
+        // Queue and appointment systems are now completely separate
+        // Walk-in patients exist only in the queue system, not in appointments
+
+        if (kDebugMode) {
+          print(
+              'QueueService: Status updated for ${updatedItem.isWalkIn ? "walk-in" : "scheduled"} patient ${updatedItem.patientName} to $newStatus');
+        }
+
         // ADDED: Propagate to original Appointment if exists
         else if (updatedItem.originalAppointmentId != null) {
           try {
@@ -370,10 +375,10 @@ class QueueService {
             }
           }
         }
-        
+
         // Trigger immediate sync notification
         _triggerImmediateSync();
-        
+
         return true;
       } else {
         if (kDebugMode) {
@@ -420,6 +425,61 @@ class QueueService {
   /// Mark patient as done.
   Future<bool> markPatientAsDone(String queueEntryId) async {
     return await updatePatientStatusInQueue(queueEntryId, 'done');
+  }
+
+  /// Mark consultation as complete and update patient status
+  Future<bool> markConsultationComplete(
+    String queueEntryId,
+    String patientId,
+    String doctorId,
+  ) async {
+    try {
+      final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+      if (item == null) {
+        if (kDebugMode) {
+          print(
+              'QueueService: Item with ID $queueEntryId not found for consultation completion.');
+        }
+        return false;
+      }
+
+      // Update the queue item to mark consultation as complete
+      final updatedItem = item.copyWith(
+        status: 'served', // Mark as served after consultation
+        servedAt: DateTime.now(),
+        consultationStartedAt: item.consultationStartedAt ?? DateTime.now(),
+      );
+
+      final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+      if (result > 0) {
+        // If the original item was an appointment, update its status
+        if (item.originalAppointmentId != null) {
+          try {
+            await ApiService.updateAppointmentStatus(
+                item.originalAppointmentId!, 'Completed');
+          } catch (e) {
+            if (kDebugMode) {
+              print(
+                  'QueueService: Failed to update original appointment status: $e');
+            }
+          }
+        }
+
+        // Trigger immediate sync notification
+        _triggerImmediateSync();
+
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      if (kDebugMode) {
+        print(
+            'QueueService: Error in markConsultationComplete for $queueEntryId: $e');
+      }
+      return false;
+    }
   }
 
   // Helper methods
@@ -594,7 +654,7 @@ class QueueService {
   /// but it will use the data from `generateDailyReport`.
   Future<File> exportDailyReportToPdf(Map<String, dynamic> reportData) async {
     final pdf = pw.Document();
-    
+
     // Load logo image
     final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
     final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
@@ -630,14 +690,8 @@ class QueueService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Header(
-                    level: 0, 
-                    child: pw.Text(reportTitle, style: estiloTitulo)
-                ),
-                pw.Container(
-                  height: 60, 
-                  width: 60, 
-                  child: pw.Image(logoImage)
-                ),
+                    level: 0, child: pw.Text(reportTitle, style: estiloTitulo)),
+                pw.Container(height: 60, width: 60, child: pw.Image(logoImage)),
               ],
             ),
             pw.SizedBox(height: 20),
@@ -870,7 +924,7 @@ class QueueService {
 
     // Prepare the notes from the services provided
     String notes = 'Consultation for: ${item.conditionOrPurpose}';
-    
+
     // Include selected services for analytics
     String? selectedServicesJson;
     if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
@@ -885,7 +939,8 @@ class QueueService {
       'recordType': 'Consultation', // This is the key for the history screen
       'notes': notes,
       'diagnosis': 'See consultation details.', // Placeholder
-      'selectedServices': selectedServicesJson, // Include services for analytics
+      'selectedServices':
+          selectedServicesJson, // Include services for analytics
       'createdAt': now.toIso8601String(),
       'updatedAt': now.toIso8601String(),
     };
@@ -901,16 +956,18 @@ class QueueService {
   void _triggerImmediateSync() {
     if (kDebugMode) {
       print('QueueService: SYNC DEBUG - Start _triggerImmediateSync()');
-      print('QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
-      print('QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
+      print(
+          'QueueService: SYNC DEBUG - Client sync connected: ${DatabaseSyncClient.isConnected}');
+      print(
+          'QueueService: SYNC DEBUG - Host server running: ${EnhancedShelfServer.isRunning}');
     }
-    
+
     // Use DatabaseSyncClient to trigger queue refresh
     DatabaseSyncClient.triggerQueueRefresh();
-    
+
     // Also request full sync for real-time updates
     DatabaseSyncClient.forceQueueRefresh();
-    
+
     if (kDebugMode) {
       print('QueueService: SYNC DEBUG - End _triggerImmediateSync()');
       print('QueueService: Triggered immediate sync notification');
@@ -921,12 +978,13 @@ class QueueService {
   static void refreshAllQueues() {
     // Trigger sync through DatabaseSyncClient
     DatabaseSyncClient.forceQueueRefresh();
-    
+
     // Also trigger appointment refresh since they're related
     DatabaseSyncClient.triggerAppointmentRefresh();
-    
+
     if (kDebugMode) {
-      print('QueueService: Triggered comprehensive queue and appointment refresh');
+      print(
+          'QueueService: Triggered comprehensive queue and appointment refresh');
     }
   }
 }

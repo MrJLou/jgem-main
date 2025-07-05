@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';  // For clipboard functionality
+import 'package:flutter/services.dart'; // For clipboard functionality
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../models/patient.dart';
@@ -46,8 +46,7 @@ Widget _buildStaticInputField({
       filled: true,
       fillColor: enabled ? Colors.white : Colors.grey[100],
       isDense: true,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     ),
     validator: validator,
   );
@@ -83,18 +82,19 @@ Widget _buildStaticDatePickerField({
       filled: true,
       fillColor: enabled ? Colors.white : Colors.grey[100],
       isDense: true,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
     ),
     onTap: enabled
         ? () async {
             // Calculate the date 5 years ago from now
-            final DateTime fiveYearsAgo = DateTime.now().subtract(const Duration(days: 5 * 365));
+            final DateTime fiveYearsAgo =
+                DateTime.now().subtract(const Duration(days: 5 * 365));
             final DateTime? picked = await showDatePicker(
               context: context,
               initialDate: fiveYearsAgo,
               firstDate: DateTime(1900),
-              lastDate: fiveYearsAgo, // Restrict to dates at least 5 years in the past
+              lastDate:
+                  fiveYearsAgo, // Restrict to dates at least 5 years in the past
             );
             if (picked != null) {
               onDatePicked(picked);
@@ -105,11 +105,12 @@ Widget _buildStaticDatePickerField({
       if (value == null || value.isEmpty) {
         return 'Required';
       }
-      
+
       // Validate that the date is at least 5 years ago
       try {
         final DateTime selectedDate = DateFormat('yyyy-MM-dd').parse(value);
-        final DateTime fiveYearsAgo = DateTime.now().subtract(const Duration(days: 5 * 365));
+        final DateTime fiveYearsAgo =
+            DateTime.now().subtract(const Duration(days: 5 * 365));
         if (selectedDate.isAfter(fiveYearsAgo)) {
           return 'Patient must be at least 5 years old';
         }
@@ -123,8 +124,8 @@ Widget _buildStaticDatePickerField({
 
 // Removed unused _buildStaticDropdownField function
 
-
-Widget _buildStaticSectionCard(String title, IconData icon, Widget content) { // Made static
+Widget _buildStaticSectionCard(String title, IconData icon, Widget content) {
+  // Made static
   return Card(
     elevation: 1.5,
     shape: RoundedRectangleBorder(
@@ -171,8 +172,10 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
-  final TextEditingController _middleNameController = TextEditingController(); // Added for middle name
-  final TextEditingController _suffixController = TextEditingController(); // Added for suffix
+  final TextEditingController _middleNameController =
+      TextEditingController(); // Added for middle name
+  final TextEditingController _suffixController =
+      TextEditingController(); // Added for suffix
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -195,11 +198,23 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   bool _isLoading = false;
 
   final List<String> _bloodTypes = [
-    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown',
+    'A+',
+    'A-',
+    'B+',
+    'B-',
+    'AB+',
+    'AB-',
+    'O+',
+    'O-',
+    'Unknown',
   ];
 
   final List<String> _civilStatusOptions = [
-    'Single', 'Married', 'Widowed', 'Separated', 'Divorced'
+    'Single',
+    'Married',
+    'Widowed',
+    'Separated',
+    'Divorced'
   ];
 
   @override
@@ -217,14 +232,14 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
     if (_isEditMode && widget.patient != null) {
       final patient = widget.patient!;
-      
+
       // Parse the fullName which should be in "Last, First Middle (Suffix)" format
       String fullName = patient.fullName;
       String firstName = '';
       String lastName = '';
       String middleName = '';
       String suffix = '';
-      
+
       // Use the stored fields if available
       if (patient.firstName != null && patient.lastName != null) {
         firstName = patient.firstName!;
@@ -238,49 +253,54 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
             // Format is "Last, First Middle (Suffix)"
             final parts = fullName.split(',');
             lastName = parts[0].trim();
-            
+
             String remainingPart = parts[1].trim();
-            
+
             // Extract suffix if present
             if (remainingPart.contains('(') && remainingPart.contains(')')) {
-              final suffixMatch = RegExp(r'\((.*?)\)').firstMatch(remainingPart);
+              final suffixMatch =
+                  RegExp(r'\((.*?)\)').firstMatch(remainingPart);
               if (suffixMatch != null) {
                 suffix = suffixMatch.group(1)!;
-                remainingPart = remainingPart.replaceAll('(${suffix})', '').trim();
+                remainingPart =
+                    remainingPart.replaceAll('($suffix)', '').trim();
               }
             }
-            
+
             // Split remaining into first and middle
             final nameParts = remainingPart.split(' ');
             firstName = nameParts.isNotEmpty ? nameParts[0] : '';
-            middleName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+            middleName =
+                nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
           } else {
             // Old format or just a simple name
             final nameParts = fullName.split(' ');
             firstName = nameParts.isNotEmpty ? nameParts.first : '';
             lastName = nameParts.length > 1 ? nameParts.last : '';
-            middleName = nameParts.length > 2 ? 
-                nameParts.sublist(1, nameParts.length - 1).join(' ') : '';
+            middleName = nameParts.length > 2
+                ? nameParts.sublist(1, nameParts.length - 1).join(' ')
+                : '';
           }
         } catch (e) {
           // If parsing fails, just use the whole name as first name
           firstName = fullName;
         }
       }
-      
+
       _firstNameController.text = firstName;
       _lastNameController.text = lastName;
       _middleNameController.text = middleName;
       _suffixController.text = suffix;
-      _dobController.text = DateFormat('yyyy-MM-dd').format(patient.birthDate); // Keep yyyy-MM-dd for parsing
+      _dobController.text = DateFormat('yyyy-MM-dd')
+          .format(patient.birthDate); // Keep yyyy-MM-dd for parsing
       _contactController.text = patient.contactNumber ?? '';
-      _emailController.text = patient.email ?? ''; 
+      _emailController.text = patient.email ?? '';
       _addressController.text = patient.address ?? '';
       _emergencyContactController.text = patient.emergencyContactNumber ?? '';
       _emergencyContactNameController.text = patient.emergencyContactName ?? '';
-      _medicalInfoController.text = patient.medicalHistory ?? ''; 
+      _medicalInfoController.text = patient.medicalHistory ?? '';
       _allergiesController.text = patient.allergies ?? '';
-      _currentMedicationsController.text = patient.currentMedications ?? ''; 
+      _currentMedicationsController.text = patient.currentMedications ?? '';
       _gender = patient.gender == 'Other' ? 'Male' : patient.gender;
       _bloodType = patient.bloodType ?? 'A+';
       _unknownBloodType = patient.bloodType == 'Unknown';
@@ -293,7 +313,7 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       _generatedPatientId = Patient.generateDisplayId();
     }
   }
-  
+
   @override
   void dispose() {
     _firstNameController.dispose();
@@ -377,78 +397,95 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                   fontSize: 14,
                                 ),
                               ),
-                              
+
                               // Patient ID display with copy button at the top
                               if (_generatedPatientId != null)
-                              Container(
-                                margin: const EdgeInsets.only(top: 16),
-                                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.teal[700]!, width: 1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  color: Colors.teal[50],
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.grey.withOpacity(0.3),
-                                      spreadRadius: 1,
-                                      blurRadius: 3,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.badge_outlined, color: Colors.teal[700]),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Patient ID: $_generatedPatientId',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.teal[700],
-                                        fontSize: 16,
-                                        letterSpacing: 0.5,
+                                Container(
+                                  margin: const EdgeInsets.only(top: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                        color: Colors.teal[700]!, width: 1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.teal[50],
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withAlpha(30),
+                                        spreadRadius: 1,
+                                        blurRadius: 3,
+                                        offset: const Offset(0, 2),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.copy, size: 18),
-                                      color: Colors.teal[700],
-                                      tooltip: 'Copy ID',
-                                      onPressed: () {
-                                        Clipboard.setData(ClipboardData(text: _generatedPatientId!));
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: const Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(Icons.check_circle_outline, color: Colors.white),
-                                                SizedBox(width: 10),
-                                                Text('Patient ID copied to clipboard'),
-                                              ],
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.badge_outlined,
+                                          color: Colors.teal[700]),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        'Patient ID: $_generatedPatientId',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal[700],
+                                          fontSize: 16,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.copy, size: 18),
+                                        color: Colors.teal[700],
+                                        tooltip: 'Copy ID',
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(
+                                              text: _generatedPatientId!));
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: const Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                      Icons
+                                                          .check_circle_outline,
+                                                      color: Colors.white),
+                                                  SizedBox(width: 10),
+                                                  Text(
+                                                      'Patient ID copied to clipboard'),
+                                                ],
+                                              ),
+                                              backgroundColor: Colors.teal,
+                                              duration:
+                                                  const Duration(seconds: 1),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              margin: const EdgeInsets.all(10),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
                                             ),
-                                            backgroundColor: Colors.teal,
-                                            duration: const Duration(seconds: 1),
-                                            behavior: SnackBarBehavior.floating,
-                                            margin: const EdgeInsets.all(10),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(10),
+                                          );
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: const Text(
+                                                  'Patient ID copied to clipboard'),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              backgroundColor: Colors.teal[700],
+                                              duration:
+                                                  const Duration(seconds: 2),
                                             ),
-                                          ),
-                                        );
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: const Text('Patient ID copied to clipboard'),
-                                            behavior: SnackBarBehavior.floating,
-                                            backgroundColor: Colors.teal[700],
-                                            duration: const Duration(seconds: 2),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -458,30 +495,36 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         ReusablePatientFormFields(
                           firstNameController: _firstNameController,
                           lastNameController: _lastNameController,
-                          middleNameController: _middleNameController, // Pass new controller
-                          suffixController: _suffixController, // Pass new controller
+                          middleNameController:
+                              _middleNameController, // Pass new controller
+                          suffixController:
+                              _suffixController, // Pass new controller
                           dobController: _dobController,
                           contactController: _contactController,
-                          emailController: _emailController, // Pass all controllers
+                          emailController:
+                              _emailController, // Pass all controllers
                           addressController: _addressController,
-                          emergencyContactController: _emergencyContactController,
-                          emergencyContactNameController: _emergencyContactNameController,
+                          emergencyContactController:
+                              _emergencyContactController,
+                          emergencyContactNameController:
+                              _emergencyContactNameController,
                           medicalInfoController: _medicalInfoController,
                           allergiesController: _allergiesController,
-                          currentMedicationsController: _currentMedicationsController,
+                          currentMedicationsController:
+                              _currentMedicationsController,
                           gender: _gender,
                           onGenderChanged: (value) {
                             if (value != null) setState(() => _gender = value);
                           },
                           bloodType: _bloodType,
                           onBloodTypeChanged: (value) {
-                             if (value != null) {
-                               setState(() {
-                                 _bloodType = value;
-                                 // Update the unknown blood type flag if "Unknown" is selected
-                                 _unknownBloodType = value == 'Unknown';
-                               });
-                             }
+                            if (value != null) {
+                              setState(() {
+                                _bloodType = value;
+                                // Update the unknown blood type flag if "Unknown" is selected
+                                _unknownBloodType = value == 'Unknown';
+                              });
+                            }
                           },
                           bloodTypes: _bloodTypes,
                           unknownBloodType: _unknownBloodType,
@@ -492,24 +535,30 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                 if (value) {
                                   _bloodType = 'Unknown';
                                 } else if (_bloodType == 'Unknown') {
-                                  _bloodType = 'A+'; // Default if unchecking "Unknown"
+                                  _bloodType =
+                                      'A+'; // Default if unchecking "Unknown"
                                 }
                               });
                             }
                           },
                           civilStatus: _civilStatus, // Pass civil status
                           onCivilStatusChanged: (value) {
-                            if (value != null) setState(() => _civilStatus = value);
+                            if (value != null)
+                              setState(() => _civilStatus = value);
                           },
-                          isSeniorCitizen: _isSeniorCitizen, // Pass senior citizen status
+                          isSeniorCitizen:
+                              _isSeniorCitizen, // Pass senior citizen status
                           onSeniorCitizenChanged: (value) {
-                            if (value != null) setState(() => _isSeniorCitizen = value);
+                            if (value != null)
+                              setState(() => _isSeniorCitizen = value);
                           },
-                          civilStatusOptions: _civilStatusOptions, // Pass civil status options
+                          civilStatusOptions:
+                              _civilStatusOptions, // Pass civil status options
                           isEditMode: _isEditMode, // Pass edit mode
-                          formType: FormType.full, // Indicate this is the full form
+                          formType:
+                              FormType.full, // Indicate this is the full form
                         ),
-                        
+
                         const SizedBox(height: 25),
 
                         // Submit and Clear Buttons
@@ -573,7 +622,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                         ? Icons.save_alt_outlined
                                         : Icons.person_add_alt_1)),
                                 label: _isLoading
-                                    ? const SizedBox( // Consistent loading indicator size
+                                    ? const SizedBox(
+                                        // Consistent loading indicator size
                                         width: 20,
                                         height: 20,
                                         child: CircularProgressIndicator(
@@ -619,7 +669,6 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
   // Success message now only shown in dialog, not in main form
 
-
   Future<void> _registerPatient() async {
     if (_formKey.currentState!.validate()) {
       try {
@@ -627,26 +676,27 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
 
         // For new patients, generate an actual ID that increments the counter
         // For existing patients in edit mode, use their existing ID
-        final String patientId = _isEditMode 
-            ? (_generatedPatientId ?? '') 
-            : Patient.generateId(); // Only generate a real ID here when actually registering
-            
+        final String patientId = _isEditMode
+            ? (_generatedPatientId ?? '')
+            : Patient
+                .generateId(); // Only generate a real ID here when actually registering
+
         // Format the patient name surname first for display
         final firstName = _firstNameController.text.trim();
         final middleName = _middleNameController.text.trim();
         final lastName = _lastNameController.text.trim();
         final suffix = _suffixController.text.trim();
-        
+
         // Format the name as "Last, First Middle (Suffix)"
         String middleInitial = '';
         if (middleName.isNotEmpty) {
           middleInitial = ' ${middleName[0]}.';
         }
-        
-        final String formattedName = lastName.isNotEmpty 
-            ? '${lastName}, ${firstName}${middleInitial}${suffix.isNotEmpty ? ' ($suffix)' : ''}'
+
+        final String formattedName = lastName.isNotEmpty
+            ? '$lastName, $firstName$middleInitial${suffix.isNotEmpty ? ' ($suffix)' : ''}'
             : firstName; // Fallback if no last name
-            
+
         final patientObject = Patient(
           id: patientId,
           fullName: formattedName,
@@ -656,7 +706,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
           suffix: suffix.isNotEmpty ? suffix : null,
           civilStatus: _civilStatus,
           isSeniorCitizen: _isSeniorCitizen,
-          birthDate: DateFormat('yyyy-MM-dd').parse(_dobController.text), // Ensure parsing 'yyyy-MM-dd'
+          birthDate: DateFormat('yyyy-MM-dd')
+              .parse(_dobController.text), // Ensure parsing 'yyyy-MM-dd'
           gender: _gender,
           contactNumber: _contactController.text.trim(),
           address: _addressController.text.trim(),
@@ -672,13 +723,14 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               ? widget.patient!.createdAt
               : DateTime.now(),
           updatedAt: DateTime.now(),
-          registrationDate: _isEditMode && widget.patient != null 
-              ? widget.patient!.registrationDate 
+          registrationDate: _isEditMode && widget.patient != null
+              ? widget.patient!.registrationDate
               : DateTime.now(),
         );
 
         if (_isEditMode) {
-          await ApiService.updatePatient(patientObject, source: 'PatientRegistrationScreen');
+          await ApiService.updatePatient(patientObject,
+              source: 'PatientRegistrationScreen');
           if (!mounted) return;
           setState(() => _isLoading = false);
           _showSuccessDialog(context, patientObject);
@@ -716,7 +768,7 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
         );
       }
     } else {
-       ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(
             children: [
@@ -725,7 +777,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               Text('Please fill in all required fields'),
             ],
           ),
-          backgroundColor: Colors.orange[600], // Changed color for differentiation
+          backgroundColor:
+              Colors.orange[600], // Changed color for differentiation
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(10),
           shape: RoundedRectangleBorder(
@@ -772,7 +825,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               if (!_isEditMode && patient.id.isNotEmpty) ...[
                 const SizedBox(height: 15),
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
                   decoration: BoxDecoration(
                     color: Colors.teal[50],
                     border: Border.all(color: Colors.teal[300]!, width: 1),
@@ -781,7 +835,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.badge_outlined, color: Colors.teal[700], size: 22),
+                      Icon(Icons.badge_outlined,
+                          color: Colors.teal[700], size: 22),
                       const SizedBox(width: 10),
                       Text(
                         'Patient ID:',
@@ -809,7 +864,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           Clipboard.setData(ClipboardData(text: patient.id));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text('Patient ID copied to clipboard'),
+                              content:
+                                  const Text('Patient ID copied to clipboard'),
                               backgroundColor: Colors.teal,
                               duration: const Duration(seconds: 1),
                               behavior: SnackBarBehavior.floating,
@@ -842,7 +898,7 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 if (!_isEditMode) {
-                  _resetForm(); 
+                  _resetForm();
                 }
               },
             ),
@@ -867,7 +923,8 @@ class PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
     _medicalInfoController.clear();
     _allergiesController.clear();
     _currentMedicationsController.clear();
-    setState(() { // Ensure UI updates for gender/bloodType reset
+    setState(() {
+      // Ensure UI updates for gender/bloodType reset
       _gender = 'Male';
       _civilStatus = 'Single'; // Reset to default civil status
       _bloodType = 'A+'; // Keep A+ as default, not Unknown
@@ -905,11 +962,13 @@ class ReusablePatientFormFields extends StatelessWidget {
   final bool isEditMode;
   final FormType formType; // To control which fields are shown/required
   final bool unknownBloodType; // Added for unknown blood type checkbox
-  final Function(bool?) onUnknownBloodTypeChanged; // Added for unknown blood type checkbox
+  final Function(bool?)
+      onUnknownBloodTypeChanged; // Added for unknown blood type checkbox
   final String civilStatus; // Added for civil status
   final Function(String?) onCivilStatusChanged; // Added for civil status
   final bool isSeniorCitizen; // Added for senior citizen status
-  final Function(bool?) onSeniorCitizenChanged; // Added for senior citizen status
+  final Function(bool?)
+      onSeniorCitizenChanged; // Added for senior citizen status
   final List<String> civilStatusOptions; // Added for civil status options
 
   const ReusablePatientFormFields({
@@ -993,7 +1052,7 @@ class ReusablePatientFormFields extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 15),
-              
+
               // Middle name and suffix row
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,7 +1090,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                       label: 'Date of Birth',
                       icon: Icons.calendar_today,
                       onDatePicked: (date) {
-                        dobController.text = DateFormat('yyyy-MM-dd').format(date);
+                        dobController.text =
+                            DateFormat('yyyy-MM-dd').format(date);
                       },
                       enabled: true,
                     ),
@@ -1041,7 +1101,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                     child: DropdownButtonFormField<String>(
                       decoration: InputDecoration(
                         labelText: 'Gender',
-                        prefixIcon: Icon(Icons.wc, color: Colors.teal[700], size: 20),
+                        prefixIcon:
+                            Icon(Icons.wc, color: Colors.teal[700], size: 20),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -1056,8 +1117,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                         filled: true,
                         fillColor: Colors.white,
                         isDense: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
                       ),
                       value: gender,
                       items: ['Male', 'Female', 'Other']
@@ -1080,7 +1141,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                     child: DropdownButtonFormField<String>(
                       decoration: InputDecoration(
                         labelText: 'Civil Status',
-                        prefixIcon: Icon(Icons.family_restroom, color: Colors.teal[700], size: 20),
+                        prefixIcon: Icon(Icons.family_restroom,
+                            color: Colors.teal[700], size: 20),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -1095,8 +1157,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                         filled: true,
                         fillColor: Colors.white,
                         isDense: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
                       ),
                       value: civilStatus,
                       items: civilStatusOptions
@@ -1110,7 +1172,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 15, vertical: 15),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
                       borderRadius: BorderRadius.circular(8),
@@ -1142,7 +1205,7 @@ class ReusablePatientFormFields extends StatelessWidget {
                 keyboardType: TextInputType.phone,
                 enabled: true,
               ),
-              
+
               // Show additional fields only in the full form
               if (formType == FormType.full) ...[
                 const SizedBox(height: 15),
@@ -1183,7 +1246,8 @@ class ReusablePatientFormFields extends StatelessWidget {
                       child: DropdownButtonFormField<String>(
                         decoration: InputDecoration(
                           labelText: 'Blood Type',
-                          prefixIcon: Icon(Icons.opacity, color: Colors.teal[700], size: 20),
+                          prefixIcon: Icon(Icons.opacity,
+                              color: Colors.teal[700], size: 20),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -1196,10 +1260,12 @@ class ReusablePatientFormFields extends StatelessWidget {
                             borderSide: BorderSide(color: Colors.teal[700]!),
                           ),
                           filled: true,
-                          fillColor: !unknownBloodType ? Colors.white : Colors.grey[100],
+                          fillColor: !unknownBloodType
+                              ? Colors.white
+                              : Colors.grey[100],
                           isDense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 14),
                         ),
                         value: bloodType,
                         items: bloodTypes
@@ -1208,15 +1274,19 @@ class ReusablePatientFormFields extends StatelessWidget {
                                   child: Text(item),
                                 ))
                             .toList(),
-                        onChanged: !unknownBloodType ? onBloodTypeChanged : null,
+                        onChanged:
+                            !unknownBloodType ? onBloodTypeChanged : null,
                         style: TextStyle(
-                          color: !unknownBloodType ? Colors.black : Colors.grey[600],
+                          color: !unknownBloodType
+                              ? Colors.black
+                              : Colors.grey[600],
                         ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 15, vertical: 8),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey[300]!),
                         borderRadius: BorderRadius.circular(8),
@@ -1265,7 +1335,6 @@ class ReusablePatientFormFields extends StatelessWidget {
               ],
             ),
           ),
-          
           const SizedBox(height: 20),
           _buildStaticSectionCard(
             'Emergency Contact',

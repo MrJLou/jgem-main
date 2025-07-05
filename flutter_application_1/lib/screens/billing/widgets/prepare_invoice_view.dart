@@ -6,7 +6,6 @@ class PrepareInvoiceView extends StatelessWidget {
   final ActivePatientQueueItem patient;
   final NumberFormat currencyFormat;
   final VoidCallback onGenerateAndPay;
-  final VoidCallback onLabOrConsultation;
   final VoidCallback onSaveUnpaid;
   final bool isGenerating;
   final bool isSaving;
@@ -16,7 +15,6 @@ class PrepareInvoiceView extends StatelessWidget {
     required this.patient,
     required this.currencyFormat,
     required this.onGenerateAndPay,
-    required this.onLabOrConsultation,
     required this.onSaveUnpaid,
     this.isGenerating = false,
     this.isSaving = false,
@@ -112,26 +110,6 @@ class PrepareInvoiceView extends StatelessWidget {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          icon: const Icon(Icons.science_outlined),
-                          label: const Text('Lab Result / Consultation'),
-                          onPressed: onLabOrConsultation,
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[700],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              textStyle: const TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8))),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
                           icon: isSaving
                               ? Container(
                                   width: 24,
@@ -165,4 +143,4 @@ class PrepareInvoiceView extends StatelessWidget {
       ),
     );
   }
-} 
+}

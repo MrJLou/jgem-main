@@ -13,6 +13,7 @@ import '../../screens/reports/report_hub_screen.dart';
 import '../../screens/billing/billing_hub_screen.dart';
 import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
+import '../../screens/consultation/consultation_hub_screen.dart';
 
 import '../../screens/about_screen.dart';
 import '../../debug_service_analytics_test.dart';
@@ -72,7 +73,6 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AppointmentOverviewScreen(),
       'icon': Icons.calendar_month_outlined
     },
-
     'Analytics Hub': {
       'screen': (String accessLevel) => const AnalyticsHubScreen(),
       'icon': Icons.analytics_outlined
@@ -89,11 +89,15 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const BillingHubScreen(),
       'icon': Icons.request_quote_outlined
     },
+    'Consultation Results': {
+      'screen': (String accessLevel) =>
+          ConsultationHubScreen(accessLevel: accessLevel),
+      'icon': Icons.medical_services_outlined
+    },
     'Payment': {
       'screen': (String accessLevel) => const PaymentHubScreen(),
       'icon': Icons.payment_outlined
     },
-
     'About': {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
@@ -132,6 +136,7 @@ class DashboardMenuConfig {
       'Patient Laboratory Histories',
       '---',
       'Patient Queue',
+      'Consultation Results',
       'Appointment Schedule',
       'Doctor Availability',
       '---',
@@ -149,6 +154,7 @@ class DashboardMenuConfig {
       'Patient Laboratory Histories',
       '---',
       'Patient Queue',
+      'Consultation Results',
       'Appointment Schedule',
       'Doctor Availability',
       '---',

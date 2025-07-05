@@ -3,6 +3,7 @@ import 'package:flutter_application_1/models/active_patient_queue_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
+import 'package:flutter_application_1/utils/string_utils.dart';
 import 'package:intl/intl.dart';
 
 class PreviousLaboratoryResultsScreen extends StatefulWidget {
@@ -30,8 +31,11 @@ class LabResultDataSource extends DataTableSource {
     );
 
     // Call the proper method on the parent screen
-    if (context.findAncestorStateOfType<PreviousLaboratoryResultsScreenState>() != null) {
-      context.findAncestorStateOfType<PreviousLaboratoryResultsScreenState>()!
+    if (context
+            .findAncestorStateOfType<PreviousLaboratoryResultsScreenState>() !=
+        null) {
+      context
+          .findAncestorStateOfType<PreviousLaboratoryResultsScreenState>()!
           ._showLabHistoryDialog(patientId);
     }
   }
@@ -521,8 +525,10 @@ class PreviousLaboratoryResultsScreenState
                 // Patient Information Section
                 _buildSectionHeader('Patient Information'),
                 _buildDetailRow('Patient Name', result['patientName']),
-                _buildDetailRow('Patient ID',
-                    result['patientId']?.toString().substring(0, 8) ?? 'N/A'),
+                _buildDetailRow(
+                    'Patient ID',
+                    StringUtils.formatIdForDisplay(
+                        result['patientId']?.toString())),
 
                 const SizedBox(height: 16),
 
@@ -619,32 +625,37 @@ class PreviousLaboratoryResultsScreenState
 
   // Adding missing method
   void _showLabHistoryDialog(String patientId) async {
-    final patient = await _dbHelper.getPatient(patientId);
-    if (patient == null || !mounted) return;
-    
+    final patientData = await _dbHelper.getPatient(patientId);
+    if (patientData == null || !mounted) return;
+
+    final patient = Patient.fromJson(patientData);
+
     // Get all lab results for this patient
     try {
-      final allResults = _allResults.where((r) => r['patientId'] == patientId).toList();
+      final allResults =
+          _allResults.where((r) => r['patientId'] == patientId).toList();
       allResults.sort((a, b) {
         final aDate = a['date'] as String? ?? '';
         final bDate = b['date'] as String? ?? '';
         return bDate.compareTo(aDate); // Newest first
       });
-      
+
       if (!mounted) return;
-      
+
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Lab History for ${patient['fullName'] ?? 'Patient'}'),
+          title: Text('Lab History for ${patient.fullName}'),
           content: Container(
-            width: 600 < MediaQuery.of(context).size.width * 0.9 
-                ? 600 
+            width: 600 < MediaQuery.of(context).size.width * 0.9
+                ? 600
                 : MediaQuery.of(context).size.width * 0.9,
             height: MediaQuery.of(context).size.height * 0.6,
             padding: const EdgeInsets.all(8),
             child: allResults.isEmpty
-                ? const Center(child: Text('No laboratory history found for this patient.'))
+                ? const Center(
+                    child:
+                        Text('No laboratory history found for this patient.'))
                 : ListView.builder(
                     itemCount: allResults.length,
                     itemBuilder: (context, index) {
@@ -656,16 +667,33 @@ class PreviousLaboratoryResultsScreenState
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Date: ${result['date']?.split(' ')[0] ?? 'N/A'}'),
+                              Text(
+                                  'Date: ${result['date']?.split(' ')[0] ?? 'N/A'}'),
                               Text('Doctor: ${result['doctor'] ?? 'N/A'}'),
                             ],
                           ),
-                          trailing: Chip(
-                            label: Text(
-                              result['status'] ?? 'N/A',
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                            backgroundColor: _dataSource._getStatusColor(result['status']),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Chip(
+                                label: Text(
+                                  result['status'] ?? 'N/A',
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 12),
+                                ),
+                                backgroundColor:
+                                    _getStatusColorForDialog(result['status']),
+                              ),
+                              IconButton(
+                                icon:
+                                    const Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showEditResultDialog(result);
+                                },
+                                tooltip: 'Edit Result',
+                              ),
+                            ],
                           ),
                           onTap: () {
                             Navigator.pop(context);
@@ -685,10 +713,347 @@ class PreviousLaboratoryResultsScreenState
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading lab history: $e')),
       );
     }
+  }
+
+  void _showEditResultDialog(Map<String, dynamic> result) {
+    final testController = TextEditingController(text: result['test'] ?? '');
+    final notesController = TextEditingController(text: result['notes'] ?? '');
+    final diagnosisController =
+        TextEditingController(text: result['diagnosis'] ?? '');
+
+    // Extract current result values
+    final currentResults = result['result'] as Map<String, dynamic>? ?? {};
+    final resultControllers = <String, TextEditingController>{};
+
+    for (final entry in currentResults.entries) {
+      resultControllers[entry.key] =
+          TextEditingController(text: entry.value?.toString() ?? '');
+    }
+
+    String selectedStatus = result['status'] ?? 'Pending';
+    String selectedCategory = result['category'] ?? 'Laboratory';
+
+    showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+              builder: (context, setState) => AlertDialog(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+                title: Row(
+                  children: [
+                    Icon(Icons.edit, color: Colors.teal[700]),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Edit Laboratory Result',
+                        style: TextStyle(
+                          color: Colors.teal,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.6,
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Basic Information Section
+                        _buildSectionHeader('Basic Information'),
+                        TextField(
+                          controller: testController,
+                          decoration: const InputDecoration(
+                            labelText: 'Test Name',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Category Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedCategory,
+                          decoration: const InputDecoration(
+                            labelText: 'Category',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: [
+                            'Laboratory',
+                            'Hematology',
+                            'Chemistry',
+                            'Urinalysis',
+                            'Microbiology',
+                            'Radiology',
+                            'Pathology'
+                          ]
+                              .map((category) => DropdownMenuItem(
+                                    value: category,
+                                    child: Text(category),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedCategory = value!;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Status Dropdown
+                        DropdownButtonFormField<String>(
+                          value: selectedStatus,
+                          decoration: const InputDecoration(
+                            labelText: 'Status',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: [
+                            'Pending',
+                            'Completed',
+                            'Normal',
+                            'Abnormal',
+                            'Borderline',
+                            'Cancelled'
+                          ]
+                              .map((status) => DropdownMenuItem(
+                                    value: status,
+                                    child: Text(status),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedStatus = value!;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Test Results Section
+                        _buildSectionHeader('Test Results'),
+                        ...resultControllers.entries.map((entry) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      entry.key,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 3,
+                                    child: TextField(
+                                      controller: entry.value,
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Enter ${entry.key.toLowerCase()}',
+                                        border: const OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle,
+                                        color: Colors.red),
+                                    onPressed: () {
+                                      setState(() {
+                                        resultControllers.remove(entry.key);
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            )),
+
+                        // Add new result field button
+                        TextButton.icon(
+                          onPressed: () {
+                            final key =
+                                'New Field ${resultControllers.length + 1}';
+                            setState(() {
+                              resultControllers[key] = TextEditingController();
+                            });
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Result Field'),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Additional Information Section
+                        _buildSectionHeader('Additional Information'),
+                        TextField(
+                          controller: diagnosisController,
+                          decoration: const InputDecoration(
+                            labelText: 'Diagnosis',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: notesController,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text('Cancel',
+                        style: TextStyle(color: Colors.grey[600])),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await _saveEditedResult(
+                        result,
+                        testController.text,
+                        selectedCategory,
+                        selectedStatus,
+                        resultControllers,
+                        diagnosisController.text,
+                        notesController.text,
+                      );
+                      Navigator.of(context).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                    ),
+                    child: const Text('Save Changes',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ));
+  }
+
+  Future<void> _saveEditedResult(
+    Map<String, dynamic> originalResult,
+    String testName,
+    String category,
+    String status,
+    Map<String, TextEditingController> resultControllers,
+    String diagnosis,
+    String notes,
+  ) async {
+    try {
+      // Prepare updated results map
+      final updatedResults = <String, dynamic>{};
+      for (final entry in resultControllers.entries) {
+        if (entry.value.text.isNotEmpty) {
+          updatedResults[entry.key] = entry.value.text;
+        }
+      }
+
+      // Create updated result map
+      final updatedResult = Map<String, dynamic>.from(originalResult);
+      updatedResult['test'] = testName;
+      updatedResult['category'] = category;
+      updatedResult['status'] = status;
+      updatedResult['result'] = updatedResults;
+      updatedResult['diagnosis'] = diagnosis;
+      updatedResult['notes'] = notes;
+      updatedResult['updatedAt'] = DateTime.now().toIso8601String();
+
+      // Update in database - this depends on the data source
+      // For queue items
+      if (originalResult['id'] != null &&
+          originalResult['id'].toString().startsWith('entry-')) {
+        // This is a queue item - update the queue
+        await _updateQueueItemResult(originalResult['id'], updatedResult);
+      } else {
+        // This is from appointments or medical records - update accordingly
+        await _updateMedicalRecordResult(originalResult['id'], updatedResult);
+      }
+
+      // Update local data
+      final index =
+          _allResults.indexWhere((r) => r['id'] == originalResult['id']);
+      if (index != -1) {
+        setState(() {
+          _allResults[index] = updatedResult;
+          _filterResults(); // Refresh filtered results
+        });
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Laboratory result updated successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error updating result: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateQueueItemResult(
+      String queueId, Map<String, dynamic> updatedResult) async {
+    // Update the queue item with new laboratory results
+    // Create a medical record entry for the updated results
+    final medicalRecord = {
+      'id': 'lab-update-${DateTime.now().millisecondsSinceEpoch}',
+      'patientId': updatedResult['patientId'],
+      'recordType': 'Laboratory Result',
+      'title': updatedResult['test'],
+      'content': updatedResult['notes'],
+      'diagnosis': updatedResult['diagnosis'],
+      'additionalData': {
+        'testResults': updatedResult['result'],
+        'category': updatedResult['category'],
+        'status': updatedResult['status'],
+        'sourceQueueId': queueId,
+      },
+      'createdAt': DateTime.now().toIso8601String(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+
+    await _dbHelper.insertMedicalRecord(medicalRecord);
+  }
+
+  Future<void> _updateMedicalRecordResult(
+      String recordId, Map<String, dynamic> updatedResult) async {
+    // Update existing medical record
+    final medicalRecord = {
+      'id': recordId,
+      'title': updatedResult['test'],
+      'content': updatedResult['notes'],
+      'diagnosis': updatedResult['diagnosis'],
+      'additionalData': {
+        'testResults': updatedResult['result'],
+        'category': updatedResult['category'],
+        'status': updatedResult['status'],
+      },
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+
+    await _dbHelper.updateMedicalRecord(medicalRecord);
   }
 
   @override
