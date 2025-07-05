@@ -1392,7 +1392,7 @@ class DatabaseSyncClient {
   /// Trigger immediate UI refresh for queue changes
   static void triggerQueueRefresh() {
     debugPrint(
-        'SYNC DEBUG: triggerQueueRefresh called, connected=${_isConnected}');
+        'SYNC DEBUG: triggerQueueRefresh called, connected=$_isConnected');
 
     _syncUpdates.add({
       'type': 'queue_change_immediate',

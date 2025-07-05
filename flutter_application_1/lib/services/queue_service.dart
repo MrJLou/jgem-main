@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -593,6 +594,10 @@ class QueueService {
   /// but it will use the data from `generateDailyReport`.
   Future<File> exportDailyReportToPdf(Map<String, dynamic> reportData) async {
     final pdf = pw.Document();
+    
+    // Load logo image
+    final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
+    final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
 
     // Define styles
     final estiloTitulo = pw.TextStyle(
@@ -619,8 +624,22 @@ class QueueService {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           List<pw.Widget> content = [
-            pw.Header(
-                level: 0, child: pw.Text(reportTitle, style: estiloTitulo)),
+            // Header with logo
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Header(
+                    level: 0, 
+                    child: pw.Text(reportTitle, style: estiloTitulo)
+                ),
+                pw.Container(
+                  height: 60, 
+                  width: 60, 
+                  child: pw.Image(logoImage)
+                ),
+              ],
+            ),
             pw.SizedBox(height: 20),
             pw.Text('Report Generation Time: $formattedGeneratedAt',
                 style: estiloTexto.copyWith(

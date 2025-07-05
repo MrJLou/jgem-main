@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert'; // Added for jsonEncode
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_application_1/models/bill_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/screens/billing/widgets/generated_invoice_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/in_consultation_patient_list.dart';
+import 'package:flutter_application_1/screens/billing/widgets/lab_or_consultation_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/payment_processing_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/prepare_invoice_view.dart';
 import 'package:flutter_application_1/screens/patient_queue/view_queue_screen.dart';
@@ -22,6 +24,7 @@ import 'package:uuid/uuid.dart';
 
 enum InvoiceFlowStep {
   patientSelection,
+  labOrConsultation,
   invoiceGenerated,
   paymentProcessing,
   paymentComplete
@@ -54,6 +57,17 @@ class InvoiceScreenState extends State<InvoiceScreen> {
   final TextEditingController _amountPaidController = TextEditingController();
   double _paymentChange = 0.0;
   String? _paymentReferenceNumber;
+  
+  // Lab Results and Consultation Data
+  final TextEditingController _consultationNotesController = TextEditingController();
+  final TextEditingController _chiefComplaintController = TextEditingController();
+  final TextEditingController _diagnosisController = TextEditingController();
+  final TextEditingController _prescriptionController = TextEditingController();
+  String _consultationType = 'General Consultation';
+  final Map<String, Map<String, TextEditingController>> _labResultControllers = {};
+  final Map<String, bool> _selectedLabTests = {};
+  bool _isProcessingLabResults = false;
+  bool _isLabTest = true; // Track whether we're in lab test or consultation mode
 
   // Button loading states
   bool _isGeneratingInvoice = false;
@@ -73,6 +87,22 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     super.initState();
     _loadCurrentUserId();
     _fetchInConsultationPatients();
+  }
+  
+  @override
+  void dispose() {
+    // Dispose of all controllers to prevent memory leaks
+    _amountPaidController.dispose();
+    _consultationNotesController.dispose();
+    _chiefComplaintController.dispose();
+    _diagnosisController.dispose();
+    _prescriptionController.dispose();
+    for (var map in _labResultControllers.values) {
+      for (var controller in map.values) {
+        controller.dispose();
+      }
+    }
+    super.dispose();
   }
 
   // --- DATA FETCHING AND STATE MANAGEMENT ---
@@ -138,6 +168,13 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       _amountPaidController.clear();
       _paymentChange = 0.0;
       _paymentReferenceNumber = null;
+      _consultationNotesController.clear();
+      _chiefComplaintController.clear();
+      _diagnosisController.clear();
+      _prescriptionController.clear();
+      _labResultControllers.clear();
+      _selectedLabTests.clear();
+      _isProcessingLabResults = false;
     });
   }
 
@@ -153,6 +190,48 @@ class InvoiceScreenState extends State<InvoiceScreen> {
       final now = DateTime.now();
       final List<BillItem> items =
           _buildBillItems(patientQueueItem, invoiceNumber);
+          
+      // Add lab results or consultation notes to the invoice if they were entered
+      if (_selectedLabTests.isNotEmpty) {
+        // Process selected lab tests results
+        _selectedLabTests.forEach((testKey, isSelected) {
+          if (isSelected) {
+            final controller = _labResultControllers[testKey]?['result'];
+            if (controller != null) {
+              items.add(BillItem(
+                billId: invoiceNumber,
+                description: '$testKey Test Results',
+                quantity: 1,
+                unitPrice: 0.0, // Price already included in the main service
+                itemTotal: 0.0,
+                notes: '$testKey Level: ${controller.text}',
+              ));
+            }
+          }
+        });
+      } else if (_consultationNotesController.text.isNotEmpty) {
+        // For consultation, add the notes to the bill items in a more structured way
+        
+        // Find consultation service in the patient's selected services
+        final consultationService = patientQueueItem.selectedServices?.firstWhere(
+          (service) => (service['category'] as String?)?.toLowerCase() == 'consultation' || 
+                      (service['name'] as String?)?.toLowerCase().contains('consult') == true,
+          orElse: () => {'name': 'Consultation', 'id': 'general_consultation'},
+        );
+        
+        final serviceName = consultationService?['name'] as String? ?? 'Consultation';
+        
+        // Add consultation notes to bill items
+        items.add(BillItem(
+          billId: invoiceNumber,
+          description: '$serviceName - Medical Notes',
+          quantity: 1,
+          unitPrice: 0.0, // Price already included in the main service
+          itemTotal: 0.0,
+          notes: 'Findings and Recommendations:\n${_consultationNotesController.text}',
+          serviceId: consultationService?['id'] as String?,
+        ));
+      }
 
       final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
         queueItem: patientQueueItem,
@@ -519,6 +598,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
                   _currentStep = InvoiceFlowStep.patientSelection;
                   _resetInvoiceAndPaymentState();
                 });
+                _initializeLabControllers(); // Initialize lab test controllers for the selected patient
                 _fetchPatientDetails(patient.patientId);
               },
               currencyFormat: _currencyFormat,
@@ -549,14 +629,53 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           patient: _selectedPatientQueueItem!,
           currencyFormat: _currencyFormat,
           onGenerateAndPay: _generateInvoice,
+          onLabOrConsultation: () {
+            setState(() => _currentStep = InvoiceFlowStep.labOrConsultation);
+          },
           onSaveUnpaid: _saveInvoiceAsUnpaid,
           isGenerating: _isGeneratingInvoice,
           isSaving: _isSavingUnpaid,
         );
+      case InvoiceFlowStep.labOrConsultation:
+        return LabOrConsultationView(
+          patient: _selectedPatientQueueItem!,
+          consultationNotesController: _consultationNotesController,
+          chiefComplaintController: _chiefComplaintController,
+          diagnosisController: _diagnosisController,
+          prescriptionController: _prescriptionController,
+          consultationType: _consultationType,
+          onConsultationTypeChanged: (String type) {
+            setState(() => _consultationType = type);
+          },
+          labResultControllers: _labResultControllers,
+          isLabTest: _isLabTest,
+          onToggleType: (bool isLab) {
+            setState(() => _isLabTest = isLab);
+          },
+          onSaveAndContinue: _saveLabOrConsultationAndContinue,
+          isLoading: _isProcessingLabResults, // Pass the loading state
+          onBack: () {
+            setState(() => _currentStep = InvoiceFlowStep.patientSelection);
+          },
+        );
       case InvoiceFlowStep.invoiceGenerated:
+        // Handle the case where invoice data might not be ready yet
+        if (_generatedInvoiceNumber == null || _invoiceDate == null) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text("Generating invoice, please wait..."),
+              ],
+            ),
+          );
+        }
+        
         return GeneratedInvoiceView(
-          generatedInvoiceNumber: _generatedInvoiceNumber!,
-          invoiceDate: _invoiceDate!,
+          generatedInvoiceNumber: _generatedInvoiceNumber ?? 'Pending',
+          invoiceDate: _invoiceDate ?? DateTime.now(),
           detailedPatientForInvoice: _detailedPatientForInvoice,
           selectedPatientQueueItem: _selectedPatientQueueItem!,
           currentBillItems: _currentBillItems,
@@ -581,6 +700,92 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         );
       case InvoiceFlowStep.paymentComplete:
         return _buildPaymentCompleteContent();
+    }
+  }
+  
+  void _saveLabOrConsultationAndContinue() async {
+    if (_selectedPatientQueueItem == null) return;
+    
+    setState(() => _isProcessingLabResults = true);
+    
+    try {
+      // Process and collect all lab results data
+      final Map<String, dynamic> labResultsData = {};
+      
+      // Filter out empty values and only include tests that were selected/performed
+      for (var testCategory in _labResultControllers.keys) {
+        final Map<String, String> testResults = {};
+        bool hasResults = false;
+        
+        for (var component in _labResultControllers[testCategory]!.keys) {
+          final value = _labResultControllers[testCategory]![component]!.text.trim();
+          if (value.isNotEmpty) {
+            testResults[component] = value;
+            hasResults = true;
+          }
+        }
+        
+        // Only include test categories that have at least one result
+        if (hasResults) {
+          labResultsData[testCategory] = testResults;
+        }
+      }
+      
+      // Process consultation notes
+      final String consultationNotes = _consultationNotesController.text.trim();
+      
+      if (kDebugMode) {
+        print('Lab Results to save: $labResultsData');
+        print('Consultation Notes to save: $consultationNotes');
+      }
+      
+      // Save lab results and consultation notes to medical records
+      final recordId = const Uuid().v4();
+      final now = DateTime.now();
+      
+      // Convert lab results to JSON string for storage
+      String? labResultsJson;
+      if (labResultsData.isNotEmpty) {
+        labResultsJson = jsonEncode(labResultsData);
+      }
+      
+      // Create medical record entry
+      await _dbHelper.insertMedicalRecord({
+        'id': recordId,
+        'patientId': _selectedPatientQueueItem!.patientId,
+        'appointmentId': _selectedPatientQueueItem!.originalAppointmentId,
+        'selectedServices': jsonEncode(_selectedPatientQueueItem!.selectedServices ?? []),
+        'recordType': _currentStep == InvoiceFlowStep.labOrConsultation && !(_isLabTest) 
+            ? 'consultation' 
+            : 'laboratory',
+        'recordDate': now.toIso8601String(),
+        'diagnosis': null,
+        'treatment': null,
+        'prescription': null,
+        'labResults': labResultsJson,
+        'notes': consultationNotes.isEmpty ? null : consultationNotes,
+        'doctorId': _selectedPatientQueueItem!.doctorId ?? _currentUserId!,
+        'createdAt': now.toIso8601String(),
+        'updatedAt': now.toIso8601String(),
+      });
+      
+      // Proceed to invoice generation
+      setState(() => _currentStep = InvoiceFlowStep.invoiceGenerated);
+      _generateInvoice();
+      
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving data: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingLabResults = false);
+      }
     }
   }
 
@@ -653,5 +858,53 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         ],
       ),
     );
+  }
+
+  void _initializeLabControllers() {
+    // Clear any existing controllers first to prevent memory leaks
+    _labResultControllers.forEach((_, controllers) {
+      controllers.forEach((_, controller) {
+        controller.dispose();
+      });
+    });
+    _labResultControllers.clear();
+    
+    // Initialize blood sugar controllers
+    _labResultControllers['glucose'] = {
+      'fbs': TextEditingController(),
+    };
+    
+    // Initialize lipid profile controllers
+    _labResultControllers['lipid'] = {
+      'total_cholesterol': TextEditingController(),
+      'triglycerides': TextEditingController(),
+      'hdl': TextEditingController(),
+      'ldl': TextEditingController(),
+      'vldl': TextEditingController(),
+    };
+    
+    // Initialize kidney function controllers
+    _labResultControllers['kidney'] = {
+      'bun': TextEditingController(),
+      'creatinine': TextEditingController(),
+      'uric_acid': TextEditingController(),
+    };
+    
+    // Initialize liver function controllers
+    _labResultControllers['liver'] = {
+      'sgpt': TextEditingController(),
+      'sgot': TextEditingController(),
+    };
+    
+    // Initialize CBC controllers
+    _labResultControllers['cbc'] = {
+      'wbc': TextEditingController(),
+      'rbc': TextEditingController(),
+      'hemoglobin': TextEditingController(),
+      'hematocrit': TextEditingController(),
+      'platelet': TextEditingController(),
+      'mcv_mch_mchc': TextEditingController(),
+      'wbc_differential': TextEditingController(),
+    };
   }
 }

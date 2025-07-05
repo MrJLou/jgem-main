@@ -85,13 +85,13 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const ReportHubScreen(),
       'icon': Icons.receipt_long_outlined
     },
-    'Payment': {
-      'screen': (String accessLevel) => const PaymentHubScreen(),
-      'icon': Icons.payment_outlined
-    },
     'Billing': {
       'screen': (String accessLevel) => const BillingHubScreen(),
       'icon': Icons.request_quote_outlined
+    },
+    'Payment': {
+      'screen': (String accessLevel) => const PaymentHubScreen(),
+      'icon': Icons.payment_outlined
     },
 
     'About': {

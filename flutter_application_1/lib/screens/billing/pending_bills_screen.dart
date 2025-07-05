@@ -28,6 +28,7 @@ class PendingBillsScreen extends StatefulWidget {
 
 class PendingBillsScreenState extends State<PendingBillsScreen> {
   final TextEditingController _patientIdController = TextEditingController();
+  final TextEditingController _patientNameController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   final QueueService _queueService = QueueService();
@@ -404,13 +405,29 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                           child: TextField(
                             controller: _patientIdController,
                             decoration: const InputDecoration(
-                              labelText: 'Patient ID or Name (optional)',
+                              labelText: 'Patient ID',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _patientNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Patient Name',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
                         Expanded(
                           flex: 2,
                           child: InkWell(

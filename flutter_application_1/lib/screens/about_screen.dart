@@ -109,7 +109,7 @@ class AboutScreenState extends State<AboutScreen>
               ),
               const SizedBox(height: 20),
               const Text(
-                'This application is designed to manage patient records, appointments, and other clinical data efficiently for J-Gem Medical and Diagnostic Clinic.',
+                'This system is designed to manage patient records, appointments, and other clinical data efficiently for J-Gem Medical and Diagnostic Clinic.',
                 style: TextStyle(fontSize: 16),
                 textAlign: TextAlign.center,
               ),

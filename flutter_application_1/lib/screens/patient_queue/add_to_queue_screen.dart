@@ -399,11 +399,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         const Text(
                             'A registered patient matching the details was found:'),
                         const SizedBox(height: 10),
-                        Text('DB ID: ${registeredPatient.id}'),
-                        Text('DB Name: ${registeredPatient.fullName}'),
-                        Text('DB Gender: ${registeredPatient.gender}'),
+                        Text('Patient ID: ${registeredPatient.id}'),
+                        Text('Name: ${registeredPatient.fullName}'),
+                        Text('Gender: ${registeredPatient.gender}'),
                         Text(
-                            'DB BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
+                            'BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
                         Text(
                             'Calculated Age: ${calculatedAge?.toString() ?? 'N/A'}'),
                         const SizedBox(height: 15),
@@ -418,7 +418,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       onPressed: () => Navigator.of(context).pop(false),
                     ),
                     ElevatedButton(
-                      child: const Text('Yes, Use DB Details'),
+                      child: const Text('Yes, Use Patient Details'),
                       onPressed: () => Navigator.of(context).pop(true),
                     ),
                   ],
@@ -580,6 +580,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     // Use a temporary map to manage selections within the dialog
     Map<String, bool> currentDialogSelectionState =
         Map.from(_serviceSelectionState);
+    
+    // Add a controller for the service search functionality
+    TextEditingController serviceSearchController = TextEditingController();
+    String searchQuery = '';
+    
+    // Map to store applied discounts
+    Map<String, double> serviceDiscounts = {};
 
     showDialog(
       context: context,
@@ -587,123 +594,391 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Calculate current dialog price with discounts applied
             double currentDialogPrice = _availableServices
                 .where((s) => currentDialogSelectionState[s.id] == true)
-                .fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
+                .fold(0.0, (sum, item) {
+                  double price = item.defaultPrice ?? 0.0;
+                  double discount = serviceDiscounts[item.id] ?? 0.0;
+                  return sum + (price - (price * discount / 100));
+                });
 
+            // Get screen width for responsive dialog width
+            final screenWidth = MediaQuery.of(context).size.width;
+            
+            // Filter services based on search query
+            List<ClinicService> filteredServices = _availableServices
+                .where((service) => 
+                  searchQuery.isEmpty || 
+                  service.serviceName.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                  (service.category?.toLowerCase() ?? '').contains(searchQuery.toLowerCase()) ||
+                  (service.description?.toLowerCase() ?? '').contains(searchQuery.toLowerCase()))
+                .toList();
+                
+            // Sort all services alphabetically first
+            filteredServices.sort((a, b) => a.serviceName.compareTo(b.serviceName));
+            
+            // Group services by category
             Map<String, List<ClinicService>> groupedServices = {};
-            for (var service in _availableServices) {
-              (groupedServices[service.category ?? 'Uncategorized'] ??= [])
-                  .add(service);
+            for (var service in filteredServices) {
+              (groupedServices[service.category ?? 'Uncategorized'] ??= []).add(service);
             }
+            
+            // Sort categories alphabetically
+            final sortedCategories = groupedServices.keys.toList()..sort();
+            
             // Ensure 'Consultation' and 'Laboratory' appear first if they exist, then others.
             List<String> categoryOrder = ['Consultation', 'Laboratory'];
             List<String> allCategories = groupedServices.keys.toList();
             categoryOrder.addAll(
-                allCategories.where((cat) => !categoryOrder.contains(cat)));            return AlertDialog(
-              title: Text(_isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose of Visit'),
-              contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
-              content: SingleChildScrollView(
-                child: ListBody(
-                  children: <Widget>[
-                    if (_availableServices.isEmpty)
-                      const Center(
-                          child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                            "No services available. Please add services in settings."),
-                      )),
-                    ...categoryOrder
-                        .where((cat) => groupedServices.containsKey(cat))
-                        .expand((category) => [
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    top: 10.0, bottom: 4.0),
-                                child: Text(category,
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.teal[700],
-                                        fontSize: 16)),
-                              ),
-                              ...groupedServices[category]!.map((service) =>
-                                  CheckboxListTile(
-                                    title: Text(
-                                        '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
-                                        style: const TextStyle(fontSize: 14)),
-                                    value: currentDialogSelectionState[
-                                            service.id] ??
-                                        false,
-                                    onChanged: (bool? value) {
-                                      setDialogState(() {
-                                        currentDialogSelectionState[
-                                            service.id] = value!;
-                                        currentDialogPrice = _availableServices
-                                            .where((s) =>
-                                                currentDialogSelectionState[
-                                                    s.id] ==
-                                                true)
-                                            .fold(
-                                                0.0,
-                                                (sum, item) =>
-                                                    sum +
-                                                    (item.defaultPrice ?? 0.0));
-                                      });
-                                    },
-                                    dense: true,
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    activeColor: Colors.teal,
-                                  )),                              const Divider(),
-                            ]),
-                    const SizedBox(height: 20),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'Total Estimated: ₱${NumberFormat("#,##0.00", "en_US").format(currentDialogPrice)}',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.green[700]),
+                allCategories.where((cat) => !categoryOrder.contains(cat)));
+            
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              // Making dialog wider
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
+              child: Container(                      width: screenWidth * 0.90, // Make dialog wider based on screen width
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxWidth: 900, // Maximum width cap
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose of Visit',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    
+                    // Enhanced search bar for services
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: TextField(
+                        controller: serviceSearchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search services by name or category...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: serviceSearchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  serviceSearchController.clear();
+                                  setDialogState(() {
+                                    searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          fillColor: Colors.grey[50],
+                          filled: true,
+                        ),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              if (_availableServices.isEmpty)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Text("No services available. Please add services in settings."),
+                                  ),
+                                ),
+                              if (groupedServices.isEmpty && searchQuery.isNotEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Text("No services matching \"$searchQuery\""),
+                                  ),
+                                ),
+                              ...sortedCategories
+                                .expand((category) => [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+                                    child: Text(
+                                      category,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.teal[700],
+                                        fontSize: 16
+                                      ),
+                                    ),
+                                  ),
+                                  ...groupedServices[category]!.map((service) =>
+                                    Card(
+                                      elevation: 0,
+                                      color: currentDialogSelectionState[service.id] == true 
+                                        ? Colors.teal[50] 
+                                        : Colors.white,
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(
+                                          color: currentDialogSelectionState[service.id] == true 
+                                            ? Colors.teal[300]! 
+                                            : Colors.grey[300]!
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          CheckboxListTile(
+                                            title: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        service.serviceName,
+                                                        style: TextStyle(
+                                                          fontSize: 15,
+                                                          fontWeight: currentDialogSelectionState[service.id] == true
+                                                            ? FontWeight.w600
+                                                            : FontWeight.normal,
+                                                        ),
+                                                      ),
+                                                      if (service.description != null && service.description!.isNotEmpty)
+                                                        Text(
+                                                          service.description!,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.grey[600],
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0)
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.orange[100],
+                                                      borderRadius: BorderRadius.circular(12),
+                                                      border: Border.all(color: Colors.orange[300]!),
+                                                    ),
+                                                    child: Text(
+                                                      "${serviceDiscounts[service.id]!.toStringAsFixed(0)}% OFF",
+                                                      style: TextStyle(
+                                                        color: Colors.orange[800],
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                Text(
+                                                  '₱${NumberFormat("#,##0.00", "en_US").format(
+                                                    (service.defaultPrice ?? 0.0) - 
+                                                    ((service.defaultPrice ?? 0.0) * (serviceDiscounts[service.id] ?? 0.0) / 100)
+                                                  )}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w500,
+                                                    color: serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0
+                                                      ? Colors.green[700]
+                                                      : Colors.grey[800],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            value: currentDialogSelectionState[service.id] ?? false,
+                                            onChanged: (bool? value) {
+                                              setDialogState(() {
+                                                currentDialogSelectionState[service.id] = value!;
+                                                // Recalculate current price
+                                                currentDialogPrice = _availableServices
+                                                  .where((s) => currentDialogSelectionState[s.id] == true)
+                                                  .fold(0.0, (sum, item) {
+                                                    double price = item.defaultPrice ?? 0.0;
+                                                    double discount = serviceDiscounts[item.id] ?? 0.0;
+                                                    return sum + (price - (price * discount / 100));
+                                                  });
+                                              });
+                                            },
+                                            controlAffinity: ListTileControlAffinity.leading,
+                                            activeColor: Colors.teal[700],
+                                            checkColor: Colors.white,
+                                          ),
+                                          // Enhanced discount controls for selected services
+                                          if (currentDialogSelectionState[service.id] == true)
+                                            Padding(
+                                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  const Text(
+                                                    "Apply Discount: ",
+                                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Wrap(
+                                                    spacing: 8.0,
+                                                    children: [
+                                                      for (double discountValue in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0, 100.0])
+                                                        Padding(
+                                                          padding: const EdgeInsets.only(right: 4),
+                                                          child: ChoiceChip(
+                                                        label: Text(
+                                                          discountValue > 0 
+                                                            ? "${discountValue.toInt()}%" 
+                                                            : "None",
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: serviceDiscounts[service.id] == discountValue 
+                                                              ? Colors.white 
+                                                              : Colors.grey[800],
+                                                          ),
+                                                        ),
+                                                        selected: serviceDiscounts[service.id] == discountValue,
+                                                        onSelected: (selected) {
+                                                          setDialogState(() {
+                                                            if (selected) {
+                                                              serviceDiscounts[service.id] = discountValue;
+                                                            } else if (serviceDiscounts[service.id] == discountValue) {
+                                                              serviceDiscounts[service.id] = 0.0;
+                                                            }
+                                                            // Recalculate price
+                                                            currentDialogPrice = _availableServices
+                                                              .where((s) => currentDialogSelectionState[s.id] == true)
+                                                              .fold(0.0, (sum, item) {
+                                                                double price = item.defaultPrice ?? 0.0;
+                                                                double discount = serviceDiscounts[item.id] ?? 0.0;
+                                                                return sum + (price - (price * discount / 100));
+                                                              });
+                                                          });
+                                                        },
+                                                        backgroundColor: Colors.grey[200],
+                                                        selectedColor: discountValue > 0 ? Colors.orange[700] : Colors.grey[700],
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const Divider(),
+                                ]),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        border: Border(top: BorderSide(color: Colors.grey[300]!)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Selected Items: ${currentDialogSelectionState.values.where((v) => v).length}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              Text(
+                                'Total: ₱${NumberFormat("#,##0.00", "en_US").format(currentDialogPrice)}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                child: const Text('Cancel'),
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal[700],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                ),
+                                onPressed: () {
+                                  // Update selected services based on dialog selections
+                                  setState(() {
+                                    _serviceSelectionState = Map.from(currentDialogSelectionState);
+                                    _selectedServices = _availableServices
+                                        .where((s) => _serviceSelectionState[s.id] == true)
+                                        .toList();
+                                    
+                                    // Apply discounts to the selected services
+                                    for (var service in _selectedServices) {
+                                      if (serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0) {
+                                        // Apply discount by adjusting the default price temporarily
+                                        // This is just for display; we'd need to store the actual discount in a real app
+                                        double originalPrice = service.defaultPrice ?? 0.0;
+                                        double discountAmount = originalPrice * (serviceDiscounts[service.id] ?? 0.0) / 100;
+                                        service = service.copyWith(
+                                          defaultPrice: originalPrice - discountAmount,
+                                          description: service.description != null && service.description!.isNotEmpty 
+                                              ? "${service.description} (${serviceDiscounts[service.id]}% discount applied)"
+                                              : "(${serviceDiscounts[service.id]}% discount applied)"
+                                        );
+                                      }
+                                    }
+                                    
+                                    // Calculate total price
+                                    _totalPrice = currentDialogPrice;
+                                  });
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                child: const Text('Confirm Selection'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              actionsAlignment: MainAxisAlignment.end,
-              actionsPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Colors.grey)),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      textStyle: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold)),                  onPressed: () {
-                    setState(() {
-                      _serviceSelectionState =
-                          Map.from(currentDialogSelectionState);
-                      _selectedServices = _availableServices
-                          .where((s) => _serviceSelectionState[s.id] == true)
-                          .toList();                      _totalPrice = _selectedServices.fold(
-                          0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
-                      _otherConditionController.clear(); // Clear the controller
-                    });
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: const Text('Confirm'),
-                ),
-              ],
             );
           },
         );
@@ -767,12 +1042,22 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                TextField(
+                                  controller: _patientIdController,
+                                  decoration: const InputDecoration(
+                                      labelText:
+                                          'Patient ID (Registered)',
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.badge),
+                                      hintText: 'Enter patient ID if known'),
+                                ),
+                                const SizedBox(height: 16),
                                 TextFormField(
                                   controller: _searchController,
                                   decoration: InputDecoration(
-                                    labelText: 'Search Patient by Name or ID',
+                                    labelText: 'Search Patient by Name',
                                     hintText:
-                                        'Type patient name or ID to search...',
+                                        'Type patient name to search...',
                                     prefixIcon: _isLoading
                                         ? Transform.scale(
                                             scale: 0.5,
@@ -828,16 +1113,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            TextField(
-                              controller: _patientIdController,
-                              decoration: const InputDecoration(
-                                  labelText:
-                                      'Patient ID (Registered - Optional)',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.badge),
-                                  hintText: 'Enter patient ID if known'),
-                            ),
-                            const SizedBox(height: 16),                            DropdownButtonFormField<User>(
+                            DropdownButtonFormField<User>(
                               decoration: const InputDecoration(
                                 labelText: 'Assign Doctor *',
                                 border: OutlineInputBorder(),
@@ -929,7 +1205,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     enabled:
                                         false, // Age will be auto-filled or from manual override if no DB match
                                     decoration: const InputDecoration(
-                                        labelText: 'Age (from DB)',
+                                        labelText: 'Age',
                                         border: OutlineInputBorder(),
                                         prefixIcon: Icon(Icons.cake)),
                                   ),
@@ -941,7 +1217,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     enabled:
                                         false, // Gender will be auto-filled or from manual override if no DB match
                                     decoration: const InputDecoration(
-                                        labelText: 'Gender (from DB)',
+                                        labelText: 'Gender',
                                         border: OutlineInputBorder(),
                                         prefixIcon: Icon(Icons.person_outline)),
                                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_application_1/models/patient_report.dart';
 import 'package:flutter_application_1/models/patient_bill.dart';
 import 'package:intl/intl.dart';
@@ -111,6 +112,10 @@ class ServiceAnalyticsPdfService {  /// Generates a PDF document from the provid
       ServiceAnalyticsReportData reportData, String serviceName) async {
     try {
       final pdf = pw.Document();
+      
+      // Load logo image
+      final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
+      final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
 
       // Use default fonts for better compatibility and efficiency
       final theme = pw.ThemeData();
@@ -120,25 +125,39 @@ class ServiceAnalyticsPdfService {  /// Generates a PDF document from the provid
           theme: theme,
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(40),
-          build: (context) => [            // Header
-            pw.Text(
-              'CLINIC ANALYTICS REPORT',
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-              ),
-              textAlign: pw.TextAlign.center,
-            ),
-            pw.SizedBox(height: 6),
-            pw.Text(
-              'Service: ${_safeString(serviceName)}',
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-              textAlign: pw.TextAlign.center,
-            ),
-            pw.Text(
-              'Report Date: ${DateFormat('MMMM dd, yyyy').format(DateTime.now())}',
-              style: const pw.TextStyle(fontSize: 8),
-              textAlign: pw.TextAlign.center,
+          build: (context) => [
+            // Header with logo
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'CLINIC ANALYTICS REPORT',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Text(
+                      'Service: ${_safeString(serviceName)}',
+                      style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.Text(
+                      'Report Date: ${DateFormat('MMMM dd, yyyy').format(DateTime.now())}',
+                      style: const pw.TextStyle(fontSize: 8),
+                    ),
+                  ],
+                ),
+                pw.Container(
+                  height: 60,
+                  width: 60,
+                  child: pw.Image(logoImage),
+                ),
+              ],
             ),
             pw.SizedBox(height: 16),
               // Summary Statistics

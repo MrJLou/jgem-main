@@ -1473,14 +1473,52 @@ class DatabaseHelper {
     final db = await database;
     final now = DateTime.now().toIso8601String();
 
-    record['id'] = 'record-${DateTime.now().millisecondsSinceEpoch}';
-    record['createdAt'] = now;
+    // Generate a unique ID if not provided
+    if (record['id'] == null) {
+      record['id'] = 'record-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
+    }
+    
+    // Set timestamps if not provided
+    record['createdAt'] = record['createdAt'] ?? now;
     record['updatedAt'] = now;
 
     await db.insert(DatabaseHelper.tableMedicalRecords, record);
     await logChange(DatabaseHelper.tableMedicalRecords, record['id'], 'insert');
 
     return record['id'];
+  }
+  
+  // Get medical records for a patient
+  Future<List<Map<String, dynamic>>> getMedicalRecordsForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ?',
+      whereArgs: [patientId],
+      orderBy: 'recordDate DESC',
+    );
+  }
+  
+  // Get lab results history for a patient
+  Future<List<Map<String, dynamic>>> getLabResultsHistoryForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ? AND recordType = ?',
+      whereArgs: [patientId, 'laboratory'],
+      orderBy: 'recordDate DESC',
+    );
+  }
+  
+  // Get consultation history for a patient
+  Future<List<Map<String, dynamic>>> getConsultationHistoryForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ? AND recordType = ?',
+      whereArgs: [patientId, 'consultation'],
+      orderBy: 'recordDate DESC',
+    );
   }
 
   // Update medical record
@@ -3279,6 +3317,8 @@ To view live changes in DB Browser:
   // Method to get payment transactions with patient details
   Future<List<Map<String, dynamic>>> getPaymentTransactions({
     String? patientIdOrName,
+    String? patientId,
+    String? patientName,
     String? invoiceNumber,
     DateTime? startDate,
     DateTime? endDate,
@@ -3302,10 +3342,23 @@ To view live changes in DB Browser:
 
     List<dynamic> arguments = [];
 
+    // Support both old and new parameter styles
     if (patientIdOrName != null && patientIdOrName.isNotEmpty) {
       query += ' AND (p.patientId = ? OR pt.fullName LIKE ?)';
       arguments.add(patientIdOrName);
       arguments.add('%$patientIdOrName%');
+    }
+    
+    // Handle separate patientId parameter
+    if (patientId != null && patientId.isNotEmpty) {
+      query += ' AND p.patientId = ?';
+      arguments.add(patientId);
+    }
+    
+    // Handle separate patientName parameter
+    if (patientName != null && patientName.isNotEmpty) {
+      query += ' AND pt.fullName LIKE ?';
+      arguments.add('%$patientName%');
     }
 
     if (invoiceNumber != null && invoiceNumber.isNotEmpty) {

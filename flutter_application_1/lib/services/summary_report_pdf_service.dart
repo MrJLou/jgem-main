@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_application_1/models/patient_report.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -25,6 +26,10 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
   Future<Uint8List> generateSummaryPdf(SummaryReportData data) async {
     try {
       final pdf = pw.Document();
+      
+      // Load logo image
+      final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
+      final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
 
       // Use default fonts for better compatibility and efficiency
       final theme = pw.ThemeData();
@@ -34,7 +39,20 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
           theme: theme,
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(40),
-          build: (context) => [            _buildTextHeader(data.reportDate),
+          build: (context) => [
+            // Header with logo
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _buildTextHeader(data.reportDate),
+                pw.Container(
+                  height: 60,
+                  width: 60,
+                  child: pw.Image(logoImage),
+                ),
+              ],
+            ),
             pw.SizedBox(height: 20),
             _buildTextDemographics(data.demographics),
             pw.SizedBox(height: 20),
@@ -245,4 +263,4 @@ class SummaryReportPdfService {  /// Generates a summary PDF from the strongly-t
       return pw.Text('Error loading recent visits data.');
     }
   }
-} 
+}

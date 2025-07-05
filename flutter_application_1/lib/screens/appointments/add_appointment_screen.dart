@@ -39,6 +39,15 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   final TextEditingController _notesController = TextEditingController();
+  
+  // Added fields for patient form
+  final TextEditingController _middleNameController = TextEditingController();
+  final TextEditingController _suffixController = TextEditingController();
+  String _civilStatus = 'Single';
+  bool _isSeniorCitizen = false;
+  final List<String> _civilStatusOptions = [
+    'Single', 'Married', 'Widowed', 'Separated', 'Divorced'
+  ];
 
   // Search state variables
   final TextEditingController _patientSearchController =
@@ -697,6 +706,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         final allergiesController = TextEditingController();
         String selectedGender = 'Male';
         String selectedBloodType = 'A+';
+        bool unknownBloodType = false;
         bool isLoading = false;
 
         return StatefulBuilder(
@@ -733,6 +743,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                               formType: FormType.mini,
                               firstNameController: firstNameController,
                               lastNameController: lastNameController,
+                              middleNameController: _middleNameController,
+                              suffixController: _suffixController,
                               dobController: dobController,
                               contactController: contactController,
                               addressController: addressController,
@@ -755,6 +767,36 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                               },
                               bloodTypes: _dialogBloodTypes,
                               isEditMode: false,
+                              unknownBloodType: unknownBloodType,
+                              onUnknownBloodTypeChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    unknownBloodType = value;
+                                    if (value) {
+                                      selectedBloodType = 'Unknown';
+                                    } else if (selectedBloodType == 'Unknown') {
+                                      selectedBloodType = 'A+'; // Default if unchecking "Unknown"
+                                    }
+                                  });
+                                }
+                              },
+                              civilStatus: _civilStatus,
+                              onCivilStatusChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _civilStatus = value;
+                                  });
+                                }
+                              },
+                              isSeniorCitizen: _isSeniorCitizen,
+                              onSeniorCitizenChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _isSeniorCitizen = value;
+                                  });
+                                }
+                              },
+                              civilStatusOptions: _civilStatusOptions,
                             ),
                           ),
                         ),
@@ -1000,6 +1042,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   void dispose() {
     _notesController.dispose();
     _patientSearchController.dispose();
+    _middleNameController.dispose();
+    _suffixController.dispose();
     _patientSearchDebounce?.cancel();
     super.dispose();
   }
