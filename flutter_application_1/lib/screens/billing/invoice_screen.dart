@@ -7,6 +7,7 @@ import 'package:flutter_application_1/models/bill_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/screens/billing/widgets/generated_invoice_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/in_consultation_patient_list.dart';
+
 import 'package:flutter_application_1/screens/billing/widgets/payment_processing_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/prepare_invoice_view.dart';
 import 'package:flutter_application_1/screens/patient_queue/view_queue_screen.dart';
@@ -73,6 +74,13 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     super.initState();
     _loadCurrentUserId();
     _fetchInConsultationPatients();
+  }
+
+  @override
+  void dispose() {
+    // Dispose of all controllers to prevent memory leaks
+    _amountPaidController.dispose();
+    super.dispose();
   }
 
   // --- DATA FETCHING AND STATE MANAGEMENT ---
@@ -554,9 +562,23 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           isSaving: _isSavingUnpaid,
         );
       case InvoiceFlowStep.invoiceGenerated:
+        // Handle the case where invoice data might not be ready yet
+        if (_generatedInvoiceNumber == null || _invoiceDate == null) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text("Generating invoice, please wait..."),
+              ],
+            ),
+          );
+        }
+
         return GeneratedInvoiceView(
-          generatedInvoiceNumber: _generatedInvoiceNumber!,
-          invoiceDate: _invoiceDate!,
+          generatedInvoiceNumber: _generatedInvoiceNumber ?? 'Pending',
+          invoiceDate: _invoiceDate ?? DateTime.now(),
           detailedPatientForInvoice: _detailedPatientForInvoice,
           selectedPatientQueueItem: _selectedPatientQueueItem!,
           currentBillItems: _currentBillItems,

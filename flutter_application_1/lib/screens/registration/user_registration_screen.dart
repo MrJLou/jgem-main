@@ -2,6 +2,29 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 
+// Days of week enum for the registration form
+enum DayOfWeek {
+  monday,
+  tuesday,
+  wednesday,
+  thursday,
+  friday,
+  saturday,
+  sunday;
+
+  String get displayName {
+    switch (this) {
+      case DayOfWeek.monday: return 'Monday';
+      case DayOfWeek.tuesday: return 'Tuesday';
+      case DayOfWeek.wednesday: return 'Wednesday';
+      case DayOfWeek.thursday: return 'Thursday';
+      case DayOfWeek.friday: return 'Friday';
+      case DayOfWeek.saturday: return 'Saturday';
+      case DayOfWeek.sunday: return 'Sunday';
+    }
+  }
+}
+
 class UserRegistrationScreen extends StatefulWidget {
   const UserRegistrationScreen({super.key});
 
@@ -35,6 +58,24 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   String? _errorMessage;
+
+  // Doctor working days selection (simplified with strings)
+  final Map<String, bool> _selectedDays = {
+    'monday': true,
+    'tuesday': true,
+    'wednesday': true,
+    'thursday': true,
+    'friday': true,
+    'saturday': true,
+    'sunday': false,
+  };
+
+  // Doctor service hours (when they arrive and leave the clinic)
+  TimeOfDay _arrivalTime = const TimeOfDay(hour: 7, minute: 30);
+  TimeOfDay _departureTime = const TimeOfDay(hour: 16, minute: 30);
+
+  // Days of week for the UI
+  final List<String> _allDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
   // For password strength indicator
   double _passwordStrengthValue = 0.0;
@@ -152,6 +193,16 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
       _errorMessage = null;
     });
 
+    // Validate doctor working days if role is doctor
+    if (_selectedRole == 'doctor') {
+      if (_selectedDays.values.every((selected) => !selected)) {
+        setState(() {
+          _errorMessage = 'Please select at least one working day for the doctor.';
+        });
+        return;
+      }
+    }
+
     if (_formKey.currentState!.validate()) {
       // Check for unique security questions first
       if (_selectedSecurityQuestion1 == _selectedSecurityQuestion2 ||
@@ -193,6 +244,16 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           securityAnswer2: hashedSecurityAnswer2,
           securityQuestion3: _selectedSecurityQuestion3,
           securityAnswer3: hashedSecurityAnswer3,
+          // Include doctor schedule information during registration if it's a doctor
+          workingDays: _selectedRole == 'doctor' ? 
+            _selectedDays.entries
+                .where((entry) => entry.value)
+                .map((entry) => entry.key)
+                .join(',') : null,
+          arrivalTime: _selectedRole == 'doctor' ? 
+            '${_arrivalTime.hour.toString().padLeft(2, '0')}:${_arrivalTime.minute.toString().padLeft(2, '0')}' : null,
+          departureTime: _selectedRole == 'doctor' ? 
+            '${_departureTime.hour.toString().padLeft(2, '0')}:${_departureTime.minute.toString().padLeft(2, '0')}' : null,
         );
 
         if (mounted) {
@@ -431,11 +492,11 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                       icon: Icons.email_outlined,
                                       keyboardType: TextInputType.emailAddress,
                                       validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter email';
-                                        }
-                                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                          return 'Enter valid email';
+                                        // Email is optional, but if provided must be valid
+                                        if (value != null && value.isNotEmpty) {
+                                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                            return 'Enter valid email';
+                                          }
                                         }
                                         return null;
                                       },
@@ -449,11 +510,11 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                       icon: Icons.phone_outlined,
                                       keyboardType: TextInputType.phone,
                                       validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'Please enter contact number';
-                                        }
-                                        if (value.length < 10) {
-                                          return 'Enter valid phone number';
+                                        // Contact number is optional, but if provided must be valid
+                                        if (value != null && value.isNotEmpty) {
+                                          if (value.length < 10) {
+                                            return 'Enter valid phone number';
+                                          }
                                         }
                                         return null;
                                       },
@@ -526,6 +587,12 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
                                 ],
                               ),
                               const SizedBox(height: 16),
+
+                              // Doctor Availability Section (only shown for doctors)
+                              if (_selectedRole == 'doctor') ...[
+                                _buildDoctorAvailabilitySection(),
+                                const SizedBox(height: 16),
+                              ],
 
                               // Password Field
                               _buildPasswordField(
@@ -981,5 +1048,328 @@ class UserRegistrationScreenState extends State<UserRegistrationScreen>
           if (val == null || val.isEmpty) return 'Please select a question';
           return null;
         });
+  }
+
+  Widget _buildDoctorAvailabilitySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Doctor Availability', Icons.schedule),
+        const SizedBox(height: 16),
+
+        // Available Days Selection
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.teal.shade300),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.teal[700], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Available Days',
+                    style: TextStyle(
+                      color: Colors.teal[700],
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Select the days when this doctor will be available:',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _allDays.map((day) {
+                  final isSelected = _selectedDays[day] ?? false;
+                  return FilterChip(
+                    label: Text(_getDayDisplayName(day)),
+                    selected: isSelected,
+                    onSelected: (bool selected) {
+                      setState(() {
+                        _selectedDays[day] = selected;
+                      });
+                    },
+                    selectedColor: Colors.teal.shade100,
+                    checkmarkColor: Colors.teal.shade700,
+                    backgroundColor: Colors.grey.shade100,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.teal.shade700 : Colors.grey[700],
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                    side: BorderSide(
+                      color: isSelected ? Colors.teal.shade400 : Colors.grey.shade300,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              if (_selectedDays.values.every((selected) => !selected))
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.red.shade600, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Please select at least one available day',
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              
+              // Service Hours Section
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, color: Colors.teal.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Service Hours',
+                          style: TextStyle(
+                            color: Colors.teal.shade700,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Set when you arrive at and leave the clinic:',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Time Pickers Row
+                    Row(
+                      children: [
+                        // Arrival Time
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Arrival Time',
+                                style: TextStyle(
+                                  color: Colors.teal.shade700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () => _selectArrivalTime(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.teal.shade300),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.schedule, color: Colors.teal.shade600, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatTimeOfDay(_arrivalTime),
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(width: 16),
+                        
+                        // Departure Time
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Departure Time',
+                                style: TextStyle(
+                                  color: Colors.teal.shade700,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () => _selectDepartureTime(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.teal.shade300),
+                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.schedule_send, color: Colors.teal.shade600, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _formatTimeOfDay(_departureTime),
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ]);
+  }
+
+  String _getDayDisplayName(String day) {
+    switch (day.toLowerCase()) {
+      case 'monday':
+        return 'Monday';
+      case 'tuesday':
+        return 'Tuesday';
+      case 'wednesday':
+        return 'Wednesday';
+      case 'thursday':
+        return 'Thursday';
+      case 'friday':
+        return 'Friday';
+      case 'saturday':
+        return 'Saturday';
+      case 'sunday':
+        return 'Sunday';
+      default:
+        return day;
+    }
+  }
+
+  // Time picker methods for doctor service hours
+  Future<void> _selectArrivalTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _arrivalTime,
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.teal.shade600,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null && picked != _arrivalTime) {
+      setState(() {
+        _arrivalTime = picked;
+        // Ensure departure time is after arrival time
+        if (_departureTime.hour < _arrivalTime.hour || 
+            (_departureTime.hour == _arrivalTime.hour && _departureTime.minute <= _arrivalTime.minute)) {
+          _departureTime = TimeOfDay(
+            hour: _arrivalTime.hour + 1, 
+            minute: _arrivalTime.minute,
+          );
+          // Handle case where hour goes past 23
+          if (_departureTime.hour > 23) {
+            _departureTime = const TimeOfDay(hour: 23, minute: 59);
+          }
+        }
+      });
+    }
+  }
+
+  Future<void> _selectDepartureTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _departureTime,
+      builder: (BuildContext context, Widget? child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.teal.shade600,
+              onPrimary: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null && picked != _departureTime) {
+      setState(() {
+        // Ensure departure time is after arrival time
+        if (picked.hour > _arrivalTime.hour || 
+            (picked.hour == _arrivalTime.hour && picked.minute > _arrivalTime.minute)) {
+          _departureTime = picked;
+        } else {
+          // Show error if trying to set departure before arrival
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Departure time must be after arrival time'),
+              backgroundColor: Colors.red.shade600,
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  String _formatTimeOfDay(TimeOfDay time) {
+    final period = time.hour >= 12 ? 'PM' : 'AM';
+    final displayHour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final minuteStr = time.minute.toString().padLeft(2, '0');
+    return '$displayHour:$minuteStr $period';
   }
 }

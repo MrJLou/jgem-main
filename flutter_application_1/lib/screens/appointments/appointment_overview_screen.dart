@@ -6,6 +6,7 @@ import 'package:flutter_application_1/screens/appointments/add_appointment_scree
 import 'package:flutter_application_1/models/appointment.dart';
 import 'package:flutter_application_1/services/api_service.dart'; // ADDED for ApiService
 import 'package:flutter_application_1/services/database_sync_client.dart';
+import 'package:flutter_application_1/utils/error_dialog_utils.dart';
 import 'dart:async';
 
 class AppointmentOverviewScreen extends StatefulWidget {
@@ -213,10 +214,10 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen>
         setState(() {
           _errorMessage = "Error updating appointment list: ${e.toString()}";
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text("Error updating appointment list: ${e.toString()}"),
-              backgroundColor: Colors.red),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Appointment Error',
+          message: "Error updating appointment list: ${e.toString()}",
         );
       }
     } finally {
@@ -355,12 +356,10 @@ class _AppointmentOverviewScreenState extends State<AppointmentOverviewScreen>
               .map((appt) => appt.time.format(context))
               .join(', ');
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Existing appointments at: $slots'),
-              duration: const Duration(seconds: 3),
-              backgroundColor: Colors.teal,
-            ),
+          ErrorDialogUtils.showInfoDialog(
+            context: context,
+            title: 'Existing Appointments',
+            message: 'Existing appointments at: $slots',
           );
         }
       }

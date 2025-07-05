@@ -28,7 +28,11 @@ class ReceiptService {
           pw.Text('Official Receipt',
               style:
                   pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 60, width: 60, child: pw.Image(logoImage)),
+          pw.Container(
+            height: 60,
+            width: 60,
+            child: pw.Image(logoImage),
+          ),
         ]),
         pw.SizedBox(height: 20),
         pw.Text('JGEM Medical and Diagnosis Clinic'),

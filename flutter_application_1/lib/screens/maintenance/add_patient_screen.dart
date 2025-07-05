@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/error_dialog_utils.dart';
 
 class AddPatientScreen extends StatelessWidget {
   final TextEditingController _patientNameController = TextEditingController();
@@ -64,13 +65,15 @@ class AddPatientScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 // Logic to save patient details
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Patient added successfully!'),
-                    backgroundColor: Colors.teal,
-                  ),
+                ErrorDialogUtils.showSuccessDialog(
+                  context: context,
+                  title: 'Success',
+                  message: 'Patient added successfully!',
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.pop(context); // Go back to previous screen
+                  },
                 );
-                Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
               child: const Text('Save Patient'),

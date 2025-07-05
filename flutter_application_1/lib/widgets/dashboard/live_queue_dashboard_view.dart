@@ -9,6 +9,7 @@ import '../../models/active_patient_queue_item.dart';
 import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
 import '../../services/database_sync_client.dart';
+import '../../utils/error_dialog_utils.dart';
 import 'dashboard_welcome_section.dart';
 import 'dashboard_metrics_section.dart';
 import 'dashboard_doctors_section.dart';
@@ -305,22 +306,20 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
           });
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${newQueueItem.patientName} is now In Consultation.'),
-                backgroundColor: Colors.green,
-              ),
+            ErrorDialogUtils.showSuccessDialog(
+              context: context,
+              title: 'Status Updated',
+              message: '${newQueueItem.patientName} is now In Consultation.',
             );
             // Reload data to get updated appointment status and queue
             _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
           }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to activate scheduled appointment.'),
-              backgroundColor: Colors.red,
-            ),
+          ErrorDialogUtils.showErrorDialog(
+            context: context,
+            title: 'Activation Failed',
+            message: 'Failed to activate scheduled appointment.',
           );
         }
       }
@@ -329,11 +328,10 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         if (kDebugMode) {
           print("Error activating scheduled patient: $e");
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error activating: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Activation Error',
+          message: 'Error activating: ${e.toString()}',
         );
       }
     }
@@ -351,22 +349,20 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         DatabaseSyncClient.triggerQueueRefresh();
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("${item.patientName}'s status updated to ${_getDisplayStatus(newStatus)}."),
-              backgroundColor: Colors.green,
-            ),
+          ErrorDialogUtils.showSuccessDialog(
+            context: context,
+            title: 'Status Updated',
+            message: "${item.patientName}'s status updated to ${_getDisplayStatus(newStatus)}.",
           );
           // Reload both appointments and queue data to reflect changes immediately
           _loadAppointments().then((_) => _loadCombinedQueueData(_calendarSelectedDate));
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Failed to update status for ${item.patientName}."),
-              backgroundColor: Colors.red,
-            ),
+          ErrorDialogUtils.showErrorDialog(
+            context: context,
+            title: 'Update Failed',
+            message: "Failed to update status for ${item.patientName}.",
           );
         }
       }
@@ -375,11 +371,10 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         if (kDebugMode) {
           print("Error updating queue item status: $e");
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error updating status: ${e.toString()}"),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Status Update Error',
+          message: "Error updating status: ${e.toString()}",
         );
       }
     } finally {

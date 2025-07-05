@@ -5,6 +5,7 @@ import 'dart:math' as math; // Added for rotation
 import 'dart:ui' show lerpDouble; // Added for snap-back animation
 import '../services/enhanced_auth_integration.dart';
 import '../services/enhanced_user_token_service.dart';
+import '../widgets/lan_connection_dialog.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -439,14 +440,17 @@ class LoginScreenState extends State<LoginScreen>
       backgroundColor: Colors.grey[50],
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Row(
+          : Stack(
               children: [
-                // Side Navigation
-                Container(
-                  width: 90,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
+                // Main content
+                Row(
+                  children: [
+                    // Side Navigation
+                    Container(
+                      width: 90,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
                       BoxShadow(
                         color: Colors.black.withAlpha(50),
                         blurRadius: 10,
@@ -865,6 +869,42 @@ class LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ],
+            ),
+                
+                // LAN Connection Icon (Floating)
+                Positioned(
+                  top: 20,
+                  right: 20,
+                  child: GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => const LanConnectionDialog(),
+                      );
+                    },
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.teal[700],
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.wifi,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
                   ),
                 ),
               ],

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:flutter_application_1/services/database_sync_client.dart';
+import 'package:flutter_application_1/utils/error_dialog_utils.dart';
 import 'dart:async';
 
 class UserActivityLogScreen extends StatefulWidget {
@@ -63,8 +64,10 @@ class UserActivityLogScreenState extends State<UserActivityLogScreen> {
         print('Error fetching logs: $e');
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error loading activity logs')),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Error Loading Logs',
+          message: 'Failed to load activity logs. Please try again.',
         );
       }
     } finally {

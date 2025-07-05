@@ -6,6 +6,7 @@ class BillItem {
   final int quantity;
   final double unitPrice;
   final double itemTotal; // quantity * unitPrice
+  final String? notes; // Additional details, lab results, etc.
 
   BillItem({
     this.id,
@@ -15,6 +16,7 @@ class BillItem {
     required this.quantity,
     required this.unitPrice,
     required this.itemTotal,
+    this.notes,
   });
 
   factory BillItem.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class BillItem {
       quantity: json['quantity'] as int? ?? 1,
       unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0.0,
       itemTotal: (json['itemTotal'] as num?)?.toDouble() ?? 0.0,
+      notes: json['notes'] as String?,
     );
   }
 
@@ -38,6 +41,7 @@ class BillItem {
       'quantity': quantity,
       'unitPrice': unitPrice,
       'itemTotal': itemTotal,
+      'notes': notes,
     };
   }
 }

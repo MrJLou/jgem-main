@@ -11,6 +11,7 @@ import '../../services/auth_service.dart'; // For fetching current user ID
 import '../../services/database_helper.dart';
 import '../../services/queue_service.dart';
 import '../../services/receipt_service.dart';
+import '../../utils/error_dialog_utils.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String? invoiceNumber;
@@ -65,12 +66,10 @@ class PaymentScreenState extends State<PaymentScreen> {
       });
     } else {
       // Handle case where user is not logged in, though this screen should be protected
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Error: Could not identify current user. Please log in again.'),
-          backgroundColor: Colors.red,
-        ),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Authentication Error',
+        message: 'Error: Could not identify current user. Please log in again.',
       );
     }
   }

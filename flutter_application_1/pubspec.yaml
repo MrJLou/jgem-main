@@ -62,6 +62,7 @@ dependencies:
   uuid: ^4.5.1
   pdf_render: ^1.4.12
   collection: ^1.19.1
+  file_picker: ^8.1.2
   
 dev_dependencies:
   flutter_test:

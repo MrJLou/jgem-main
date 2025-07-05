@@ -1135,7 +1135,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
 
     final dataCells = [
       item.queueNumber.toString(),
-      '${item.patientName} (${Patient.formatId(item.patientId ?? "000000")})',
+      '${item.patientName} (${item.patientId ?? "JG-0000"})',
       arrivalDisplayTime,
       item.gender ?? 'N/A',
       item.age?.toString() ?? 'N/A',

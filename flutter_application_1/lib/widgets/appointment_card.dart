@@ -1,10 +1,11 @@
 // Enhanced appointment card widget with status functionality
 import 'package:flutter/material.dart';
 import '../models/appointment.dart';
+import '../utils/doctor_utils.dart';
 import 'appointments/appointment_status_dropdown.dart';
 import 'appointments/appointment_detail_dialog.dart';
 
-class AppointmentCard extends StatelessWidget {
+class AppointmentCard extends StatefulWidget {
   final Appointment appointment;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
@@ -19,47 +20,71 @@ class AppointmentCard extends StatelessWidget {
   });
 
   @override
+  State<AppointmentCard> createState() => _AppointmentCardState();
+}
+
+class _AppointmentCardState extends State<AppointmentCard> {
+  String _doctorDisplayName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorName();
+  }
+
+  Future<void> _loadDoctorName() async {
+    final doctorName = await DoctorUtils.getDoctorDisplayNameAsync(widget.appointment.doctorId);
+    if (mounted) {
+      setState(() {
+        _doctorDisplayName = doctorName;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    Color statusColor = _getStatusColor(appointment.status);
-    IconData statusIcon = _getStatusIcon(appointment.status);
+    Color statusColor = _getStatusColor(widget.appointment.status);
+    IconData statusIcon = _getStatusIcon(widget.appointment.status);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       elevation: 2,
       child: ListTile(
         leading: Icon(statusIcon, color: statusColor, size: 30),
-        title: Text('Patient ID: ${appointment.patientId}',
+        title: Text('Patient ID: ${widget.appointment.patientId}',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Doctor ID: ${appointment.doctorId}'),
-            Text('Time: ${appointment.time.format(context)}'),
-            if (appointment.consultationType.isNotEmpty)
-              Text('Consultation Type: ${appointment.consultationType}'),
+            Text(_doctorDisplayName.isNotEmpty 
+              ? _doctorDisplayName 
+              : 'Doctor ID: ${widget.appointment.doctorId}'),
+            Text('Time: ${widget.appointment.time.format(context)}'),
+            if (widget.appointment.consultationType.isNotEmpty)
+              Text('Consultation Type: ${widget.appointment.consultationType}'),
           ],
         ),
-        trailing: onUpdateStatus != null 
+        trailing: widget.onUpdateStatus != null 
           ? AppointmentStatusDropdown(
-              currentStatus: appointment.status,
+              currentStatus: widget.appointment.status,
               onChanged: (newStatus) {
                 if (newStatus != null) {
-                  onUpdateStatus!(appointment.id, newStatus);
+                  widget.onUpdateStatus!(widget.appointment.id, newStatus);
                 }
               },
             )
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (onEdit != null)
+                if (widget.onEdit != null)
                   IconButton(
                     icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: onEdit,
+                    onPressed: widget.onEdit,
                   ),
-                if (onDelete != null)
+                if (widget.onDelete != null)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: onDelete,
+                    onPressed: widget.onDelete,
                   ),
               ],
             ),
@@ -68,7 +93,7 @@ class AppointmentCard extends StatelessWidget {
           showDialog(
               context: context,
               builder: (BuildContext context) =>
-                  AppointmentDetailDialog(appointment: appointment));
+                  AppointmentDetailDialog(appointment: widget.appointment));
         },
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/error_dialog_utils.dart';
 
 class AddServiceScreen extends StatelessWidget {
   final TextEditingController _serviceCategoryController = TextEditingController();
@@ -65,13 +66,15 @@ class AddServiceScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 // Logic to save service details
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Service added successfully!'),
-                    backgroundColor: Colors.teal,
-                  ),
+                ErrorDialogUtils.showSuccessDialog(
+                  context: context,
+                  title: 'Success',
+                  message: 'Service added successfully!',
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.pop(context); // Go back to previous screen
+                  },
                 );
-                Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal[700]),
               child: const Text('Save Service'),

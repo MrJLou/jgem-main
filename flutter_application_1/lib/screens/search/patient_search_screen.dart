@@ -3,6 +3,7 @@ import 'package:flutter_application_1/screens/maintenance/modify_patient_details
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import '../../models/patient.dart';
+import '../../utils/error_dialog_utils.dart';
 import 'dart:async';
 import '../appointments/add_appointment_screen.dart';
 import '../../models/appointment.dart';
@@ -942,11 +943,10 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
   void _savePatientChanges() async {
     if (_formKey.currentState!.validate()) {
       if (_foundPatient == null || _editGender == null || _editBloodType == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Error: Patient data or selections missing.'),
-            backgroundColor: Colors.red[600],
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Validation Error',
+          message: 'Error: Patient data or selections missing.',
         );
         return;
       }
@@ -977,14 +977,10 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
           _isLoading = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Patient details updated successfully!'),
-            backgroundColor: Colors.green[600],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(10),
-          ),
+        ErrorDialogUtils.showSuccessDialog(
+          context: context,
+          title: 'Update Successful',
+          message: 'Patient details updated successfully!',
         );
 
       } catch (e) {
@@ -992,14 +988,10 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         setState(() { 
           _isLoading = false; 
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update patient: ${e.toString().replaceAll("Exception: ", "")}'),
-            backgroundColor: Colors.red[600],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(10),
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Update Failed',
+          message: 'Failed to update patient: ${e.toString().replaceAll("Exception: ", "")}',
         );
       }
     }
@@ -1058,15 +1050,10 @@ class PatientSearchScreenState extends State<PatientSearchScreen> {
         _patientData = null;
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error fetching patient details: $_errorMessage'),
-          backgroundColor: Colors.red[700],
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(10),
-        ),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Patient Fetch Error',
+        message: 'Error fetching patient details: $_errorMessage',
       );
     }
   }

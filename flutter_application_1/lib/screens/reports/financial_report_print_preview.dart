@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Add this import for rootBundle
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -13,6 +13,10 @@ class FinancialReportPrintPreview extends StatelessWidget {
 
   Future<Uint8List> _generatePdf(PdfPageFormat format) async {
     final pdf = pw.Document(version: PdfVersion.pdf_1_5, compress: true);
+    
+    // Load logo image
+    final logoImageBytes = await rootBundle.load('assets/images/slide1.png');
+    final logoImage = pw.MemoryImage(logoImageBytes.buffer.asUint8List());
 
     pdf.addPage(
       pw.MultiPage(
@@ -38,15 +42,27 @@ class FinancialReportPrintPreview extends StatelessWidget {
           }).toList();
 
           return [
-            pw.Header(
-              level: 0,
-              child: pw.Text('Financial Report',
-                  style: pw.TextStyle(
-                      fontSize: 24, fontWeight: pw.FontWeight.bold)),
-            ),
-            pw.Paragraph(
-              text:
-                  'Generated on: ${DateTime.now().toLocal().toString().substring(0, 16)}',
+            // Header with logo
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Financial Report',
+                        style: pw.TextStyle(
+                            fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Generated on: ${DateTime.now().toLocal().toString().substring(0, 16)}',
+                            style: const pw.TextStyle(fontSize: 12)),
+                  ],
+                ),
+                pw.Container(
+                  height: 60,
+                  width: 60,
+                  child: pw.Image(logoImage),
+                ),
+              ],
             ),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
@@ -104,4 +120,4 @@ class FinancialReportPrintPreview extends StatelessWidget {
       ),
     );
   }
-} 
+}

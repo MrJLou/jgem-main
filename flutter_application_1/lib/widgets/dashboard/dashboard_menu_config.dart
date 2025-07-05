@@ -13,10 +13,11 @@ import '../../screens/reports/report_hub_screen.dart';
 import '../../screens/billing/billing_hub_screen.dart';
 import '../../screens/payment/payment_hub_screen.dart';
 import '../../screens/maintenance/maintenance_hub_screen.dart';
-import '../../screens/server_management_screen.dart';
-import '../../screens/lan_connection_screen.dart';
-import '../../screens/help/help_screen.dart';
+import '../../screens/consultation/consultation_hub_screen.dart';
+
 import '../../screens/about_screen.dart';
+import '../../debug_service_analytics_test.dart';
+
 import '../../services/queue_service.dart';
 import '../dashboard/live_queue_dashboard_view.dart';
 
@@ -76,33 +77,30 @@ class DashboardMenuConfig {
       'screen': (String accessLevel) => const AnalyticsHubScreen(),
       'icon': Icons.analytics_outlined
     },
+    'Debug Service Analytics': {
+      'screen': (String accessLevel) => const DebugServiceAnalyticsTest(),
+      'icon': Icons.bug_report
+    },
     'Report': {
       'screen': (String accessLevel) => const ReportHubScreen(),
       'icon': Icons.receipt_long_outlined
-    },
-    'Payment': {
-      'screen': (String accessLevel) => const PaymentHubScreen(),
-      'icon': Icons.payment_outlined
     },
     'Billing': {
       'screen': (String accessLevel) => const BillingHubScreen(),
       'icon': Icons.request_quote_outlined
     },
-    'Help': {
-      'screen': (String accessLevel) => const HelpScreen(),
-      'icon': Icons.help_outline
+    'Consultation Results': {
+      'screen': (String accessLevel) =>
+          ConsultationHubScreen(accessLevel: accessLevel),
+      'icon': Icons.medical_services_outlined
+    },
+    'Payment': {
+      'screen': (String accessLevel) => const PaymentHubScreen(),
+      'icon': Icons.payment_outlined
     },
     'About': {
       'screen': (String accessLevel) => const AboutScreen(),
       'icon': Icons.info_outline
-    },
-    'Server Management': {
-      'screen': (String accessLevel) => const ServerManagementScreen(),
-      'icon': Icons.dns_outlined
-    },
-    'LAN Connection': {
-      'screen': (String accessLevel) => const LanConnectionScreen(),
-      'icon': Icons.wifi_outlined
     },
     '---': {
       'screen': (String accessLevel) =>
@@ -123,13 +121,11 @@ class DashboardMenuConfig {
       'Appointment Schedule',
       '---',
       'Analytics Hub',
+      'Debug Service Analytics',
       'Report',
       'Payment',
       'Billing',
       '---',
-      'Server Management',
-      '---',
-      'Help',
       'About'
     ],
     'medtech': [
@@ -140,16 +136,15 @@ class DashboardMenuConfig {
       'Patient Laboratory Histories',
       '---',
       'Patient Queue',
+      'Consultation Results',
       'Appointment Schedule',
+      'Doctor Availability',
       '---',
       'Analytics Hub',
       'Report',
       'Payment',
       'Billing',
       '---',
-      'LAN Connection',
-      '---',
-      'Help',
       'About'
     ],
     'doctor': [
@@ -159,16 +154,15 @@ class DashboardMenuConfig {
       'Patient Laboratory Histories',
       '---',
       'Patient Queue',
+      'Consultation Results',
       'Appointment Schedule',
+      'Doctor Availability',
       '---',
       'Analytics Hub',
       'Report',
       'Payment',
       'Billing',
       '---',
-      'LAN Connection',
-      '---',
-      'Help',
       'About'
     ],
   };

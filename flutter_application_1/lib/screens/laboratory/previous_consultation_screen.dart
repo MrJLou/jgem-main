@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert'; // Added for jsonDecode
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
 import 'package:intl/intl.dart';
@@ -17,6 +18,22 @@ class ConsultationDataSource extends DataTableSource {
   final Function(Map<String, dynamic>) onViewDetails;
 
   ConsultationDataSource(this._consultations, this.context, this.onViewDetails);
+
+  void _showConsultationHistoryDialog(BuildContext context, String patientId) {
+    // Get access to the dialog context's ScaffoldMessenger
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fetching patient consultation history...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    
+    // Call the proper method on the parent screen
+    if (context.findAncestorStateOfType<PreviousConsultationScreenState>() != null) {
+      context.findAncestorStateOfType<PreviousConsultationScreenState>()!
+          ._showConsultationHistoryDialog(context, patientId);
+    }
+  }
 
   void updateData(List<Map<String, dynamic>> newData) {
     _consultations = newData;
@@ -69,6 +86,14 @@ class ConsultationDataSource extends DataTableSource {
               icon: const Icon(Icons.visibility, color: Colors.teal),
               onPressed: () => onViewDetails(consultation),
               tooltip: 'View Details',
+            ),
+            IconButton(
+              icon: const Icon(Icons.history, color: Colors.indigo),
+              onPressed: () {
+                // Show patient's consultation history
+                _showConsultationHistoryDialog(context, consultation['patientId']);
+              },
+              tooltip: 'View History',
             ),
           ],
         ),
@@ -504,6 +529,78 @@ class PreviousConsultationScreenState
         ],
       ),
     );
+  }
+
+  // Helper function to show consultation history dialog
+  void _showConsultationHistoryDialog(BuildContext context, String patientId) async {
+    final dbHelper = DatabaseHelper();
+    final history = await dbHelper.getConsultationHistoryForPatient(patientId);
+    
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Consultation History'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: history.length,
+              itemBuilder: (context, index) {
+                final record = history[index];
+                final recordDate = DateTime.parse(record['recordDate']);
+                
+                // Parse selected services if available
+                String servicesText = '';
+                if (record['selectedServices'] != null) {
+                  try {
+                    final services = jsonDecode(record['selectedServices']);
+                    if (services is List && services.isNotEmpty) {
+                      servicesText = services
+                          .map((service) => service['name'] ?? 'Unknown Service')
+                          .join(', ');
+                    }
+                  } catch (e) {
+                    // Ignore parsing errors
+                  }
+                }
+                
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  child: ListTile(
+                    title: Text(
+                      DateFormat('MMM d, yyyy - h:mm a').format(recordDate),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        if (servicesText.isNotEmpty)
+                          Text('Services: $servicesText'),                      if (record['diagnosis'] != null && record['diagnosis'].toString().isNotEmpty)
+                        Text("Diagnosis: ${record['diagnosis']}"),
+                      if (record['treatment'] != null && record['treatment'].toString().isNotEmpty)
+                        Text("Treatment: ${record['treatment']}"),
+                        if (record['notes'] != null && record['notes'].toString().isNotEmpty)
+                          Text("Notes: ${record['notes']}"),
+                      ],
+                    ),
+                    isThreeLine: true,
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

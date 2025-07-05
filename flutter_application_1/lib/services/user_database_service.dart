@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -14,6 +15,12 @@ class UserDatabaseService {
   // Insert user
   Future<User> insertUser(Map<String, dynamic> userMap) async {
     final db = await _dbHelper.database;
+    
+    // Debug logging to see what we're getting
+    debugPrint('USER_DB_SERVICE: Received userMap: ${userMap.keys}');
+    debugPrint('USER_DB_SERVICE: Email value: "${userMap['email']}"');
+    debugPrint('USER_DB_SERVICE: ContactNumber value: "${userMap['contactNumber']}"');
+    
     // Ensure correct keys and handle potential nulls for NOT NULL fields
     Map<String, dynamic> dbUserMap = {
       'id': userMap['id'] ?? 'user-${DateTime.now().millisecondsSinceEpoch}',
@@ -37,6 +44,29 @@ class UserDatabaseService {
           userMap['securityAnswer3'] ?? '', 
       'createdAt': userMap['createdAt'] ?? DateTime.now().toIso8601String(),
     };
+
+    // Add optional fields (only if not null and not empty)
+    if (userMap['email'] != null && userMap['email'].toString().trim().isNotEmpty) {
+      dbUserMap['email'] = userMap['email'];
+      debugPrint('USER_DB_SERVICE: Adding email to dbUserMap: "${userMap['email']}"');
+    } else {
+      debugPrint('USER_DB_SERVICE: Email is null or empty, not adding to dbUserMap');
+    }
+    
+    if (userMap['contactNumber'] != null && userMap['contactNumber'].toString().trim().isNotEmpty) {
+      dbUserMap['contactNumber'] = userMap['contactNumber'];
+      debugPrint('USER_DB_SERVICE: Adding contactNumber to dbUserMap: "${userMap['contactNumber']}"');
+    } else {
+      debugPrint('USER_DB_SERVICE: ContactNumber is null or empty, not adding to dbUserMap');
+    }
+    
+    // Add doctor schedule fields if provided (for doctors)
+    if (userMap['workingDays'] != null) dbUserMap['workingDays'] = userMap['workingDays'];
+    if (userMap['arrivalTime'] != null) dbUserMap['arrivalTime'] = userMap['arrivalTime'];
+    if (userMap['departureTime'] != null) dbUserMap['departureTime'] = userMap['departureTime'];
+
+    debugPrint('USER_DB_SERVICE: Final dbUserMap keys: ${dbUserMap.keys}');
+    debugPrint('USER_DB_SERVICE: Final dbUserMap: $dbUserMap');
 
     // Validate that essential NOT NULL fields are present after defaults
     if (dbUserMap['username'] == null || dbUserMap['username'].isEmpty) {

@@ -4,7 +4,7 @@ import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/authentication_manager.dart';
 import '../widgets/dashboard/dashboard_menu_config.dart';
 import '../widgets/dashboard/dashboard_navigation_item.dart';
-import 'lan_connection_screen.dart';
+import '../services/help_manual_pdf_service.dart';
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -167,16 +167,9 @@ class DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: Colors.teal[700],
         actions: [
           IconButton(
-            icon: const Icon(Icons.wifi, color: Colors.white),
-            tooltip: 'LAN Connection',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LanConnectionScreen(),
-                ),
-              );
-            },
+            icon: const Icon(Icons.help_outline, color: Colors.white),
+            tooltip: 'User Manual',
+            onPressed: () => _showHelpManualOptions(context),
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
@@ -246,6 +239,84 @@ class DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showHelpManualOptions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.description, color: Colors.teal[700]),
+              const SizedBox(width: 10),
+              const Text('User Manual Options'),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Choose how you would like to access the user manual:',
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                try {
+                  await HelpManualPdfService.printHelpManual();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error printing manual: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.print),
+              label: const Text('Print Manual'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                try {
+                  await HelpManualPdfService.saveHelpManual();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error saving manual: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('Download PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

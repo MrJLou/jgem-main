@@ -1,6 +1,7 @@
 // Appointment list widget to display appointments
 import 'package:flutter/material.dart';
 import '../../models/appointment.dart';
+import '../../utils/doctor_utils.dart';
 import 'appointment_status_dropdown.dart';
 import 'appointment_detail_dialog.dart';
 
@@ -36,7 +37,7 @@ class AppointmentList extends StatelessWidget {
   }
 }
 
-class AppointmentListCard extends StatelessWidget {
+class AppointmentListCard extends StatefulWidget {
   final Appointment appointment;
   final Function(String, String) onUpdateStatus;
   final VoidCallback onEdit;
@@ -49,11 +50,33 @@ class AppointmentListCard extends StatelessWidget {
   });
 
   @override
+  State<AppointmentListCard> createState() => _AppointmentListCardState();
+}
+
+class _AppointmentListCardState extends State<AppointmentListCard> {
+  String _doctorDisplayName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorName();
+  }
+
+  Future<void> _loadDoctorName() async {
+    final doctorName = await DoctorUtils.getDoctorDisplayNameAsync(widget.appointment.doctorId);
+    if (mounted) {
+      setState(() {
+        _doctorDisplayName = doctorName;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     Color statusColor = Colors.grey;
     IconData statusIcon = Icons.schedule;
 
-    switch (appointment.status) {
+    switch (widget.appointment.status) {
       case 'Confirmed':
         statusColor = Colors.green;
         statusIcon = Icons.check_circle;
@@ -81,7 +104,7 @@ class AppointmentListCard extends StatelessWidget {
           showDialog(
             context: context,
             builder: (BuildContext context) =>
-                AppointmentDetailDialog(appointment: appointment),
+                AppointmentDetailDialog(appointment: widget.appointment),
           );
         },
         borderRadius: BorderRadius.circular(12),
@@ -93,12 +116,12 @@ class AppointmentListCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Patient ID: ${appointment.patientId}',
+                  Text('Patient ID: ${widget.appointment.patientId}',
                       style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.bold)),
                   Chip(
                     avatar: Icon(statusIcon, color: Colors.white, size: 16),
-                    label: Text(appointment.status,
+                    label: Text(widget.appointment.status,
                         style: const TextStyle(color: Colors.white)),
                     backgroundColor: statusColor,
                     padding:
@@ -107,13 +130,40 @@ class AppointmentListCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text('Doctor ID: ${appointment.doctorId}'),
-              Text('Time: ${appointment.time.format(context)}'),
-              if (appointment.consultationType.isNotEmpty)
+              Row(
+                children: [
+                  Icon(Icons.medical_services, size: 16, color: Colors.teal[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Doctor: ${_doctorDisplayName.isNotEmpty ? _doctorDisplayName : 'Loading...'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: _doctorDisplayName.isNotEmpty ? Colors.black87 : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: 16, color: Colors.blue[600]),
+                  const SizedBox(width: 4),
+                  Text('Time: ${widget.appointment.time.format(context)}'),
+                ],
+              ),
+              if (widget.appointment.consultationType.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
-                  child: Text('Consultation Type: ${appointment.consultationType}',
-                      style: const TextStyle(fontStyle: FontStyle.italic)),
+                  child: Row(
+                    children: [
+                      Icon(Icons.medical_information, size: 16, color: Colors.purple[600]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text('Type: ${widget.appointment.consultationType}',
+                            style: const TextStyle(fontStyle: FontStyle.italic)),
+                      ),
+                    ],
+                  ),
                 ),
               const SizedBox(height: 12),
               Row(
@@ -121,10 +171,10 @@ class AppointmentListCard extends StatelessWidget {
                 children: [
                   const Text('Change Status: '),
                   AppointmentStatusDropdown(
-                    currentStatus: appointment.status,
+                    currentStatus: widget.appointment.status,
                     onChanged: (newStatus) {
                       if (newStatus != null) {
-                        onUpdateStatus(appointment.id, newStatus);
+                        widget.onUpdateStatus(widget.appointment.id, newStatus);
                       }
                     },
                   ),
