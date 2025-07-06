@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 41;
+  static const int _databaseVersion = 42;
 
   // Tables
   static const String tableUsers = 'users';
@@ -1078,6 +1078,19 @@ class DatabaseHelper {
       await _addColumnIfNotExists(db, tableUsers, 'workingDays', 'TEXT');
       await _addColumnIfNotExists(db, tableUsers, 'arrivalTime', 'TEXT');
       await _addColumnIfNotExists(db, tableUsers, 'departureTime', 'TEXT');
+    }
+    
+    if (oldVersion < 42) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 42: Adding enhanced patient fields.");
+      
+      // Add new patient fields for enhanced registration
+      await _addColumnIfNotExists(db, tablePatients, 'firstName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'middleName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'lastName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'suffix', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'civilStatus', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'isSeniorCitizen', 'INTEGER DEFAULT 0');
       
       debugPrint('DATABASE_HELPER: Doctor schedule columns added to users table');
     }
@@ -2271,9 +2284,43 @@ To view live changes in DB Browser:
     return result;
   }
 
-  // ACTIVE PATIENT QUEUE METHODS
+  // Get the highest patient ID number for initializing the counter
+  Future<int> getHighestPatientId() async {
+    final db = await database;
+    try {
+      final results = await db.rawQuery(
+        "SELECT id FROM ${DatabaseHelper.tablePatients} WHERE id LIKE 'JG-%' OR id LIKE 'JG%'"
+      );
+      
+      if (results.isEmpty) {
+        return 0;
+      }
+      
+      int highestNum = 0;
+      for (var row in results) {
+        final idString = row['id'].toString();
+        // Extract the numeric part from IDs like JG-0001 or JG0001
+        final match = RegExp(r'JG-?(\d+)').firstMatch(idString);
+        if (match != null) {
+          final numStr = match.group(1);
+          if (numStr != null) {
+            final num = int.tryParse(numStr);
+            if (num != null && num > highestNum) {
+              highestNum = num;
+            }
+          }
+        }
+      }
+      
+      debugPrint('DATABASE_HELPER: Highest patient ID number found: $highestNum');
+      return highestNum;
+    } catch (e) {
+      debugPrint('DATABASE_HELPER: Error getting highest patient ID: $e');
+      return 0;
+    }
+  }
 
- 
+  // ACTIVE PATIENT QUEUE METHODS
 
   /// Adds a patient to the active queue.
   Future<ActivePatientQueueItem> addToActiveQueue(

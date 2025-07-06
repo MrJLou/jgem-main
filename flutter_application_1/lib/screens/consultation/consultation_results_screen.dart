@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/active_patient_queue_item.dart';
@@ -174,8 +176,9 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
       // If no lab results exist, patient needs lab results
       return patientResults.isEmpty;
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('Error checking lab results for patient $patientId: $e');
+      }
       return false; // Default to not needing results if we can't determine
     }
   }
@@ -232,7 +235,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         'diagnosis': _diagnosisController.text.trim(),
         'consultationNotes': _consultationNotesController.text.trim(),
         'prescription': _prescriptionController.text.trim(),
-        'recordType': _isLabTest ? 'Laboratory' : 'Consultation',
+        'recordType': _isLabTest ? 'laboratory' : 'consultation',
         'recordDate': now.toIso8601String(),
         'status': 'completed',
       };
@@ -255,7 +258,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         }
 
         if (labResults.isNotEmpty) {
-          consultationData['labResults'] = labResults;
+          consultationData['labResults'] = jsonEncode(labResults); // Encode as JSON string for SQLite storage
         }
       }
 

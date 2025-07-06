@@ -813,7 +813,9 @@ class QueueService {
     }
   }
 
-  /// Marks a queue item as 'served' and its payment status as 'Paid'.
+  /// Marks a queue item's payment status as 'Paid' and checks if it should be marked as served.
+  /// For laboratory services, the item will not be marked as 'served' until lab results are entered.
+  /// For other services, the item will be marked as 'served' immediately.
   /// Also creates a corresponding medical record.
   Future<bool> markPaymentSuccessfulAndServe(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
@@ -826,14 +828,30 @@ class QueueService {
     }
 
     final now = DateTime.now();
-    // Update status to 'served' and paymentStatus to 'Paid'
+    
+    // Check if this queue item contains laboratory services
+    bool hasLabServices = false;
+    if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
+      hasLabServices = item.selectedServices!.any((service) {
+        final category = (service['category'] as String? ?? '').toLowerCase();
+        return ['laboratory', 'hematology', 'chemistry', 'urinalysis', 'microbiology', 'pathology']
+            .contains(category);
+      });
+    }
+    
+    // For lab services, only update payment status and keep as "in progress" until results are entered
+    // For other services, mark as "done" immediately upon payment
     final updatedItem = item.copyWith(
-      status: 'done', // Use 'done' to signify completion
+      status: hasLabServices ? 'in_progress' : 'done', // Only mark non-lab services as done
       paymentStatus: 'Paid',
-      servedAt: now,
+      servedAt: hasLabServices ? null : now, // Only set servedAt for non-lab services
       // If consultation hasn't officially started, mark it as started now
       consultationStartedAt: item.consultationStartedAt ?? now,
     );
+    
+    if (kDebugMode) {
+      print('QueueService: Item contains lab services: $hasLabServices - Status set to ${updatedItem.status}');
+    }
 
     final updateResult = await _dbHelper.updateActiveQueueItem(updatedItem);
 
@@ -986,6 +1004,49 @@ class QueueService {
       print(
           'QueueService: Triggered comprehensive queue and appointment refresh');
     }
+  }
+
+  /// Marks a laboratory test as completed and updates the queue status
+  /// This should be called after lab results are entered
+  Future<bool> markLabResultCompleted(String queueEntryId) async {
+    final item = await _dbHelper.getActiveQueueItem(queueEntryId);
+    if (item == null) {
+      if (kDebugMode) {
+        print(
+            'QueueService: Item with ID $queueEntryId not found for marking lab results as completed.');
+      }
+      return false;
+    }
+
+    // Only mark as served if it was already paid
+    if (item.paymentStatus != 'Paid') {
+      if (kDebugMode) {
+        print(
+            'QueueService: Cannot complete lab results for unpaid queue item: $queueEntryId');
+      }
+      return false;
+    }
+
+    final now = DateTime.now();
+    // Update status to 'served' now that lab results are entered
+    final updatedItem = item.copyWith(
+      status: 'done', // Now mark as done since results are entered
+      servedAt: now,
+    );
+
+    final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+    
+    if (result > 0) {
+      // Trigger immediate sync to notify all connected devices
+      _triggerImmediateSync();
+      
+      if (kDebugMode) {
+        print('QueueService: Lab results completed for queue item: $queueEntryId');
+      }
+      return true;
+    }
+    
+    return false;
   }
 }
 

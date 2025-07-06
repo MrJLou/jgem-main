@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/active_patient_queue_item.dart';
+import 'package:flutter_application_1/models/clinic_service.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/models/user.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
+import 'package:flutter_application_1/services/queue_service.dart';
 import 'package:flutter_application_1/utils/string_utils.dart';
 import 'package:intl/intl.dart';
 
@@ -374,8 +378,107 @@ class PreviousLaboratoryResultsScreenState
         }
       }
 
-      // 3. Process medical records has been removed to prevent duplication.
-      // The sources above (Queue and Appointments) are the single source of truth for services rendered.
+      // 3. Also process existing medical records with recordType = 'laboratory'
+      try {
+        final db = await _dbHelper.database;
+        final labMedicalRecords = await db.query(
+          'medical_records',
+          where: "recordType = ?",
+          whereArgs: ["laboratory"],
+          orderBy: "recordDate DESC"
+        );
+
+        for (final record in labMedicalRecords) {
+          final patientId = record['patientId'] as String?;
+          if (patientId == null) continue;
+          
+          final patient = patientMap[patientId];
+          if (patient == null) continue;
+
+          final doctorId = record['doctorId'] as String?;
+          final doctor = doctorId != null ? doctorMap[doctorId] : null;
+          
+          // Try to parse lab results
+          Map<String, dynamic> parsedResults = {};
+          String testName = 'Laboratory Tests';
+          String category = 'Laboratory';
+          String status = 'Completed';
+          
+          try {
+            if (record['labResults'] != null && (record['labResults'] as String).isNotEmpty) {
+              try {
+                final labData = jsonDecode(record['labResults'] as String);
+                
+                // Handle both old and new format of lab results
+                if (labData is Map) {
+                  if (labData.containsKey('results')) {
+                    // New structured format with results key
+                    parsedResults = labData['results'] as Map<String, dynamic>? ?? {};
+                    testName = labData['testName'] as String? ?? 'Laboratory Tests';
+                    category = labData['category'] as String? ?? 'Laboratory';
+                    status = labData['status'] as String? ?? 'Completed';
+                  } else if (labData.containsKey('testName') || labData.containsKey('category')) {
+                    // Structured format but results might be directly in the Map
+                    // This handles cases where 'results' key might be missing
+                    testName = labData['testName'] as String? ?? 'Laboratory Tests';
+                    category = labData['category'] as String? ?? 'Laboratory';
+                    status = labData['status'] as String? ?? 'Completed';
+                    
+                    // Try to find results data
+                    if (labData.keys.any((key) => key != 'testName' && key != 'category' && 
+                                               key != 'status' && key != 'date' && key != 'queueId')) {
+                      // Extract all fields that might contain results
+                      for (final key in labData.keys) {
+                        if (key != 'testName' && key != 'category' && 
+                            key != 'status' && key != 'date' && key != 'queueId') {
+                          if (labData[key] is Map) {
+                            parsedResults.addAll(labData[key] as Map<String, dynamic>);
+                          } else if (labData[key] is String || labData[key] is num) {
+                            parsedResults[key] = labData[key].toString();
+                          }
+                        }
+                      }
+                    }
+                  } else {
+                    // Old direct format - assume the entire map is result values
+                    parsedResults = Map<String, dynamic>.from(labData);
+                  }
+                }
+              } catch (e) {
+                debugPrint('JSON parsing error in lab results: $e');
+                // Fallback for invalid JSON
+                parsedResults = {'Error': 'Could not parse lab results properly'};
+              }
+            }
+          } catch (e) {
+            debugPrint('Error parsing lab results JSON: $e');
+          }
+
+          transformedResults.add({
+            'id': record['id'],
+            'patientName': patient.fullName,
+            'patientId': patientId,
+            'date': DateFormat('yyyy-MM-dd HH:mm').format(
+              DateTime.tryParse(record['recordDate'] as String) ?? DateTime.now()
+            ),
+            'test': testName, // Use parsed test name
+            'testType': 'Medical Record',
+            'doctor': doctor != null ? 'Dr. ${doctor.fullName}' : 'Unknown Doctor',
+            'doctorId': doctorId,
+            'result': parsedResults.isNotEmpty ? parsedResults : {'Status': 'Results available in medical record'},
+            'status': status, // Use parsed status
+            'notes': record['notes'] as String? ?? '',
+            'category': category, // Use parsed category
+            'diagnosis': record['diagnosis'] as String? ?? '',
+            'rawLabResults': record['labResults'] as String? ?? '',
+            'patient': patient,
+            'doctorUser': doctor,
+            'isFromMedicalRecord': true,
+          });
+        }
+      } catch (e) {
+        debugPrint('Error processing laboratory medical records: $e');
+      }
 
       // Sort by date (newest first)
       transformedResults
@@ -726,8 +829,44 @@ class PreviousLaboratoryResultsScreenState
     final diagnosisController =
         TextEditingController(text: result['diagnosis'] ?? '');
 
-    // Extract current result values
-    final currentResults = result['result'] as Map<String, dynamic>? ?? {};
+    // Extract current result values - handle both new and old formats with enhanced parsing
+    Map<String, dynamic> currentResults = {};
+    if (result['result'] is Map<String, dynamic>) {
+      // Direct results or already processed
+      currentResults = result['result'] as Map<String, dynamic>;
+    } else if (result['rawLabResults'] != null) {
+      // Try to parse from raw JSON
+      try {
+        final rawData = result['rawLabResults'];
+        final parsedData = rawData is String ? jsonDecode(rawData) : rawData;
+        
+        if (parsedData is Map) {
+          if (parsedData.containsKey('results')) {
+            // New structured format
+            currentResults = parsedData['results'] as Map<String, dynamic>? ?? {};
+          } else if (parsedData.containsKey('testName') || parsedData.containsKey('category')) {
+            // Structured format but results might be directly in the Map
+            // Look for fields that might contain test results
+            for (final key in parsedData.keys) {
+              if (key != 'testName' && key != 'category' && 
+                  key != 'status' && key != 'date' && key != 'queueId') {
+                if (parsedData[key] is Map) {
+                  currentResults.addAll(parsedData[key] as Map<String, dynamic>);
+                } else if (parsedData[key] is String || parsedData[key] is num) {
+                  currentResults[key] = parsedData[key].toString();
+                }
+              }
+            }
+          } else {
+            // Old format - assume the entire map contains results
+            currentResults = Map<String, dynamic>.from(parsedData);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error parsing raw lab results: $e');
+      }
+    }
+    
     final resultControllers = <String, TextEditingController>{};
 
     for (final entry in currentResults.entries) {
@@ -968,8 +1107,10 @@ class PreviousLaboratoryResultsScreenState
       updatedResult['category'] = category;
       updatedResult['status'] = status;
       updatedResult['result'] = updatedResults;
-      updatedResult['diagnosis'] = diagnosis;
-      updatedResult['notes'] = notes;
+      updatedResult['diagnosis'] = diagnosis; // Already non-null from controller
+      updatedResult['notes'] = notes; // Already non-null from controller
+      updatedResult['treatment'] = ''; // Add required fields with empty strings
+      updatedResult['prescription'] = ''; // Add required fields with empty strings
       updatedResult['updatedAt'] = DateTime.now().toIso8601String();
 
       // Update in database - this depends on the data source
@@ -1017,40 +1158,116 @@ class PreviousLaboratoryResultsScreenState
       String queueId, Map<String, dynamic> updatedResult) async {
     // Update the queue item with new laboratory results
     // Create a medical record entry for the updated results
+    final now = DateTime.now();
+    
+    // Extract the service ID if available
+    String? serviceId;
+    if (updatedResult['category'] != null) {
+      try {
+        // Look up service by category
+        final services = await _dbHelper.getClinicServices();
+        final matchingService = services.firstWhere(
+          (service) => service.category?.toLowerCase() == updatedResult['category'].toString().toLowerCase(),
+          orElse: () => ClinicService(
+            id: '', 
+            serviceName: ''
+          ),
+        );
+        serviceId = matchingService.id.isNotEmpty ? matchingService.id : null;
+      } catch (e) {
+        debugPrint('Error finding service ID for category: ${e.toString()}');
+      }
+    }
+    
     final medicalRecord = {
-      'id': 'lab-update-${DateTime.now().millisecondsSinceEpoch}',
+      'id': 'lab-result-${now.millisecondsSinceEpoch}',
       'patientId': updatedResult['patientId'],
-      'recordType': 'Laboratory Result',
-      'title': updatedResult['test'],
-      'content': updatedResult['notes'],
-      'diagnosis': updatedResult['diagnosis'],
-      'additionalData': {
-        'testResults': updatedResult['result'],
-        'category': updatedResult['category'],
-        'status': updatedResult['status'],
-        'sourceQueueId': queueId,
-      },
-      'createdAt': DateTime.now().toIso8601String(),
-      'updatedAt': DateTime.now().toIso8601String(),
+      'appointmentId': null, // Set to null as it's from lab, not appointment
+      'serviceId': serviceId, // Use the matched service ID if found
+      'recordType': 'laboratory', // Use lowercase to match existing records
+      'recordDate': now.toIso8601String(),
+      'doctorId': updatedResult['doctorId'] ?? 'system', // Ensure doctorId is present
+      'diagnosis': updatedResult['diagnosis'] ?? '',
+      'treatment': '', // Empty string for optional text fields
+      'prescription': '', // Empty string for optional text fields
+      'notes': updatedResult['notes'] ?? '',
+      'labResults': jsonEncode({
+        'testName': updatedResult['test'] ?? 'Laboratory Test',
+        'category': updatedResult['category'] ?? 'Laboratory',
+        'status': updatedResult['status'] ?? 'Completed',
+        'results': updatedResult['result'] ?? {},
+        'date': updatedResult['date'] ?? now.toIso8601String(),
+        'queueId': queueId, // Store queue ID reference for traceability
+      }),
+      'createdAt': now.toIso8601String(),
+      'updatedAt': now.toIso8601String(),
     };
 
     await _dbHelper.insertMedicalRecord(medicalRecord);
+    
+    // Now mark the laboratory test as completed in the queue
+    // This will update the queue item status to 'done' only if it's already paid
+    final queueService = QueueService();
+    if (queueId.startsWith('entry-')) {
+      // Extract the actual queue entry ID if necessary
+      final actualQueueId = queueId.startsWith('entry-') ? queueId : queueId;
+      
+      try {
+        final success = await queueService.markLabResultCompleted(actualQueueId);
+        if (success) {
+          debugPrint('Successfully marked lab results as completed and updated queue status');
+        } else {
+          debugPrint('Failed to update queue status after completing lab results');
+        }
+      } catch (e) {
+        debugPrint('Error updating queue status after lab result completion: $e');
+      }
+    }
   }
 
   Future<void> _updateMedicalRecordResult(
       String recordId, Map<String, dynamic> updatedResult) async {
     // Update existing medical record
+    final now = DateTime.now();
+    
+    // Extract the service ID if available
+    String? serviceId;
+    if (updatedResult['category'] != null) {
+      try {
+        // Look up service by category
+        final services = await _dbHelper.getClinicServices();
+        final matchingService = services.firstWhere(
+          (service) => service.category?.toLowerCase() == updatedResult['category'].toString().toLowerCase(),
+          orElse: () => ClinicService(
+            id: '', 
+            serviceName: ''
+          ),
+        );
+        serviceId = matchingService.id.isNotEmpty ? matchingService.id : null;
+      } catch (e) {
+        debugPrint('Error finding service ID for category: ${e.toString()}');
+      }
+    }
+    
+    // For updating records, we need to ensure all required fields are present
+    // and follow the same format as insertMedicalRecord to avoid SQL errors
     final medicalRecord = {
       'id': recordId,
-      'title': updatedResult['test'],
-      'content': updatedResult['notes'],
-      'diagnosis': updatedResult['diagnosis'],
-      'additionalData': {
-        'testResults': updatedResult['result'],
-        'category': updatedResult['category'],
-        'status': updatedResult['status'],
-      },
-      'updatedAt': DateTime.now().toIso8601String(),
+      'serviceId': serviceId, // Link to appropriate service if found
+      'recordType': 'laboratory', // Use lowercase to match existing records
+      'notes': updatedResult['notes'] ?? '',
+      'diagnosis': updatedResult['diagnosis'] ?? '',
+      'treatment': '', // Add empty string for optional text fields to match schema
+      'prescription': '', // Add empty string for optional text fields to match schema
+      'labResults': jsonEncode({
+        'testName': updatedResult['test'] ?? 'Laboratory Test',
+        'category': updatedResult['category'] ?? 'Laboratory',
+        'status': updatedResult['status'] ?? 'Completed',
+        'results': updatedResult['result'] ?? {},
+        'date': updatedResult['date'] ?? now.toIso8601String(),
+        'queueId': updatedResult['id'], // Store queue ID in the JSON data instead of as a column
+      }), // Store structured lab result data with consistent format
+      'updatedAt': now.toIso8601String(),
     };
 
     await _dbHelper.updateMedicalRecord(medicalRecord);

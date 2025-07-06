@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class Patient {
   final String id;
   final String fullName;
@@ -58,7 +60,7 @@ class Patient {
         lastName: json['lastName']?.toString(),
         suffix: json['suffix']?.toString(),
         civilStatus: json['civilStatus']?.toString(),
-        isSeniorCitizen: json['isSeniorCitizen'] == true,
+        isSeniorCitizen: json['isSeniorCitizen'] == 1 || json['isSeniorCitizen'] == true,
         birthDate: json['birthDate'] != null ? DateTime.parse(json['birthDate']) : DateTime.now(),
         gender: json['gender']?.toString() ?? 'Unknown',
         contactNumber: json['contactNumber']?.toString(),
@@ -88,7 +90,7 @@ class Patient {
       'lastName': lastName,
       'suffix': suffix,
       'civilStatus': civilStatus,
-      'isSeniorCitizen': isSeniorCitizen,
+      'isSeniorCitizen': isSeniorCitizen ? 1 : 0,
       'birthDate': birthDate.toIso8601String(),
       'gender': gender,
       'contactNumber': contactNumber,
@@ -159,6 +161,16 @@ class Patient {
   // Track the last assigned patient number to ensure sequential IDs
   static int _lastAssignedNumber = 0;
   static final _lock = Object();
+  
+  // Initialize the counter from the highest ID in the database
+  static Future<void> initializeCounter(int highestNumber) async {
+    synchronized(_lock, () {
+      if (highestNumber > _lastAssignedNumber) {
+        _lastAssignedNumber = highestNumber;
+        debugPrint('Patient ID counter initialized to: $_lastAssignedNumber');
+      }
+    });
+  }
 
   // Generate an ID with sequential 4-digit number: JG-0001, JG-0002, etc.
   // This method should ONLY be called when actually registering a patient

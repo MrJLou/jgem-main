@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:async';
 import 'services/cross_device_session_monitor.dart';
+import 'models/patient.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +50,15 @@ void main() async {
       },
     );
     debugPrint('Database helper initialized successfully');
+    
+    // Initialize Patient ID counter from the highest ID in the database
+    try {
+      final highestPatientId = await dbHelper.getHighestPatientId();
+      await Patient.initializeCounter(highestPatientId);
+      debugPrint('Patient ID counter initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize patient ID counter: $e');
+    }
   } catch (e) {
     debugPrint('Database helper initialization failed: $e');
     // Create a fallback database helper instance
