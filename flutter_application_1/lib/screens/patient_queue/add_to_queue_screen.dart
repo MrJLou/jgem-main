@@ -13,6 +13,7 @@ import '../../models/active_patient_queue_item.dart';
 import '../../models/appointment.dart';
 import '../../models/patient.dart';
 import '../../services/patient_service.dart';
+import '../../utils/error_dialog_utils.dart';
 
 // Define Service data structure
 // class ServiceItem { // Removed ServiceItem class
@@ -53,6 +54,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   bool _isAddingToQueue = false;
 
   Timer? _patientSearchDebounce;
+  Timer? _queueRefreshTimer; // Add timer for periodic queue refresh
 
   // Predefined services - Will be fetched from DB
   List<ClinicService> _availableServices = []; // Changed to List<ClinicService>
@@ -78,6 +80,15 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     _fetchAvailableServices();
     _fetchDoctors(); // ADDED
     _setupSyncListener();
+    
+    // Set up periodic queue refresh every 30 seconds
+    _queueRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        setState(() {
+          // This will trigger a rebuild and refresh the queue table
+        });
+      }
+    });
   }
   
   void _setupSyncListener() {
@@ -89,6 +100,14 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         case 'queue_change_immediate':
         case 'force_queue_refresh':
         case 'remote_change_applied':
+          final change = updateEvent['change'] as Map<String, dynamic>?;
+          if (change != null && change['table'] == 'active_patient_queue') {
+            setState(() {
+              // This will trigger a rebuild and refresh the queue table
+            });
+          }
+          break;
+        case 'database_change':
           final change = updateEvent['change'] as Map<String, dynamic>?;
           if (change != null && change['table'] == 'active_patient_queue') {
             setState(() {
@@ -114,11 +133,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load services: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Error Loading Services',
+          message: 'Failed to load services: $e',
         );
       }
       if (kDebugMode) {
@@ -142,7 +160,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
       if (mounted) {
         setState(() {
-          _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+          _doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
           if (kDebugMode) {
             print('Filtered ${_doctors.length} doctors');
             for (var doctor in _doctors) {
@@ -153,11 +171,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load doctors: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Error Loading Doctors',
+          message: 'Failed to load doctors: $e',
         );
       }
       if (kDebugMode) {
@@ -223,11 +240,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       }
       // Show error to user
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error searching patients: $e'),
-            backgroundColor: Colors.red[600],
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Search Error',
+          message: 'Error searching patients: $e',
         );
       }
     }
@@ -245,22 +261,19 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   Future<void> _addPatientToQueue() async {
     if (_formKey.currentState!.validate()) {      if (_selectedServices.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-                'Please select at least one service.'),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Service Required',
+          message: 'Please select at least one service.',
         );
         return;
-      }// ADDED - Doctor validation (unless laboratory only)
+      }      // ADDED - Doctor validation (unless laboratory only)
       if (_selectedDoctor == null && !_isLaboratoryOnly) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Please select a doctor or check "Laboratory Tests Only".'),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Doctor Required',
+          message: 'Please select a doctor or check "Laboratory Tests Only".',
         );
         return;
       }
@@ -276,12 +289,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
 
       if (!mounted) return;
       if (alreadyInQueue) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '$enteredPatientName is already in the active queue (waiting or in consultation).'),
-            backgroundColor: Colors.orange[700],
-          ),
+        ErrorDialogUtils.showWarningDialog(
+          context: context,
+          title: 'Patient Already in Queue',
+          message: '$enteredPatientName is already in the active queue (waiting or in consultation).',
         );
         return; // Stop further execution
       }
@@ -388,11 +399,11 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         const Text(
                             'A registered patient matching the details was found:'),
                         const SizedBox(height: 10),
-                        Text('DB ID: ${registeredPatient.id}'),
-                        Text('DB Name: ${registeredPatient.fullName}'),
-                        Text('DB Gender: ${registeredPatient.gender}'),
+                        Text('Patient ID: ${registeredPatient.id}'),
+                        Text('Name: ${registeredPatient.fullName}'),
+                        Text('Gender: ${registeredPatient.gender}'),
                         Text(
-                            'DB BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
+                            'BirthDate: ${DateFormat.yMMMd().format(registeredPatient.birthDate)}'),
                         Text(
                             'Calculated Age: ${calculatedAge?.toString() ?? 'N/A'}'),
                         const SizedBox(height: 15),
@@ -407,7 +418,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                       onPressed: () => Navigator.of(context).pop(false),
                     ),
                     ElevatedButton(
-                      child: const Text('Yes, Use DB Details'),
+                      child: const Text('Yes, Use Patient Details'),
                       onPressed: () => Navigator.of(context).pop(true),
                     ),
                   ],
@@ -505,12 +516,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           // ---- End Increment service usage count ----
 
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$finalPatientNameToUse added to queue!'),
-              backgroundColor: Colors.teal,
-              duration: const Duration(seconds: 3),
-            ),
+          ErrorDialogUtils.showSuccessDialog(
+            context: context,
+            title: 'Success',
+            message: '$finalPatientNameToUse added to queue!',
           );
           _formKey.currentState!.reset();
           _searchController.clear();
@@ -551,10 +560,10 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error processing queue addition: $e'),
-              backgroundColor: Colors.red),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Queue Addition Error',
+          message: 'Error processing queue addition: $e',
         );
       } finally {
         if (mounted) {
@@ -571,6 +580,13 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     // Use a temporary map to manage selections within the dialog
     Map<String, bool> currentDialogSelectionState =
         Map.from(_serviceSelectionState);
+    
+    // Add a controller for the service search functionality
+    TextEditingController serviceSearchController = TextEditingController();
+    String searchQuery = '';
+    
+    // Map to store applied discounts
+    Map<String, double> serviceDiscounts = {};
 
     showDialog(
       context: context,
@@ -578,123 +594,391 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Calculate current dialog price with discounts applied
             double currentDialogPrice = _availableServices
                 .where((s) => currentDialogSelectionState[s.id] == true)
-                .fold(0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
+                .fold(0.0, (sum, item) {
+                  double price = item.defaultPrice ?? 0.0;
+                  double discount = serviceDiscounts[item.id] ?? 0.0;
+                  return sum + (price - (price * discount / 100));
+                });
 
+            // Get screen width for responsive dialog width
+            final screenWidth = MediaQuery.of(context).size.width;
+            
+            // Filter services based on search query
+            List<ClinicService> filteredServices = _availableServices
+                .where((service) => 
+                  searchQuery.isEmpty || 
+                  service.serviceName.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                  (service.category?.toLowerCase() ?? '').contains(searchQuery.toLowerCase()) ||
+                  (service.description?.toLowerCase() ?? '').contains(searchQuery.toLowerCase()))
+                .toList();
+                
+            // Sort all services alphabetically first
+            filteredServices.sort((a, b) => a.serviceName.compareTo(b.serviceName));
+            
+            // Group services by category
             Map<String, List<ClinicService>> groupedServices = {};
-            for (var service in _availableServices) {
-              (groupedServices[service.category ?? 'Uncategorized'] ??= [])
-                  .add(service);
+            for (var service in filteredServices) {
+              (groupedServices[service.category ?? 'Uncategorized'] ??= []).add(service);
             }
+            
+            // Sort categories alphabetically
+            final sortedCategories = groupedServices.keys.toList()..sort();
+            
             // Ensure 'Consultation' and 'Laboratory' appear first if they exist, then others.
             List<String> categoryOrder = ['Consultation', 'Laboratory'];
             List<String> allCategories = groupedServices.keys.toList();
             categoryOrder.addAll(
-                allCategories.where((cat) => !categoryOrder.contains(cat)));            return AlertDialog(
-              title: Text(_isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose of Visit'),
-              contentPadding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 0.0),
-              content: SingleChildScrollView(
-                child: ListBody(
-                  children: <Widget>[
-                    if (_availableServices.isEmpty)
-                      const Center(
-                          child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                            "No services available. Please add services in settings."),
-                      )),
-                    ...categoryOrder
-                        .where((cat) => groupedServices.containsKey(cat))
-                        .expand((category) => [
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                    top: 10.0, bottom: 4.0),
-                                child: Text(category,
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.teal[700],
-                                        fontSize: 16)),
-                              ),
-                              ...groupedServices[category]!.map((service) =>
-                                  CheckboxListTile(
-                                    title: Text(
-                                        '${service.serviceName} (₱${NumberFormat("#,##0.00", "en_US").format(service.defaultPrice ?? 0.0)})',
-                                        style: const TextStyle(fontSize: 14)),
-                                    value: currentDialogSelectionState[
-                                            service.id] ??
-                                        false,
-                                    onChanged: (bool? value) {
-                                      setDialogState(() {
-                                        currentDialogSelectionState[
-                                            service.id] = value!;
-                                        currentDialogPrice = _availableServices
-                                            .where((s) =>
-                                                currentDialogSelectionState[
-                                                    s.id] ==
-                                                true)
-                                            .fold(
-                                                0.0,
-                                                (sum, item) =>
-                                                    sum +
-                                                    (item.defaultPrice ?? 0.0));
-                                      });
-                                    },
-                                    dense: true,
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    activeColor: Colors.teal,
-                                  )),                              const Divider(),
-                            ]),
-                    const SizedBox(height: 20),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'Total Estimated: ₱${NumberFormat("#,##0.00", "en_US").format(currentDialogPrice)}',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.green[700]),
+                allCategories.where((cat) => !categoryOrder.contains(cat)));
+            
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              // Making dialog wider
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
+              child: Container(                      width: screenWidth * 0.90, // Make dialog wider based on screen width
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxWidth: 900, // Maximum width cap
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _isLaboratoryOnly ? 'Select Laboratory Tests' : 'Select Services / Purpose of Visit',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    
+                    // Enhanced search bar for services
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: TextField(
+                        controller: serviceSearchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search services by name or category...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: serviceSearchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  serviceSearchController.clear();
+                                  setDialogState(() {
+                                    searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          fillColor: Colors.grey[50],
+                          filled: true,
+                        ),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              if (_availableServices.isEmpty)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Text("No services available. Please add services in settings."),
+                                  ),
+                                ),
+                              if (groupedServices.isEmpty && searchQuery.isNotEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Text("No services matching \"$searchQuery\""),
+                                  ),
+                                ),
+                              ...sortedCategories
+                                .expand((category) => [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+                                    child: Text(
+                                      category,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.teal[700],
+                                        fontSize: 16
+                                      ),
+                                    ),
+                                  ),
+                                  ...groupedServices[category]!.map((service) =>
+                                    Card(
+                                      elevation: 0,
+                                      color: currentDialogSelectionState[service.id] == true 
+                                        ? Colors.teal[50] 
+                                        : Colors.white,
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(
+                                          color: currentDialogSelectionState[service.id] == true 
+                                            ? Colors.teal[300]! 
+                                            : Colors.grey[300]!
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          CheckboxListTile(
+                                            title: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        service.serviceName,
+                                                        style: TextStyle(
+                                                          fontSize: 15,
+                                                          fontWeight: currentDialogSelectionState[service.id] == true
+                                                            ? FontWeight.w600
+                                                            : FontWeight.normal,
+                                                        ),
+                                                      ),
+                                                      if (service.description != null && service.description!.isNotEmpty)
+                                                        Text(
+                                                          service.description!,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.grey[600],
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0)
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.orange[100],
+                                                      borderRadius: BorderRadius.circular(12),
+                                                      border: Border.all(color: Colors.orange[300]!),
+                                                    ),
+                                                    child: Text(
+                                                      "${serviceDiscounts[service.id]!.toStringAsFixed(0)}% OFF",
+                                                      style: TextStyle(
+                                                        color: Colors.orange[800],
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                Text(
+                                                  '₱${NumberFormat("#,##0.00", "en_US").format(
+                                                    (service.defaultPrice ?? 0.0) - 
+                                                    ((service.defaultPrice ?? 0.0) * (serviceDiscounts[service.id] ?? 0.0) / 100)
+                                                  )}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w500,
+                                                    color: serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0
+                                                      ? Colors.green[700]
+                                                      : Colors.grey[800],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            value: currentDialogSelectionState[service.id] ?? false,
+                                            onChanged: (bool? value) {
+                                              setDialogState(() {
+                                                currentDialogSelectionState[service.id] = value!;
+                                                // Recalculate current price
+                                                currentDialogPrice = _availableServices
+                                                  .where((s) => currentDialogSelectionState[s.id] == true)
+                                                  .fold(0.0, (sum, item) {
+                                                    double price = item.defaultPrice ?? 0.0;
+                                                    double discount = serviceDiscounts[item.id] ?? 0.0;
+                                                    return sum + (price - (price * discount / 100));
+                                                  });
+                                              });
+                                            },
+                                            controlAffinity: ListTileControlAffinity.leading,
+                                            activeColor: Colors.teal[700],
+                                            checkColor: Colors.white,
+                                          ),
+                                          // Enhanced discount controls for selected services
+                                          if (currentDialogSelectionState[service.id] == true)
+                                            Padding(
+                                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  const Text(
+                                                    "Apply Discount: ",
+                                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Wrap(
+                                                    spacing: 8.0,
+                                                    children: [
+                                                      for (double discountValue in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0, 100.0])
+                                                        Padding(
+                                                          padding: const EdgeInsets.only(right: 4),
+                                                          child: ChoiceChip(
+                                                        label: Text(
+                                                          discountValue > 0 
+                                                            ? "${discountValue.toInt()}%" 
+                                                            : "None",
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: serviceDiscounts[service.id] == discountValue 
+                                                              ? Colors.white 
+                                                              : Colors.grey[800],
+                                                          ),
+                                                        ),
+                                                        selected: serviceDiscounts[service.id] == discountValue,
+                                                        onSelected: (selected) {
+                                                          setDialogState(() {
+                                                            if (selected) {
+                                                              serviceDiscounts[service.id] = discountValue;
+                                                            } else if (serviceDiscounts[service.id] == discountValue) {
+                                                              serviceDiscounts[service.id] = 0.0;
+                                                            }
+                                                            // Recalculate price
+                                                            currentDialogPrice = _availableServices
+                                                              .where((s) => currentDialogSelectionState[s.id] == true)
+                                                              .fold(0.0, (sum, item) {
+                                                                double price = item.defaultPrice ?? 0.0;
+                                                                double discount = serviceDiscounts[item.id] ?? 0.0;
+                                                                return sum + (price - (price * discount / 100));
+                                                              });
+                                                          });
+                                                        },
+                                                        backgroundColor: Colors.grey[200],
+                                                        selectedColor: discountValue > 0 ? Colors.orange[700] : Colors.grey[700],
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const Divider(),
+                                ]),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        border: Border(top: BorderSide(color: Colors.grey[300]!)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Selected Items: ${currentDialogSelectionState.values.where((v) => v).length}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              Text(
+                                'Total: ₱${NumberFormat("#,##0.00", "en_US").format(currentDialogPrice)}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                child: const Text('Cancel'),
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal[700],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                ),
+                                onPressed: () {
+                                  // Update selected services based on dialog selections
+                                  setState(() {
+                                    _serviceSelectionState = Map.from(currentDialogSelectionState);
+                                    _selectedServices = _availableServices
+                                        .where((s) => _serviceSelectionState[s.id] == true)
+                                        .toList();
+                                    
+                                    // Apply discounts to the selected services
+                                    for (var service in _selectedServices) {
+                                      if (serviceDiscounts[service.id] != null && serviceDiscounts[service.id]! > 0) {
+                                        // Apply discount by adjusting the default price temporarily
+                                        // This is just for display; we'd need to store the actual discount in a real app
+                                        double originalPrice = service.defaultPrice ?? 0.0;
+                                        double discountAmount = originalPrice * (serviceDiscounts[service.id] ?? 0.0) / 100;
+                                        service = service.copyWith(
+                                          defaultPrice: originalPrice - discountAmount,
+                                          description: service.description != null && service.description!.isNotEmpty 
+                                              ? "${service.description} (${serviceDiscounts[service.id]}% discount applied)"
+                                              : "(${serviceDiscounts[service.id]}% discount applied)"
+                                        );
+                                      }
+                                    }
+                                    
+                                    // Calculate total price
+                                    _totalPrice = currentDialogPrice;
+                                  });
+                                  Navigator.of(dialogContext).pop();
+                                },
+                                child: const Text('Confirm Selection'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              actionsAlignment: MainAxisAlignment.end,
-              actionsPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Colors.grey)),
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-                  },
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      textStyle: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold)),                  onPressed: () {
-                    setState(() {
-                      _serviceSelectionState =
-                          Map.from(currentDialogSelectionState);
-                      _selectedServices = _availableServices
-                          .where((s) => _serviceSelectionState[s.id] == true)
-                          .toList();                      _totalPrice = _selectedServices.fold(
-                          0.0, (sum, item) => sum + (item.defaultPrice ?? 0.0));
-                      _otherConditionController.clear(); // Clear the controller
-                    });
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: const Text('Confirm'),
-                ),
-              ],
             );
           },
         );
@@ -758,12 +1042,22 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                TextField(
+                                  controller: _patientIdController,
+                                  decoration: const InputDecoration(
+                                      labelText:
+                                          'Patient ID (Registered)',
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.badge),
+                                      hintText: 'Enter patient ID if known'),
+                                ),
+                                const SizedBox(height: 16),
                                 TextFormField(
                                   controller: _searchController,
                                   decoration: InputDecoration(
-                                    labelText: 'Search Patient by Name or ID',
+                                    labelText: 'Search Patient by Name',
                                     hintText:
-                                        'Type patient name or ID to search...',
+                                        'Type patient name to search...',
                                     prefixIcon: _isLoading
                                         ? Transform.scale(
                                             scale: 0.5,
@@ -819,16 +1113,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            TextField(
-                              controller: _patientIdController,
-                              decoration: const InputDecoration(
-                                  labelText:
-                                      'Patient ID (Registered - Optional)',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.badge),
-                                  hintText: 'Enter patient ID if known'),
-                            ),
-                            const SizedBox(height: 16),                            DropdownButtonFormField<User>(
+                            DropdownButtonFormField<User>(
                               decoration: const InputDecoration(
                                 labelText: 'Assign Doctor *',
                                 border: OutlineInputBorder(),
@@ -920,7 +1205,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     enabled:
                                         false, // Age will be auto-filled or from manual override if no DB match
                                     decoration: const InputDecoration(
-                                        labelText: 'Age (from DB)',
+                                        labelText: 'Age',
                                         border: OutlineInputBorder(),
                                         prefixIcon: Icon(Icons.cake)),
                                   ),
@@ -932,7 +1217,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     enabled:
                                         false, // Gender will be auto-filled or from manual override if no DB match
                                     decoration: const InputDecoration(
-                                        labelText: 'Gender (from DB)',
+                                        labelText: 'Gender',
                                         border: OutlineInputBorder(),
                                         prefixIcon: Icon(Icons.person_outline)),
                                   ),
@@ -1018,7 +1303,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         stream: Stream.periodic(const Duration(seconds: 30))
                             .asyncMap((_) => widget.queueService
                                 .getActiveQueueItems(
-                                    statuses: ['waiting', 'in_consultation'])),
+                                    statuses: ['waiting', 'in_progress'])),
                         initialData: const [],
                         builder: (context, snapshot) {
                           int queueSize = 0;
@@ -1038,7 +1323,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     color: Colors.teal[700]),
                                 const SizedBox(width: 8),
                                 Text(
-                                    'Current Active Queue (Waiting/Consult): $queueSize patients',
+                                    'Current Active Queue (Waiting/Consult/In-Progress): $queueSize patients',
                                     style: TextStyle(
                                         color: Colors.teal[700],
                                         fontWeight: FontWeight.w500)),
@@ -1108,11 +1393,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           ),
         ],
       ),
-      constraints: const BoxConstraints(maxHeight: 250),
+      constraints: const BoxConstraints(maxHeight: 300),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Table header section with count
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -1137,6 +1423,65 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
               ],
             ),
           ),
+          
+          // Table column headers
+          Container(
+            color: Colors.grey[200],
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Patient ID',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Name',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    'Age',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Gender',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 30), // Space for the action icon
+              ],
+            ),
+          ),
+          
+          // Table rows with data
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
@@ -1146,50 +1491,74 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                 final patient = _searchResults![index];
                 final age = _calculateAge(patient.birthDate.toIso8601String());
 
-                return ListTile(
-                  leading: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.teal[100],
-                    child: Icon(
-                      Icons.person,
-                      color: Colors.teal[700],
-                      size: 20,
+                return Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+                    ),
+                    color: index % 2 == 0 ? Colors.white : Colors.grey[50],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _searchController.text = patient.fullName;
+                          _patientIdController.text = patient.id;
+                          _ageController.text = age?.toString() ?? '';
+                          _genderController.text = patient.gender;
+                          _searchResults = null;
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        child: Row(
+                          children: [
+                            // Patient ID column
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                patient.id,
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                              ),
+                            ),
+                            // Name column
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                patient.fullName,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              ),
+                            ),
+                            // Age column
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                age?.toString() ?? '-',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            // Gender column
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                patient.gender,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            // Action icon
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 14,
+                              color: Colors.teal[600],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  title: Text(
-                    patient.fullName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('ID: ${patient.id}'),
-                      if (age != null)
-                        Text('Age: $age • Gender: ${patient.gender}'),
-                    ],
-                  ),
-                  trailing: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.teal[600],
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _searchController.text = patient.fullName;
-                      _patientIdController.text = patient.id;
-                      _ageController.text = age?.toString() ?? '';
-                      _genderController.text = patient.gender;
-                      _searchResults = null;
-                    });
-                  },
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 4.0),
-                  dense: false,
-                  tileColor: Colors.white,
-                  hoverColor: Colors.teal.withAlpha(20),
                 );
               },
             ),
@@ -1200,33 +1569,178 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
   }
 
   Widget _buildQueueTable() {
-    return StreamBuilder<List<ActivePatientQueueItem>>(
-      stream: Stream.periodic(const Duration(seconds: 30)).asyncMap(
-          (_) => widget.queueService.getActiveQueueItems(
-              statuses: ['waiting', 'in_consultation']) // Fetch active items
-          ),
+    return FutureBuilder<List<ActivePatientQueueItem>>(
+      future: _loadQueueWithRetry(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading queue: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        // Handle loading state
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-              child: Text('Queue is currently empty.',
-                  style: TextStyle(fontSize: 16)));
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.teal),
+                ),
+                SizedBox(height: 16),
+                Text('Loading live queue...'),
+                SizedBox(height: 8),
+                Text(
+                  'Checking database connection...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
         }
+        
+        // Handle error state with more detailed information
+        if (snapshot.hasError) {
+          if (kDebugMode) {
+            print('Queue loading error: ${snapshot.error}');
+          }
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.warning_amber, color: Colors.orange[600], size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Database Connection Issue',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[700],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Cannot connect to the queue database.',
+                  style: TextStyle(color: Colors.grey[700]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Please check your LAN connection.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        if (mounted) {
+                          setState(() {});
+                        }
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry Connection'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange[600],
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    TextButton.icon(
+                      onPressed: () => _showConnectionHelp(),
+                      icon: const Icon(Icons.help_outline),
+                      label: const Text('Connection Help'),
+                    ),
+                  ],
+                ),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 16),
+                  ExpansionTile(
+                    title: const Text('Debug Info'),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'Error: ${snapshot.error}',
+                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+        
+        // Handle empty state
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.queue, color: Colors.grey[400], size: 64),
+                const SizedBox(height: 16),
+                const Text(
+                  'Queue is currently empty',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Patients will appear here when added to the queue',
+                  style: TextStyle(color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal[600],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        // Handle success state with data
         final queue = snapshot.data!;
         return Column(
           children: [
+            // Header with refresh button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Live Queue (${queue.length} patients)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[700],
+                      fontSize: 16,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    },
+                    color: Colors.teal[600],
+                    tooltip: 'Refresh Queue',
+                  ),
+                ],
+              ),
+            ),
             _buildQueueTableHeader(),
             Expanded(
-              // Allow ListView to scroll within its parent Column/Container
               child: ListView.builder(
-                // shrinkWrap: true, // Not needed if parent is Expanded
-                // physics: const NeverScrollableScrollPhysics(), // Not needed if parent is Expanded
+                padding: EdgeInsets.zero,
                 itemCount: queue.length,
                 itemBuilder: (context, index) {
                   return _buildQueueTableRow(queue[index]);
@@ -1365,8 +1879,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     switch (status.toLowerCase()) {
       case 'waiting':
         return Colors.orange.shade700;
-      case 'in_consultation':
-        return Colors.blue.shade700;
+      case 'in_progress':
+        return Colors.purple.shade700;
       case 'served':
         return Colors.green.shade700;
       case 'removed':
@@ -1381,8 +1895,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     switch (status.toLowerCase()) {
       case 'waiting':
         return 'Waiting';
-      case 'in_consultation':
-        return 'In Consultation'; // Changed
+      case 'in_progress':
+        return 'In Progress';
       case 'served':
         return 'Served';
       case 'removed':
@@ -1392,9 +1906,183 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     }
   }
 
+  // Method to load queue with retry logic and better error handling
+  Future<List<ActivePatientQueueItem>> _loadQueueWithRetry({int maxRetries = 3}) async {
+    int retryCount = 0;
+    Exception? lastException;
+
+    while (retryCount < maxRetries) {
+      try {
+        if (kDebugMode) {
+          print('Loading queue items, attempt ${retryCount + 1}/$maxRetries');
+        }
+        
+        // Check database connection first
+        await _dbHelper.database;
+        
+        // Try to get queue items
+        final items = await widget.queueService.getActiveQueueItems(
+          statuses: ['waiting', 'in_progress'],
+        );
+        
+        if (kDebugMode) {
+          print('Successfully loaded ${items.length} queue items');
+        }
+        
+        return items;
+      } catch (e) {
+        lastException = Exception('Queue loading failed: $e');
+        retryCount++;
+        
+        if (kDebugMode) {
+          print('Queue loading attempt $retryCount failed: $e');
+        }
+        
+        if (retryCount < maxRetries) {
+          // Wait before retry with exponential backoff
+          await Future.delayed(Duration(milliseconds: 500 * retryCount));
+        }
+      }
+    }
+    
+    // If all retries failed, throw the last exception
+    throw lastException ?? Exception('Unknown error loading queue');
+  }
+
+  // Method to show connection help dialog
+  void _showConnectionHelp() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.network_check, color: Colors.blue[600]),
+              const SizedBox(width: 8),
+              const Text('Connection Troubleshooting'),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'If the live queue is not loading, try these steps:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                _buildHelpStep('1', 'Check LAN Connection', 'Ensure all devices are on the same local network (Wi-Fi or Ethernet)'),
+                _buildHelpStep('2', 'Database Status', 'Verify the main server/database is running and accessible'),
+                _buildHelpStep('3', 'Restart Application', 'Close and restart the app to refresh the database connection'),
+                _buildHelpStep('4', 'Network Permissions', 'Check if the app has network permissions enabled'),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'The queue system requires LAN connectivity to sync between devices in real-time.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Trigger a refresh after closing help
+                if (mounted) {
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHelpStep(String number, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.blue[600],
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _patientSearchDebounce?.cancel();
+    _queueRefreshTimer?.cancel(); // Cancel the queue refresh timer
     _syncSubscription?.cancel();
     _patientIdController.dispose();
     _ageController.dispose();

@@ -8,6 +8,7 @@ import 'session_notification_service.dart';
 import 'enhanced_shelf_lan_server.dart';
 import 'database_sync_client.dart';
 import '../models/user.dart';
+import 'api_service.dart';
 
 /// Comprehensive Authentication Manager
 /// 
@@ -85,6 +86,71 @@ class AuthenticationManager {
       
       debugPrint('AUTH_MANAGER: DEBUG - Session created successfully with token: ${sessionToken.substring(0, 8)}...');
       
+      // CRITICAL: Verify session was created and synced across devices
+      debugPrint('AUTH_MANAGER: CRITICAL - Verifying session creation and sync...');
+      
+      // First verify the session was properly created
+      final sessionCreated = await EnhancedUserTokenService.verifySessionCreationAndSync(username, sessionToken);
+      if (!sessionCreated) {
+        debugPrint('AUTH_MANAGER: ERROR - Session creation verification failed!');
+        // This is a critical error - we should throw an exception
+        throw Exception('Session creation failed - session not found in database');
+      }
+      
+      // Wait a moment for initial sync to complete
+      await Future.delayed(const Duration(milliseconds: 2000));
+      
+      // Then verify the session exists locally with proper validation
+      final localSessionExists = await EnhancedUserTokenService.validateSessionToken(username, sessionToken);
+      if (!localSessionExists) {
+        debugPrint('AUTH_MANAGER: ERROR - Session token validation failed after creation!');
+        throw Exception('Session creation failed - token validation failed');
+      }
+      
+      // Finally verify session sync across devices
+      final sessionSyncSuccessful = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
+      
+      if (!sessionSyncSuccessful) {
+        debugPrint('AUTH_MANAGER: WARNING - Session sync verification failed! Attempting additional sync...');
+        
+        // Force additional sync attempts
+        if (EnhancedShelfServer.isRunning) {
+          try {
+            await EnhancedShelfServer.forceSyncTable('user_sessions');
+            debugPrint('AUTH_MANAGER: Forced additional session sync from host');
+          } catch (e) {
+            debugPrint('AUTH_MANAGER: Error in additional host sync: $e');
+          }
+        }
+        
+        if (DatabaseSyncClient.isConnected) {
+          try {
+            await DatabaseSyncClient.forceSessionSync();
+            debugPrint('AUTH_MANAGER: Forced additional session sync from client');
+          } catch (e) {
+            debugPrint('AUTH_MANAGER: Error in additional client sync: $e');
+          }
+        }
+        
+        // Wait and retry verification
+        await Future.delayed(const Duration(milliseconds: 3000));
+        final retrySync = await EnhancedUserTokenService.verifySessionSyncAcrossDevices(username, sessionToken);
+        
+        if (!retrySync) {
+          debugPrint('AUTH_MANAGER: ERROR - Session sync still failed after retry!');
+          // Log this issue but don't fail the login
+          await db.logUserActivity(
+            username,
+            'Session sync verification failed during login - potential cross-device sync issue',
+            details: 'Session may not be properly synced across devices',
+          );
+        } else {
+          debugPrint('AUTH_MANAGER: SUCCESS - Session sync verified on retry');
+        }
+      } else {
+        debugPrint('AUTH_MANAGER: SUCCESS - Session sync verified across devices');
+      }
+      
       // Save authentication state
       await _saveAuthenticationState(
         username: username,
@@ -95,12 +161,18 @@ class AuthenticationManager {
       // Start session monitoring
       startSessionMonitoring();
       
+      // Update API service current user role
+      ApiService.onUserLoggedIn(user.role);
+      
       // Log successful login
       await db.logUserActivity(
         username,
         'User logged in successfully',
         details: 'Force logout: $forceLogout',
       );
+      
+      // Debug session table state after login
+      await EnhancedUserTokenService.debugSessionTableState(username);
       
       debugPrint('AUTH_MANAGER: Login successful for user: $username');
       
@@ -251,6 +323,9 @@ class AuthenticationManager {
       // Clear local authentication state
       await _clearAuthenticationState();
       
+      // Clear API service user role
+      ApiService.onUserLoggedOut();
+      
       // Log logout activity
       if (username != null) {
         final db = DatabaseHelper();
@@ -305,10 +380,25 @@ class AuthenticationManager {
     try {
       debugPrint('AUTH_MANAGER: Handling session invalidation from another device');
       
+      // CRITICAL: Check if user is actually logged in before processing invalidation
+      final prefs = await SharedPreferences.getInstance();
+      final hasStoredSession = prefs.getBool(_isLoggedInKey) ?? false;
+      
+      if (!hasStoredSession) {
+        debugPrint('AUTH_MANAGER: No stored session state, ignoring invalidation request');
+        return;
+      }
+      
       // Stop session monitoring FIRST to prevent loops
       stopSessionMonitoring();
       
       final username = await getCurrentUsername();
+      
+      // Only proceed if we actually have a username (indicating we're logged in)
+      if (username == null) {
+        debugPrint('AUTH_MANAGER: No current username, ignoring invalidation request');
+        return;
+      }
       
       // Clear local authentication state
       await _clearAuthenticationState();
@@ -325,13 +415,11 @@ class AuthenticationManager {
       });
       
       // Log the invalidation
-      if (username != null) {
-        final db = DatabaseHelper();
-        await db.logUserActivity(
-          username,
-          'Session invalidated - logged out from another device',
-        );
-      }
+      final db = DatabaseHelper();
+      await db.logUserActivity(
+        username,
+        'Session invalidated - logged out from another device',
+      );
       
       debugPrint('AUTH_MANAGER: Session invalidation handling completed');
     } catch (e) {

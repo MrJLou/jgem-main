@@ -104,10 +104,10 @@ class ClinicServiceDatabaseService {
         strftime('%Y-%m', recordDate) as month,
         COUNT(*) as count
       FROM ${DatabaseHelper.tableMedicalRecords}
-      WHERE serviceId = ? AND recordDate >= ?
+      WHERE (serviceId = ? OR selectedServices LIKE ?) AND recordDate >= ?
       GROUP BY month
       ORDER BY month ASC
-    ''', [serviceId, sixMonthsAgo.toIso8601String()]);
+    ''', [serviceId, '%"id":"$serviceId"%', sixMonthsAgo.toIso8601String()]);
     return result;
   }
 
@@ -118,10 +118,10 @@ class ClinicServiceDatabaseService {
       SELECT p.*
       FROM ${DatabaseHelper.tablePatients} p
       INNER JOIN ${DatabaseHelper.tableMedicalRecords} mr ON p.id = mr.patientId
-      WHERE mr.serviceId = ?
+      WHERE mr.serviceId = ? OR mr.selectedServices LIKE ?
       ORDER BY mr.recordDate DESC
       LIMIT ?
-    ''', [serviceId, limit]);
+    ''', [serviceId, '%"id":"$serviceId"%', limit]);
 
     if (result.isEmpty) {
       return [];

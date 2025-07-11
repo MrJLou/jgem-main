@@ -28,8 +28,8 @@ class RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
       _searchTerm = query.toLowerCase();
       // Fetch all statuses if searching, otherwise only active ones for initial/empty view
       List<String> statusesToFetch = (initialLoad || query.isEmpty)
-          ? ['waiting', 'in_consultation']
-          : ['waiting', 'in_consultation', 'served', 'removed'];
+          ? ['waiting', 'in_progress']
+          : ['waiting', 'in_progress', 'served', 'removed'];
 
       _searchResultsFuture = widget.queueService
           .searchPatientsInQueue(query)
@@ -103,8 +103,8 @@ class RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
     switch (status.toLowerCase()) {
       case 'waiting':
         return 'Waiting';
-      case 'in_consultation':
-        return 'In Consultation'; // Changed
+      case 'in_progress':
+        return 'In Progress';
       case 'served':
         return 'Served';
       case 'removed':
@@ -162,7 +162,7 @@ class RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return Center(
                       child: Text(_searchTerm.isEmpty
-                          ? 'No active patients in the queue (status: waiting, in_consultation).'
+                          ? 'No active patients in the queue (status: waiting, in_progress).'
                           : 'No patients found matching "$_searchTerm" with current filters.'),
                     );
                   }
@@ -178,7 +178,8 @@ class RemoveFromQueueScreenState extends State<RemoveFromQueueScreen> {
                           subtitle: Text(
                               'Queue No.: ${patient.queueNumber} - ID: ${patient.patientId ?? 'N/A'} - Arrived: ${TimeOfDay.fromDateTime(patient.arrivalTime).format(context)} - Status: ${_getDisplayStatus(patient.status)}'),
                           trailing: (patient.status == 'waiting' ||
-                                  patient.status == 'in_consultation')
+                                  patient.status == 'in_progress' ||
+                                  patient.status == 'in_progress')
                               ? IconButton(
                                   icon: const Icon(Icons.remove_circle_outline,
                                       color: Colors.red),

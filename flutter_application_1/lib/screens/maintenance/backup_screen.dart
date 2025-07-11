@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
-import 'package:path_provider/path_provider.dart';
-import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import '../../services/backup_service.dart';
+import '../../services/database_helper.dart';
+import '../../utils/error_dialog_utils.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -16,41 +20,48 @@ class BackupScreenState extends State<BackupScreen> {
   final List<String> _backupFrequencies = ['Daily', 'Weekly', 'Monthly'];
   bool _isBackingUp = false;
   bool _isRestoring = false;
+  bool _isLoadingBackups = false;
   Timer? _backupTimer;
-  String? _backupLocation;
-
-  // Dummy backup history data
-  final List<Map<String, String>> _backupHistory = [
-    {
-      'date': '2024-03-15 14:30',
-      'size': '256 MB',
-      'status': 'Success',
-      'type': 'Manual',
-    },
-    {
-      'date': '2024-03-14 14:30',
-      'size': '255 MB',
-      'status': 'Success',
-      'type': 'Auto',
-    },
-    {
-      'date': '2024-03-13 14:30',
-      'size': '254 MB',
-      'status': 'Failed',
-      'type': 'Auto',
-    },
-  ];
+  String? _customBackupPath;
+  List<BackupMetadata> _availableBackups = [];
+  BackupDirectoryInfo? _backupDirInfo;
+  BackupMetadata? _selectedBackupForRestore;
 
   @override
   void initState() {
     super.initState();
-    _initializeBackupSettings();
+    _initializeBackupSystem();
   }
 
-  Future<void> _initializeBackupSettings() async {
-    // BACKUP LOCATION
-    _backupLocation =
-        '${(await getApplicationDocumentsDirectory()).path}/backups';
+  Future<void> _initializeBackupSystem() async {
+    // Initialize backup service
+    BackupService.initialize(DatabaseHelper());
+    
+    // Load backup directory info and available backups
+    await _refreshBackupInfo();
+  }
+
+  Future<void> _refreshBackupInfo() async {
+    setState(() {
+      _isLoadingBackups = true;
+    });
+
+    try {
+      // Get backup directory info
+      _backupDirInfo = await BackupService.getBackupDirectoryInfo(_customBackupPath);
+      
+      // Get available backups
+      _availableBackups = await BackupService.getAvailableBackups(_customBackupPath);
+      
+    } catch (e) {
+      debugPrint('Error refreshing backup info: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBackups = false;
+        });
+      }
+    }
   }
 
   @override
@@ -59,51 +70,81 @@ class BackupScreenState extends State<BackupScreen> {
     super.dispose();
   }
 
-  Future<void> _createBackup() async {
-    if (_isBackingUp) return;
+  Future<String?> _showBackupNameDialog() async {
+    final controller = TextEditingController();
+    
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Backup Name'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter a name for this backup (optional):'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Backup Name',
+                hintText: 'e.g., Before Update, Daily Backup',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createFullBackup() async {
+    // Show name dialog
+    final name = await _showBackupNameDialog();
+    if (name == null) return; // User cancelled
 
     setState(() {
       _isBackingUp = true;
     });
 
     try {
-      // Simulate backup process
-      await Future.delayed(const Duration(seconds: 2));
-
-      final now = DateTime.now();
-      final backupEntry = {
-        'date': DateFormat('yyyy-MM-dd HH:mm').format(now),
-        'size': '${250 + _backupHistory.length} MB',
-        'status': 'Success',
-        'type': 'Manual',
-      };
+      final result = await BackupService.createFullDatabaseBackup(
+        customBackupPath: _customBackupPath,
+        backupName: name.trim().isEmpty ? null : name.trim(),
+      );
 
       if (!mounted) return;
-      setState(() {
-        _backupHistory.insert(0, backupEntry);
-      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Backup created successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      if (result.success) {
+        ErrorDialogUtils.showSuccessDialog(
+          context: context,
+          title: 'Backup Created',
+          message: 'Full database backup created successfully: ${result.metadata!.fileName}',
+        );
+
+        // Refresh backup list
+        await _refreshBackupInfo();
+      } else {
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Backup Failed',
+          message: 'Failed to create full backup: ${result.error}',
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to create backup: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Backup Error',
+        message: 'Error creating full backup: $e',
       );
     } finally {
       if (mounted) {
@@ -114,33 +155,99 @@ class BackupScreenState extends State<BackupScreen> {
     }
   }
 
-  Future<void> _restoreBackup() async {
-    if (_isRestoring) return;
+  Future<void> _cleanUserSessions() async {
+    try {
+      setState(() {
+        _isRestoring = true;
+      });
+
+      final result = await BackupService.cleanAllUserSessions();
+
+      if (!mounted) return;
+
+      if (result) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All user sessions cleaned successfully. You can now log in normally.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to clean user sessions'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cleaning user sessions: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRestoring = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreFromBackup(BackupMetadata backup) async {
+    // Show confirmation dialog
+    final confirmed = await _showRestoreConfirmationDialog(backup);
+    if (!confirmed) return;
 
     setState(() {
       _isRestoring = true;
     });
 
     try {
-      // Simulate restore process
-      await Future.delayed(const Duration(seconds: 3));
+      final result = await BackupService.restoreFromBackup(backup);
+
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('System restored successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+      if (result.success) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Database restored successfully from ${backup.fileName}'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-        ),
-      );
+        );
+
+        // Show restart dialog
+        _showRestartDialog();
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to restore: ${result.error}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
     } catch (e) {
+      if (!mounted) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to restore system: $e'),
+          content: Text('Error restoring backup: $e'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -157,27 +264,215 @@ class BackupScreenState extends State<BackupScreen> {
     }
   }
 
-  Future<void> _exportBackup() async {
-    try {
-      // Simulate export process
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
+  Future<bool> _showRestoreConfirmationDialog(BackupMetadata backup) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Restore'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to restore from this backup?'),
+            const SizedBox(height: 16),
+            Text('Backup: ${backup.fileName}'),
+            Text('Created: ${backup.formattedTimestamp}'),
+            Text('Size: ${backup.formattedSize}'),
+            const SizedBox(height: 16),
+            const Text(
+              'Warning: This will replace your current database. '
+              'A backup of your current data will be created automatically.',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Restore', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
 
+  void _showRestartDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Restart Required'),
+        content: const Text(
+          'The database has been restored successfully. '
+          'Please restart the application to ensure all changes take effect.',
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              // Close the app (user will need to manually restart)
+              if (Platform.isAndroid || Platform.isIOS) {
+                exit(0);
+              } else {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _selectBackupFolder() async {
+    try {
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+      
+      if (selectedDirectory != null) {
+        setState(() {
+          _customBackupPath = selectedDirectory;
+        });
+        
+        // Refresh backup info with new path
+        await _refreshBackupInfo();
+        
+        if (!mounted) return;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup folder set to: $selectedDirectory'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Backup exported successfully'),
-          backgroundColor: Colors.green,
+          content: Text('Error selecting folder: $e'),
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _deleteBackup(BackupMetadata backup) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Backup'),
+        content: Text('Are you sure you want to delete ${backup.fileName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) return;
+
+    try {
+      final success = await BackupService.deleteBackup(backup);
+      
+      if (success) {
+        if (!mounted) return;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup ${backup.fileName} deleted successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        
+        // Refresh backup list
+        await _refreshBackupInfo();
+      } else {
+        if (!mounted) return;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete backup ${backup.fileName}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
     } catch (e) {
+      if (!mounted) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to export backup: $e'),
+          content: Text('Error deleting backup: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openBackupFolder() async {
+    try {
+      final backupDir = await BackupService.getBackupDirectory(_customBackupPath);
+      
+      if (Platform.isWindows) {
+        await Process.run('explorer', [backupDir.path]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [backupDir.path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [backupDir.path]);
+      } else {
+        // Copy path to clipboard for other platforms
+        await Clipboard.setData(ClipboardData(text: backupDir.path));
+        if (!mounted) return;
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup folder path copied to clipboard: ${backupDir.path}'),
+            backgroundColor: Colors.blue,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening backup folder: $e'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -218,8 +513,64 @@ class BackupScreenState extends State<BackupScreen> {
     }
 
     _backupTimer = Timer.periodic(interval, (timer) {
-      _createBackup();
+      _createFullBackup();
     });
+  }
+
+  Future<void> _showBackupPathInfo() async {
+    try {
+      final backupDir = await BackupService.getBackupDirectory(_customBackupPath);
+      if (!mounted) return;
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Backup Path Information'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Current backup directory:'),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: SelectableText(
+                  backupDir.path,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Monthly folder structure is used for organization.'),
+              Text('Current month: ${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error getting backup path: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -230,6 +581,7 @@ class BackupScreenState extends State<BackupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header
             Container(
               color: Colors.teal[700],
               padding: const EdgeInsets.all(32),
@@ -237,14 +589,13 @@ class BackupScreenState extends State<BackupScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new,
-                        color: Colors.white),
+                    icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
                     onPressed: () => Navigator.of(context).pop(),
                     tooltip: 'Back',
                   ),
                   const SizedBox(height: 20),
                   const Text(
-                    'System Backup',
+                    'Database Backup & Restore',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -253,8 +604,7 @@ class BackupScreenState extends State<BackupScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Easily backup and restore your application data.',
-                    textAlign: TextAlign.center,
+                    'Securely backup and restore your application database.',
                     style: TextStyle(
                       color: Colors.white.withAlpha(230),
                       fontSize: 16,
@@ -263,37 +613,45 @@ class BackupScreenState extends State<BackupScreen> {
                 ],
               ),
             ),
+            
+            // Action Cards
             Transform.translate(
               offset: const Offset(0, -30),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
                   children: [
-                    _buildActionCard(
-                      'Backup Now',
-                      Icons.backup,
-                      Colors.blue[700]!,
-                      _isBackingUp ? null : () => _createBackup(),
-                      isLoading: _isBackingUp,
-                    ),
-                    _buildActionCard(
-                      'Restore',
-                      Icons.restore,
-                      Colors.orange[700]!,
-                      _isRestoring ? null : () => _restoreBackup(),
-                      isLoading: _isRestoring,
-                    ),
-                    _buildActionCard(
-                      'Export',
-                      Icons.upload_file,
-                      Colors.green[700]!,
-                      () => _exportBackup(),
+                    // Single Row - Essential Actions Only
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildActionCard(
+                          'Full DB Backup',
+                          Icons.storage,
+                          Colors.indigo[700]!,
+                          _isBackingUp ? null : () => _createFullBackup(),
+                          isLoading: _isBackingUp,
+                        ),
+                        _buildActionCard(
+                          'Select Folder',
+                          Icons.folder_open,
+                          Colors.orange[700]!,
+                          () => _selectBackupFolder(),
+                        ),
+                        _buildActionCard(
+                          'Open Folder',
+                          Icons.launch,
+                          Colors.green[700]!,
+                          () => _openBackupFolder(),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
+
+            // Backup Settings
             Padding(
               padding: const EdgeInsets.all(24),
               child: Card(
@@ -315,6 +673,8 @@ class BackupScreenState extends State<BackupScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
+                      
+                      // Auto Backup Toggle
                       Row(
                         children: [
                           Expanded(
@@ -329,7 +689,7 @@ class BackupScreenState extends State<BackupScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Automatically backup your system',
+                                  'Automatically backup your database',
                                   style: TextStyle(
                                     color: Colors.grey[600],
                                     fontSize: 14,
@@ -345,6 +705,7 @@ class BackupScreenState extends State<BackupScreen> {
                           ),
                         ],
                       ),
+                      
                       if (_isAutoBackupEnabled) ...[
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
@@ -367,8 +728,11 @@ class BackupScreenState extends State<BackupScreen> {
                           },
                         ),
                       ],
+                      
                       const SizedBox(height: 24),
-                      if (_backupLocation != null) ...[
+                      
+                      // Backup Location Info
+                      if (_backupDirInfo != null) ...[
                         const Text(
                           'Backup Location',
                           style: TextStyle(
@@ -383,25 +747,53 @@ class BackupScreenState extends State<BackupScreen> {
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.folder, color: Colors.teal[700]),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _backupLocation!,
-                                  style: TextStyle(
-                                    color: Colors.grey[800],
-                                    fontFamily: 'monospace',
+                              Row(
+                                children: [
+                                  Icon(Icons.folder, color: Colors.teal[700]),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _backupDirInfo!.path,
+                                      style: TextStyle(
+                                        color: Colors.grey[800],
+                                        fontFamily: 'monospace',
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy),
+                                    onPressed: () async {
+                                      await Clipboard.setData(ClipboardData(text: _backupDirInfo!.path));
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Path copied to clipboard')),
+                                      );
+                                    },
+                                    tooltip: 'Copy path',
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.copy),
-                                onPressed: () {
-                                  // Implement copy to clipboard
-                                },
-                                tooltip: 'Copy path',
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Files: ${_backupDirInfo!.fileCount}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                  Text(
+                                    'Size: ${_backupDirInfo!.formattedTotalSize}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                  Text(
+                                    'Last: ${_backupDirInfo!.formattedLastBackup}',
+                                    style: TextStyle(color: Colors.grey[600]),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -412,6 +804,8 @@ class BackupScreenState extends State<BackupScreen> {
                 ),
               ),
             ),
+
+            // Available Backups
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Card(
@@ -432,7 +826,7 @@ class BackupScreenState extends State<BackupScreen> {
                               Icon(Icons.history, color: Colors.teal[700]),
                               const SizedBox(width: 12),
                               Text(
-                                'Backup History',
+                                'Available Backups',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -441,36 +835,101 @@ class BackupScreenState extends State<BackupScreen> {
                               ),
                             ],
                           ),
-                          TextButton.icon(
-                            onPressed: () {
-                              // Show full history
-                            },
-                            icon: const Icon(Icons.launch, size: 18),
-                            label: const Text('View Full History'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.teal[700],
-                            ),
+                          Row(
+                            children: [
+                              IconButton(
+                                onPressed: _refreshBackupInfo,
+                                icon: _isLoadingBackups
+                                    ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.teal[700]!),
+                                        ),
+                                      )
+                                    : Icon(Icons.refresh, color: Colors.teal[700]),
+                                tooltip: 'Refresh',
+                              ),
+                              IconButton(
+                                onPressed: _showBackupPathInfo,
+                                icon: Icon(Icons.info_outline, color: Colors.teal[700]),
+                                tooltip: 'Show backup path info',
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  await BackupService.cleanupOldBackups(
+                                    keepCount: 5,
+                                    customBackupPath: _customBackupPath,
+                                  );
+                                  await BackupService.cleanupEmptyMonthlyFolders(_customBackupPath);
+                                  await BackupService.cleanupMetadataFolders(_customBackupPath);
+                                  await _refreshBackupInfo();
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Old backups, empty folders, and metadata cleaned up'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.cleaning_services, size: 18),
+                                label: const Text('Cleanup'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.teal[700],
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _cleanUserSessions,
+                                icon: const Icon(Icons.logout, size: 18),
+                                label: const Text('Clear Sessions'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.orange[700],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: SingleChildScrollView(
+                    
+                    if (_availableBackups.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(
+                          child: Text(
+                            'No backups found',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(
                             minWidth: MediaQuery.of(context).size.width - 48,
                           ),
                           child: DataTable(
-                            headingRowColor:
-                                WidgetStateProperty.all(Colors.grey[50]),
+                            headingRowColor: WidgetStateProperty.all(Colors.grey[50]),
                             columnSpacing: 24,
                             horizontalMargin: 24,
                             columns: [
                               DataColumn(
                                 label: Text(
-                                  'Date',
+                                  'Backup Name',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                  ),
+                                ),
+                              ),
+                              DataColumn(
+                                label: Text(
+                                  'Date Created',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.teal[900],
@@ -497,15 +956,6 @@ class BackupScreenState extends State<BackupScreen> {
                               ),
                               DataColumn(
                                 label: Text(
-                                  'Status',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.teal[900],
-                                  ),
-                                ),
-                              ),
-                              DataColumn(
-                                label: Text(
                                   'Actions',
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
@@ -514,54 +964,66 @@ class BackupScreenState extends State<BackupScreen> {
                                 ),
                               ),
                             ],
-                            rows: _backupHistory.map((backup) {
+                            rows: _availableBackups.map((backup) {
                               return DataRow(
+                                selected: _selectedBackupForRestore == backup,
+                                onSelectChanged: (selected) {
+                                  setState(() {
+                                    _selectedBackupForRestore = selected! ? backup : null;
+                                  });
+                                },
                                 cells: [
-                                  DataCell(Text(backup['date']!)),
-                                  DataCell(Text(backup['size']!)),
-                                  DataCell(Text(backup['type']!)),
                                   DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          backup['status'] == 'Success'
-                                              ? Icons.check_circle
-                                              : Icons.error,
-                                          color: backup['status'] == 'Success'
-                                              ? Colors.green[700]
-                                              : Colors.red[700],
-                                          size: 16,
+                                    SizedBox(
+                                      width: 200,
+                                      child: Text(
+                                        backup.fileName,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(Text(backup.formattedTimestamp)),
+                                  DataCell(Text(backup.formattedSize)),
+                                  DataCell(
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: backup.type == BackupType.automatic
+                                            ? Colors.blue[100]
+                                            : Colors.green[100],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        backup.type == BackupType.automatic ? 'Auto' : 'Manual',
+                                        style: TextStyle(
+                                          color: backup.type == BackupType.automatic
+                                              ? Colors.blue[700]
+                                              : Colors.green[700],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          backup['status']!,
-                                          style: TextStyle(
-                                            color: backup['status'] == 'Success'
-                                                ? Colors.green[700]
-                                                : Colors.red[700],
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                   DataCell(
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        IconButton(
-                                          icon: Icon(Icons.restore,
-                                              color: Colors.teal[700]),
-                                          onPressed: () =>
-                                              _restoreBackup(),
-                                          tooltip: 'Restore',
+                                        Tooltip(
+                                          message: 'Restore from this backup',
+                                          child: IconButton(
+                                            icon: Icon(Icons.restore, color: Colors.teal[700]),
+                                            onPressed: _isRestoring
+                                                ? null
+                                                : () => _restoreFromBackup(backup),
+                                          ),
                                         ),
-                                        IconButton(
-                                          icon: Icon(Icons.download,
-                                              color: Colors.teal[700]),
-                                          onPressed: () =>
-                                              _exportBackup(),
-                                          tooltip: 'Download',
+                                        Tooltip(
+                                          message: 'Delete this backup',
+                                          child: IconButton(
+                                            icon: Icon(Icons.delete, color: Colors.red[700]),
+                                            onPressed: () => _deleteBackup(backup),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -572,7 +1034,6 @@ class BackupScreenState extends State<BackupScreen> {
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

@@ -15,6 +15,7 @@ import '../../services/database_helper.dart';
 import '../../services/database_sync_client.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/queue_service.dart';
+import '../../utils/error_dialog_utils.dart';
 import '../payment/payment_screen.dart';
 import '../patient_queue/view_queue_screen.dart';
 
@@ -27,6 +28,7 @@ class PendingBillsScreen extends StatefulWidget {
 
 class PendingBillsScreenState extends State<PendingBillsScreen> {
   final TextEditingController _patientIdController = TextEditingController();
+  final TextEditingController _patientNameController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   final PdfInvoiceService _pdfInvoiceService = PdfInvoiceService();
   final QueueService _queueService = QueueService();
@@ -151,8 +153,11 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice number not found.')));
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Invoice Error',
+        message: 'Invoice number not found.',
+      );
       return;
     }
 
@@ -208,10 +213,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
         );
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Invoice $invoiceNumber marked as paid.'),
-              backgroundColor: Colors.green),
+        ErrorDialogUtils.showSuccessDialog(
+          context: context,
+          title: 'Payment Recorded',
+          message: 'Invoice $invoiceNumber marked as paid.',
         );
 
         // Refresh queue displays after marking payment
@@ -273,10 +278,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Error processing bill: ${e.toString()}'),
-            backgroundColor: Colors.red),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Bill Processing Error',
+        message: 'Error processing bill: ${e.toString()}',
       );
     } finally {
       if (mounted) {
@@ -400,13 +405,29 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
                           child: TextField(
                             controller: _patientIdController,
                             decoration: const InputDecoration(
-                              labelText: 'Patient ID or Name (optional)',
+                              labelText: 'Patient ID',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _patientNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Patient Name',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
                         Expanded(
                           flex: 2,
                           child: InkWell(
@@ -791,10 +812,10 @@ class PendingBillsScreenState extends State<PendingBillsScreen> {
   void _processPayment(Map<String, dynamic> bill) {
     final invoiceNumber = bill['invoiceNumber'] as String?;
     if (invoiceNumber == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Error: Invoice number is missing.'),
-            backgroundColor: Colors.red),
+      ErrorDialogUtils.showErrorDialog(
+        context: context,
+        title: 'Payment Error',
+        message: 'Error: Invoice number is missing.',
       );
       return;
     }

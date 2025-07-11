@@ -7,6 +7,7 @@ import 'package:flutter_application_1/models/bill_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
 import 'package:flutter_application_1/screens/billing/widgets/generated_invoice_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/in_consultation_patient_list.dart';
+
 import 'package:flutter_application_1/screens/billing/widgets/payment_processing_view.dart';
 import 'package:flutter_application_1/screens/billing/widgets/prepare_invoice_view.dart';
 import 'package:flutter_application_1/screens/patient_queue/view_queue_screen.dart';
@@ -72,7 +73,14 @@ class InvoiceScreenState extends State<InvoiceScreen> {
   void initState() {
     super.initState();
     _loadCurrentUserId();
-    _fetchInConsultationPatients();
+    _fetchInProgressPatients();
+  }
+
+  @override
+  void dispose() {
+    // Dispose of all controllers to prevent memory leaks
+    _amountPaidController.dispose();
+    super.dispose();
   }
 
   // --- DATA FETCHING AND STATE MANAGEMENT ---
@@ -84,7 +92,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-  Future<void> _fetchInConsultationPatients() async {
+  Future<void> _fetchInProgressPatients() async {
     setState(() {
       _isLoadingPatients = true;
       _selectedPatientQueueItem = null;
@@ -93,7 +101,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     });
     try {
       final patients =
-          await _dbHelper.getActiveQueue(statuses: ['in_consultation']);
+          await _dbHelper.getActiveQueue(statuses: ['in_progress']);
       final validPatients = patients
           .where((p) => p.totalPrice != null && p.totalPrice! > 0)
           .toList();
@@ -199,6 +207,15 @@ class InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
+  /// BILLING WORKFLOW EXPLANATION:
+  /// 1. Patient selects services (consultation + lab services)
+  /// 2. Invoice is generated here for ALL services (consultation + lab)
+  /// 3. Payment is processed here 
+  /// 4. markPaymentSuccessfulAndServe creates ONLY consultation records, never lab records
+  /// 5. Patient goes to consultation/lab
+  /// 6. Medtech enters lab results in Consultation Results screen
+  /// 7. Consultation Results screen creates the AUTHORITATIVE laboratory records
+  /// 8. Queue status is updated to 'done' only after both payment AND lab results are complete
   void _processPayment() async {
     // Guard clauses
     if (_selectedPatientQueueItem == null ||
@@ -236,7 +253,10 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         amountPaidByCustomer: amountPaid,
         paymentMethod: 'Cash',
         paymentNotes: 'Payment for Invoice #$_generatedInvoiceNumber',
-      ); // Use the specialized payment success method that handles appointment status updates
+      ); 
+      
+      // CRITICAL: Use markPaymentSuccessfulAndServe only for payment processing
+      // DO NOT create any lab records here - they should only be created by medtech in consultation results
       await _queueService.markPaymentSuccessfulAndServe(
           _selectedPatientQueueItem!.queueEntryId);
 
@@ -339,9 +359,11 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         dueDate: now.add(const Duration(days: 30)),
         currentUserId: _currentUserId!,
         notes: "Unpaid invoice for ${patientQueueItem.patientName}",
-      ); // Use the specialized payment success method that also handles appointment status
-      await _queueService
-          .markPaymentSuccessfulAndServe(patientQueueItem.queueEntryId);
+      );
+      
+      // DO NOT call markPaymentSuccessfulAndServe for unpaid invoices
+      // This should only be called after actual payment is processed
+      // The queue item should remain in its current status until payment
 
       final pdfBytes = await _pdfInvoiceService.generateInvoicePdf(
         queueItem: patientQueueItem,
@@ -381,7 +403,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         );
 
         // Refresh patient list and queue displays
-        _fetchInConsultationPatients();
+        _fetchInProgressPatients();
         ViewQueueScreen.refreshDashboardAfterPayment();
       }
     } catch (e) {
@@ -501,7 +523,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _fetchInConsultationPatients,
+            onPressed: _fetchInProgressPatients,
             tooltip: 'Refresh / New Invoice',
           )
         ],
@@ -554,9 +576,23 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           isSaving: _isSavingUnpaid,
         );
       case InvoiceFlowStep.invoiceGenerated:
+        // Handle the case where invoice data might not be ready yet
+        if (_generatedInvoiceNumber == null || _invoiceDate == null) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text("Generating invoice, please wait..."),
+              ],
+            ),
+          );
+        }
+
         return GeneratedInvoiceView(
-          generatedInvoiceNumber: _generatedInvoiceNumber!,
-          invoiceDate: _invoiceDate!,
+          generatedInvoiceNumber: _generatedInvoiceNumber ?? 'Pending',
+          invoiceDate: _invoiceDate ?? DateTime.now(),
           detailedPatientForInvoice: _detailedPatientForInvoice,
           selectedPatientQueueItem: _selectedPatientQueueItem!,
           currentBillItems: _currentBillItems,
@@ -644,7 +680,7 @@ class InvoiceScreenState extends State<InvoiceScreen> {
           const SizedBox(height: 24),
           OutlinedButton.icon(
             onPressed: () {
-              _fetchInConsultationPatients();
+              _fetchInProgressPatients();
               ViewQueueScreen.refreshDashboardAfterPayment();
             },
             icon: const Icon(Icons.receipt_long),

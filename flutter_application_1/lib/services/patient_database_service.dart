@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/services/database_helper.dart';
-// You might need to import Patient model if it's used for return types or specific casting
-// import '../models/patient.dart'; 
+import '../models/patient.dart';
 
 class PatientDatabaseService {
   final DatabaseHelper _dbHelper;
@@ -16,7 +15,19 @@ class PatientDatabaseService {
     final db = await _dbHelper.database;
     final now = DateTime.now().toIso8601String();
 
-    patient['id'] = 'patient-${DateTime.now().millisecondsSinceEpoch}';
+    // Use the format JG-0000 ID from Patient class if id is not already provided
+    if (!patient.containsKey('id') || patient['id'] == null || patient['id'].toString().isEmpty) {
+      // Generate sequential number with Patient class
+      try {
+        // Use Patient.generateId from the imported Patient class
+        patient['id'] = Patient.generateId();
+      } catch (e) {
+        // Fallback: Create a timestamp-based ID with JG prefix
+        final timestamp = DateTime.now().millisecondsSinceEpoch % 10000;
+        patient['id'] = 'JG-${timestamp.toString().padLeft(4, '0')}';
+      }
+    }
+    
     patient['createdAt'] = now;
     patient['updatedAt'] = now;
 

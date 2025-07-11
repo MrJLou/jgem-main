@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 36;
+  static const int _databaseVersion = 43;
 
   // Tables
   static const String tableUsers = 'users';
@@ -57,6 +57,9 @@ class DatabaseHelper {
   static const String tablePatientQueue = 'patient_queue';
   static const String tableActivePatientQueue = 'active_patient_queue';
   static const String tableUserSessions = 'user_sessions';
+  // REMOVED: Doctor schedule tables - using User model instead
+  // static const String tableDoctorTimeSlots = 'doctor_time_slots';
+  // static const String tableDoctorSchedules = 'doctor_schedules';
 
   // Completer to manage database initialization
   Completer<Database>? _dbOpenCompleter;
@@ -120,6 +123,25 @@ class DatabaseHelper {
       await database;
     }
     return _instanceDbPath;
+  }
+
+  /// Close and reset database connection for backup restore operations
+  Future<void> closeAndResetDatabase() async {
+    try {
+      if (_instanceDatabase != null && _instanceDatabase!.isOpen) {
+        await _instanceDatabase!.close();
+        debugPrint('DatabaseHelper: Database connection closed for restore operation');
+      }
+    } catch (e) {
+      debugPrint('DatabaseHelper: Warning - Error closing database: $e');
+    }
+    
+    // Reset internal state
+    _instanceDatabase = null;
+    _dbOpenCompleter = null;
+    _instanceDbPath = null;
+    
+    debugPrint('DatabaseHelper: Database helper state reset for restore operation');
   }
 
   // Initialize database
@@ -373,6 +395,9 @@ class DatabaseHelper {
         securityAnswer2 TEXT,
         securityQuestion3 TEXT,
         securityAnswer3 TEXT,
+        workingDays TEXT,
+        arrivalTime TEXT,
+        departureTime TEXT,
         isActive INTEGER DEFAULT 1,
         createdAt TEXT,
         updatedAt TEXT 
@@ -455,6 +480,7 @@ class DatabaseHelper {
         id TEXT PRIMARY KEY,
         patientId TEXT NOT NULL,
         appointmentId TEXT,
+        queueEntryId TEXT,
         serviceId TEXT, -- Will be deprecated
         selectedServices TEXT, -- New field for multiple services
         recordType TEXT NOT NULL,
@@ -672,6 +698,72 @@ class DatabaseHelper {
     ''');
     debugPrint('DATABASE_HELPER: Table $tableUserSessions created');
 
+    // Doctor Availability table (for Today Doctor feature)
+    await db.execute('''
+      CREATE TABLE doctor_availability (
+        id TEXT PRIMARY KEY,
+        doctorId TEXT NOT NULL,
+        doctorName TEXT NOT NULL,
+        weeklySchedule TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        isActive INTEGER DEFAULT 1,
+        notes TEXT,
+        FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table doctor_availability created');
+
+    // REMOVED: Doctor Time Slots table - using User model instead
+    /*
+    await db.execute('''
+      CREATE TABLE tableDoctorTimeSlots (
+        id TEXT PRIMARY KEY,
+        doctorId TEXT NOT NULL,
+        doctorName TEXT NOT NULL,
+        date TEXT NOT NULL,
+        startTime TEXT NOT NULL,
+        endTime TEXT NOT NULL,
+        durationMinutes INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        type TEXT NOT NULL,
+        patientId TEXT,
+        patientName TEXT,
+        appointmentId TEXT,
+        queueEntryId TEXT,
+        selectedServices TEXT,
+        totalPrice REAL,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE,
+        FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+        FOREIGN KEY (appointmentId) REFERENCES $tableAppointments (id) ON DELETE SET NULL
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table tableDoctorTimeSlots created');
+    */
+
+    // REMOVED: Doctor Schedules table - using User model instead
+    /*
+    await db.execute('''
+      CREATE TABLE tableDoctorSchedules (
+        id TEXT PRIMARY KEY,
+        doctor_id TEXT NOT NULL,
+        doctor_name TEXT NOT NULL,
+        working_days TEXT NOT NULL,
+        arrival_time TEXT NOT NULL,
+        departure_time TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (doctor_id) REFERENCES $tableUsers (id) ON DELETE CASCADE
+      )
+    ''');
+    debugPrint('DATABASE_HELPER: Table tableDoctorSchedules created');
+    */
+
     // Create admin user by default
     await _createDefaultAdmin(db);
 
@@ -694,7 +786,7 @@ class DatabaseHelper {
       debugPrint("DATABASE_HELPER: Applying migrations for versions < 23.");
       // This creates tables that might be missing in very old versions.
       await db.execute(
-          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
+          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, queueEntryId TEXT, serviceId TEXT, selectedServices TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
       await db.execute(
           ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
       await db.execute(
@@ -892,6 +984,128 @@ class DatabaseHelper {
       ''');
     }
 
+    // REMOVED: Doctor time slots upgrade - no longer using separate doctor schedule tables
+    /*
+    if (oldVersion < 38) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 38: Creating doctor_time_slots table for time slot allocation and booking.");
+      
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS doctor_time_slots (
+          id TEXT PRIMARY KEY,
+          doctorId TEXT NOT NULL,
+          doctorName TEXT NOT NULL,
+          date TEXT NOT NULL,
+          startTime TEXT NOT NULL,
+          endTime TEXT NOT NULL,
+          durationMinutes INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          type TEXT NOT NULL,
+          patientId TEXT,
+          patientName TEXT,
+          appointmentId TEXT,
+          queueEntryId TEXT,
+          selectedServices TEXT,
+          totalPrice REAL,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (doctorId) REFERENCES $tableUsers (id) ON DELETE CASCADE,
+          FOREIGN KEY (patientId) REFERENCES $tablePatients (id) ON DELETE SET NULL,
+          FOREIGN KEY (appointmentId) REFERENCES $tableAppointments (id) ON DELETE SET NULL
+        )
+      ''');
+      
+      // Create indexes for the new table
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctorId ON doctor_time_slots (doctorId)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_date ON doctor_time_slots (date)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_status ON doctor_time_slots (status)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_time_slots_doctor_date ON doctor_time_slots (doctorId, date)
+      ''');
+    }
+    */
+
+    // REMOVED: Doctor schedules upgrade - no longer using separate doctor schedule tables
+    /*
+    if (oldVersion < 40) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 40: Creating/fixing doctor_schedules table.");
+      
+      // Drop existing table if it has wrong schema
+      await db.execute('DROP TABLE IF EXISTS doctor_schedules');
+      
+      // Create doctor_schedules table with correct schema
+      await db.execute('''
+        CREATE TABLE doctor_schedules (
+          id TEXT PRIMARY KEY,
+          doctor_id TEXT NOT NULL,
+          doctor_name TEXT NOT NULL,
+          working_days TEXT NOT NULL,
+          arrival_time TEXT NOT NULL,
+          departure_time TEXT NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (doctor_id) REFERENCES $tableUsers (id) ON DELETE CASCADE
+        )
+      ''');
+      
+      // Create indexes for doctor_schedules table
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor_id ON doctor_schedules (doctor_id)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_doctor_schedules_is_active ON doctor_schedules (is_active)
+      ''');
+      
+      debugPrint('DATABASE_HELPER: doctor_schedules table created with correct schema');
+    }
+    */
+
+    // Add doctor schedule columns to users table
+    if (oldVersion < 41) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 41: Adding doctor schedule columns to users table.");
+      
+      // Add working days, arrival time, and departure time columns for doctors
+      await _addColumnIfNotExists(db, tableUsers, 'workingDays', 'TEXT');
+      await _addColumnIfNotExists(db, tableUsers, 'arrivalTime', 'TEXT');
+      await _addColumnIfNotExists(db, tableUsers, 'departureTime', 'TEXT');
+    }
+    
+    if (oldVersion < 42) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 42: Adding enhanced patient fields.");
+      
+      // Add new patient fields for enhanced registration
+      await _addColumnIfNotExists(db, tablePatients, 'firstName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'middleName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'lastName', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'suffix', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'civilStatus', 'TEXT');
+      await _addColumnIfNotExists(db, tablePatients, 'isSeniorCitizen', 'INTEGER DEFAULT 0');
+      
+      debugPrint('DATABASE_HELPER: Doctor schedule columns added to users table');
+    }
+
+    if (oldVersion < 43) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 43: Adding queueEntryId to medical_records table.");
+      
+      // Add queueEntryId column to medical_records table to link with queue items
+      await _addColumnIfNotExists(db, tableMedicalRecords, 'queueEntryId', 'TEXT');
+      
+      debugPrint('DATABASE_HELPER: queueEntryId column added to medical_records table');
+    }
+
     debugPrint(
         "DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
@@ -955,6 +1169,10 @@ class DatabaseHelper {
     return userDbService.getUserByUsername(username);
   }
 
+  Future<User?> getUserById(String id) async {
+    return userDbService.getUserById(id);
+  }
+
   Future<int> updateUser(Map<String, dynamic> user) async {
     return userDbService.updateUser(user);
   }
@@ -995,7 +1213,7 @@ class DatabaseHelper {
 
   // SESSION MANAGEMENT METHODS
   
-  /// Create a new user session when user logs in
+  /// Create a new user session when user logs in with enhanced sync support
   Future<String> createUserSession({
     required String userId,
     required String username,
@@ -1009,22 +1227,53 @@ class DatabaseHelper {
     final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}_$userId';
     final now = DateTime.now().toIso8601String();
     
-    await db.insert(tableUserSessions, {
+    final sessionData = {
       'id': sessionId,
+      'session_id': sessionId,
       'userId': userId,
       'username': username,
       'deviceId': deviceId,
       'deviceName': deviceName ?? 'Unknown Device',
       'loginTime': now,
       'lastActivity': now,
+      'created_at': now,
+      'expires_at': expiresAt.toIso8601String(),
+      'invalidated_at': null,
       'ipAddress': ipAddress,
       'isActive': 1,
       'sessionToken': sessionToken,
       'expiresAt': expiresAt.toIso8601String(),
-    });
+    };
     
-    await logChange(tableUserSessions, sessionId, 'insert');
+    await db.insert(tableUserSessions, sessionData, conflictAlgorithm: ConflictAlgorithm.replace);
+    
+    // Enhanced logging and sync triggering
+    await logChange(tableUserSessions, sessionId, 'insert', data: sessionData);
+    
+    // Manually trigger sync if callback exists
+    try {
+      if (_onDatabaseChanged != null) {
+        await _onDatabaseChanged!(tableUserSessions, 'insert', sessionId, sessionData);
+        debugPrint('DATABASE_HELPER: Session creation callback triggered for sync');
+      }
+    } catch (e) {
+      debugPrint('DATABASE_HELPER: Error triggering session sync callback: $e');
+    }
+    
     return sessionId;
+  }
+
+  /// Get all active sessions for a user by username
+  Future<List<Map<String, dynamic>>> getUserSessionsByUsername(String username) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    
+    return await db.query(
+      tableUserSessions,
+      where: 'username = ? AND isActive = 1 AND expiresAt > ?',
+      whereArgs: [username, now],
+      orderBy: 'created_at DESC',
+    );
   }
 
   /// Check if user has active sessions on other devices
@@ -1050,16 +1299,32 @@ class DatabaseHelper {
   Future<void> invalidateUserSessions(String userId, {String? excludeDeviceId}) async {
     final db = await database;
     
-    String query = 'DELETE FROM $tableUserSessions WHERE userId = ?';
+    // Get sessions that will be deleted for proper sync logging
+    String selectQuery = 'SELECT * FROM $tableUserSessions WHERE userId = ?';
     List<dynamic> args = [userId];
     
     if (excludeDeviceId != null) {
-      query += ' AND deviceId != ?';
+      selectQuery += ' AND deviceId != ?';
       args.add(excludeDeviceId);
     }
     
-    await db.rawDelete(query, args);
-    await logChange(tableUserSessions, userId, 'delete');
+    final sessionsToDelete = await db.rawQuery(selectQuery, args);
+    
+    // Delete the sessions
+    String deleteQuery = 'DELETE FROM $tableUserSessions WHERE userId = ?';
+    List<dynamic> deleteArgs = [userId];
+    
+    if (excludeDeviceId != null) {
+      deleteQuery += ' AND deviceId != ?';
+      deleteArgs.add(excludeDeviceId);
+    }
+    
+    await db.rawDelete(deleteQuery, deleteArgs);
+    
+    // Log each deletion for proper sync
+    for (final session in sessionsToDelete) {
+      await logChange(tableUserSessions, session['id'].toString(), 'delete');
+    }
   }
 
   /// Update session activity timestamp
@@ -1236,14 +1501,152 @@ class DatabaseHelper {
     final db = await database;
     final now = DateTime.now().toIso8601String();
 
-    record['id'] = 'record-${DateTime.now().millisecondsSinceEpoch}';
-    record['createdAt'] = now;
+    // Generate a unique ID if not provided
+    if (record['id'] == null) {
+      record['id'] = 'record-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 8)}';
+    }
+    
+    // Set timestamps if not provided
+    record['createdAt'] = record['createdAt'] ?? now;
     record['updatedAt'] = now;
 
-    await db.insert(DatabaseHelper.tableMedicalRecords, record);
-    await logChange(DatabaseHelper.tableMedicalRecords, record['id'], 'insert');
+    // Define valid columns for medical_records table
+    final validColumns = {
+      'id', 'patientId', 'appointmentId', 'queueEntryId', 'serviceId', 
+      'selectedServices', 'recordType', 'recordDate', 'diagnosis', 
+      'treatment', 'prescription', 'labResults', 'notes', 'doctorId', 
+      'createdAt', 'updatedAt'
+    };
 
-    return record['id'];
+    // Filter record to only include valid columns and map consultation fields
+    final filteredRecord = <String, dynamic>{};
+    
+    for (final entry in record.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      
+      if (validColumns.contains(key)) {
+        filteredRecord[key] = value;
+      } else {
+        // Map consultation-specific fields to existing columns
+        switch (key) {
+          case 'consultationType':
+            // Store consultation type in the notes field with a prefix
+            String existingNotes = filteredRecord['notes'] as String? ?? '';
+            if (existingNotes.isNotEmpty) {
+              filteredRecord['notes'] = 'Consultation Type: $value\n$existingNotes';
+            } else {
+              filteredRecord['notes'] = 'Consultation Type: $value';
+            }
+            break;
+          case 'chiefComplaint':
+            // Store chief complaint in the diagnosis field or notes
+            if (filteredRecord['diagnosis'] == null || (filteredRecord['diagnosis'] as String).isEmpty) {
+              filteredRecord['diagnosis'] = 'Chief Complaint: $value';
+            } else {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = 'Chief Complaint: $value\n$existingNotes';
+              } else {
+                filteredRecord['notes'] = 'Chief Complaint: $value';
+              }
+            }
+            break;
+          case 'consultationNotes':
+            // Add consultation notes to the notes field
+            String existingNotes = filteredRecord['notes'] as String? ?? '';
+            if (value != null && value.toString().isNotEmpty) {
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\nConsultation Notes: $value';
+              } else {
+                filteredRecord['notes'] = 'Consultation Notes: $value';
+              }
+            }
+            break;
+          case 'status':
+            // Store status information in notes if needed
+            if (value != null && value.toString().isNotEmpty && value.toString() != 'completed') {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\nStatus: $value';
+              } else {
+                filteredRecord['notes'] = 'Status: $value';
+              }
+            }
+            break;
+          default:
+            // For any other unknown fields, add them to notes
+            if (value != null && value.toString().isNotEmpty) {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\n$key: $value';
+              } else {
+                filteredRecord['notes'] = '$key: $value';
+              }
+            }
+            break;
+        }
+      }
+    }
+
+    // Ensure required fields are present
+    if (!filteredRecord.containsKey('patientId') || filteredRecord['patientId'] == null) {
+      throw Exception('patientId is required for medical records');
+    }
+    if (!filteredRecord.containsKey('doctorId') || filteredRecord['doctorId'] == null) {
+      throw Exception('doctorId is required for medical records');
+    }
+    if (!filteredRecord.containsKey('recordType') || filteredRecord['recordType'] == null) {
+      filteredRecord['recordType'] = 'consultation'; // Default value
+    }
+    if (!filteredRecord.containsKey('recordDate') || filteredRecord['recordDate'] == null) {
+      filteredRecord['recordDate'] = now;
+    }
+
+    try {
+      await db.insert(DatabaseHelper.tableMedicalRecords, filteredRecord);
+      await logChange(DatabaseHelper.tableMedicalRecords, filteredRecord['id'], 'insert');
+      return filteredRecord['id'];
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error inserting medical record: $e');
+        print('Filtered record: $filteredRecord');
+      }
+      throw Exception('Failed to insert medical record: $e');
+    }
+  }
+  
+  // Get medical records for a patient
+  Future<List<Map<String, dynamic>>> getMedicalRecordsForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ?',
+      whereArgs: [patientId],
+      orderBy: 'recordDate DESC',
+    );
+  }
+  
+  // Get lab results history for a patient
+  Future<List<Map<String, dynamic>>> getLabResultsHistoryForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ? AND recordType = ?',
+      whereArgs: [patientId, 'laboratory'],
+      orderBy: 'recordDate DESC',
+    );
+  }
+  
+  // Get consultation history for a patient
+  Future<List<Map<String, dynamic>>> getConsultationHistoryForPatient(String patientId) async {
+    final db = await database;
+    return await db.query(
+      tableMedicalRecords,
+      where: 'patientId = ? AND recordType = ?',
+      whereArgs: [patientId, 'consultation'],
+      orderBy: 'recordDate DESC',
+    );
   }
 
   // Update medical record
@@ -1340,12 +1743,22 @@ class DatabaseHelper {
     // Use a callback-based approach to avoid circular imports
     if (_onDatabaseChanged != null) {
       try {
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Calling database change callback: $table.$operation');
         await _onDatabaseChanged!(table, operation, recordId, data);
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Callback completed successfully');
         debugPrint('Real-time sync notification sent: $table.$operation for record $recordId');
+        
+        // Extra logging for queue changes
+        if (table == 'active_patient_queue') {
+          debugPrint('DATABASE_HELPER: SYNC DEBUG - QUEUE CHANGE notification sent');
+        }
       } catch (e) {
+        debugPrint('DATABASE_HELPER: SYNC DEBUG - Callback error: $e');
         debugPrint('Real-time sync notification failed: $e');
         // Don't rethrow to avoid breaking database operations
       }
+    } else {
+      debugPrint('DATABASE_HELPER: SYNC DEBUG - No callback registered, sync notification NOT sent');
     }
   }
 
@@ -1360,6 +1773,32 @@ class DatabaseHelper {
   // Static method to clear database change callback
   static void clearDatabaseChangeCallback() {
     _onDatabaseChanged = null;
+  }
+
+  // Check if database change callback is set
+  static bool hasDatabaseChangeCallback() {
+    return _onDatabaseChanged != null;
+  }
+
+  // Manually trigger database change callback (for testing/debugging sync)
+  static Future<void> triggerDatabaseChangeCallback(
+    String table, 
+    String operation, 
+    String recordId, 
+    Map<String, dynamic>? data
+  ) async {
+    if (_onDatabaseChanged != null) {
+      debugPrint('DATABASE_HELPER: Manually triggering database change callback: $table.$operation');
+      try {
+        await _onDatabaseChanged!(table, operation, recordId, data);
+        debugPrint('DATABASE_HELPER: Database change callback completed successfully');
+      } catch (e) {
+        debugPrint('DATABASE_HELPER: Error in database change callback: $e');
+        rethrow;
+      }
+    } else {
+      debugPrint('DATABASE_HELPER: No database change callback set to trigger');
+    }
   }
 
   // Get pending changes for sync
@@ -1798,32 +2237,6 @@ To view live changes in DB Browser:
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_medical_records_recordDate ON $tableMedicalRecords (recordDate)');
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_medical_records_appointmentId ON $tableMedicalRecords (appointmentId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_medical_records_serviceId ON $tableMedicalRecords (serviceId)');
-
-    // Indexes for clinic_services table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_clinic_services_serviceName ON $tableClinicServices (serviceName)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_clinic_services_category ON $tableClinicServices (category)');
-
-    // Indexes for user_activity_log table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_userId ON $tableUserActivityLog (userId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_timestamp ON $tableUserActivityLog (timestamp)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_user_activity_log_targetTable ON $tableUserActivityLog (targetTable)');
-
-    // Indexes for patient_bills table
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_patient_bills_patientId ON $tablePatientBills (patientId)');
-    await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_patient_bills_status ON $tablePatientBills (status)');
-
-    // Indexes for bill_items table
-    await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_bill_items_billId ON $tableBillItems (billId)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_bill_items_serviceId ON $tableBillItems (serviceId)');
@@ -1855,6 +2268,12 @@ To view live changes in DB Browser:
         'CREATE INDEX IF NOT EXISTS idx_patient_history_patientId ON $tablePatientHistory (patientId)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_patient_history_updatedAt ON $tablePatientHistory (updatedAt)');
+
+    // Indexes for doctor_availability table
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_doctor_availability_doctorId ON doctor_availability (doctorId)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_doctor_availability_isActive ON doctor_availability (isActive)');
 
     debugPrint('DATABASE_HELPER: Ensured all indexes are created.');
   }
@@ -1980,25 +2399,68 @@ To view live changes in DB Browser:
     return result;
   }
 
+  // Get the highest patient ID number for initializing the counter
+  Future<int> getHighestPatientId() async {
+    final db = await database;
+    try {
+      final results = await db.rawQuery(
+        "SELECT id FROM ${DatabaseHelper.tablePatients} WHERE id LIKE 'JG-%' OR id LIKE 'JG%'"
+      );
+      
+      if (results.isEmpty) {
+        return 0;
+      }
+      
+      int highestNum = 0;
+      for (var row in results) {
+        final idString = row['id'].toString();
+        // Extract the numeric part from IDs like JG-0001 or JG0001
+        final match = RegExp(r'JG-?(\d+)').firstMatch(idString);
+        if (match != null) {
+          final numStr = match.group(1);
+          if (numStr != null) {
+            final num = int.tryParse(numStr);
+            if (num != null && num > highestNum) {
+              highestNum = num;
+            }
+          }
+        }
+      }
+      
+      debugPrint('DATABASE_HELPER: Highest patient ID number found: $highestNum');
+      return highestNum;
+    } catch (e) {
+      debugPrint('DATABASE_HELPER: Error getting highest patient ID: $e');
+      return 0;
+    }
+  }
+
   // ACTIVE PATIENT QUEUE METHODS
 
   /// Adds a patient to the active queue.
   Future<ActivePatientQueueItem> addToActiveQueue(
       ActivePatientQueueItem item) async {
     final db = await database;
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Starting addToActiveQueue for ${item.patientName}');
+    
     await db.insert(DatabaseHelper.tableActivePatientQueue, item.toJson());
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Database insert completed');
+    
     await logChange(
         DatabaseHelper.tableActivePatientQueue, item.queueEntryId, 'insert');
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - logChange completed');
     
     debugPrint('DatabaseHelper: Patient added to queue ${item.queueEntryId} - sync notification sent');
     
     // Trigger immediate sync to notify all connected devices
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - Before _notifyDatabaseChange');
     await _notifyDatabaseChange(
       DatabaseHelper.tableActivePatientQueue, 
       'insert', 
       item.queueEntryId, 
       data: item.toJson()
     );
+    debugPrint('DATABASE_HELPER: SYNC DEBUG - After _notifyDatabaseChange');
     
     return item;
   }
@@ -2169,7 +2631,7 @@ To view live changes in DB Browser:
     return count;
   }
 
-  /// Checks if a patient is already in the active queue with 'waiting' or 'in_consultation' status.
+  /// Checks if a patient is already in the active queue with 'waiting' or 'in_progress' status.
   Future<bool> isPatientInActiveQueue(
       {String? patientId, required String patientName}) async {
     final db = await database;
@@ -2179,7 +2641,7 @@ To view live changes in DB Browser:
       result = await db.query(
         DatabaseHelper.tableActivePatientQueue,
         where: 'patientId = ? AND (status = ? OR status = ?)',
-        whereArgs: [patientId, 'waiting', 'in_consultation'],
+        whereArgs: [patientId, 'waiting', 'in_progress'],
         limit: 1,
       );
     } else {
@@ -2187,7 +2649,7 @@ To view live changes in DB Browser:
       result = await db.query(
         DatabaseHelper.tableActivePatientQueue,
         where: 'patientName = ? AND (status = ? OR status = ?)',
-        whereArgs: [patientName, 'waiting', 'in_consultation'],
+        whereArgs: [patientName, 'waiting', 'in_progress'],
         limit: 1,
       );
     }
@@ -2298,7 +2760,7 @@ To view live changes in DB Browser:
   Future<int> getActiveQueueCount() async {
     final db = await database;
     final result = await db.rawQuery(
-        'SELECT COUNT(*) FROM $tableActivePatientQueue WHERE status = \'waiting\' OR status = \'in_consultation\'');
+        'SELECT COUNT(*) FROM $tableActivePatientQueue WHERE status = \'waiting\' OR status = \'in_progress\'');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -2902,6 +3364,7 @@ To view live changes in DB Browser:
       tablePatientQueue,
       tableActivePatientQueue,
       tablePatientHistory,
+      // REMOVED: tableDoctorTimeSlots - no longer using separate doctor schedule tables
     ];
 
     await db.transaction((txn) async {
@@ -3016,6 +3479,8 @@ To view live changes in DB Browser:
   // Method to get payment transactions with patient details
   Future<List<Map<String, dynamic>>> getPaymentTransactions({
     String? patientIdOrName,
+    String? patientId,
+    String? patientName,
     String? invoiceNumber,
     DateTime? startDate,
     DateTime? endDate,
@@ -3039,10 +3504,23 @@ To view live changes in DB Browser:
 
     List<dynamic> arguments = [];
 
+    // Support both old and new parameter styles
     if (patientIdOrName != null && patientIdOrName.isNotEmpty) {
       query += ' AND (p.patientId = ? OR pt.fullName LIKE ?)';
       arguments.add(patientIdOrName);
       arguments.add('%$patientIdOrName%');
+    }
+    
+    // Handle separate patientId parameter
+    if (patientId != null && patientId.isNotEmpty) {
+      query += ' AND p.patientId = ?';
+      arguments.add(patientId);
+    }
+    
+    // Handle separate patientName parameter
+    if (patientName != null && patientName.isNotEmpty) {
+      query += ' AND pt.fullName LIKE ?';
+      arguments.add('%$patientName%');
     }
 
     if (invoiceNumber != null && invoiceNumber.isNotEmpty) {
@@ -3177,7 +3655,7 @@ To view live changes in DB Browser:
     // The 'id' in the JSON must be wrapped in quotes.
     try {
       final result = await db.rawQuery(
-        'SELECT COUNT(DISTINCT patientId) as count FROM $tableMedicalRecords WHERE selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ?',
+        'SELECT COUNT(DISTINCT patientId) as count FROM $tableMedicalRecords WHERE selectedServices LIKE ? AND selectedServices IS NOT NULL AND selectedServices != ''',
         ['%"id":"$serviceId"%', ''],
       );
       if (result.isNotEmpty && result.first['count'] != null) {

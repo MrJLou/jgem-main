@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; // Added import for DateFormat
 import '../../services/api_service.dart'; // Added import
 import '../../models/patient.dart'; // Added import
+import '../../utils/error_dialog_utils.dart';
 import '../maintenance/update_screen.dart'; // Import for RecentUpdateLogService
 
 class ModifyPatientDetailsScreen extends StatefulWidget {
@@ -82,11 +83,10 @@ class ModifyPatientDetailsScreenState
         setState(() {
           _isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error searching patients: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
+        ErrorDialogUtils.showErrorDialog(
+          context: context,
+          title: 'Search Error',
+          message: 'Error searching patients: $e',
         );
       }
     } else {

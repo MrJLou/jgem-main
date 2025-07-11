@@ -13,6 +13,7 @@ class TransactionHistoryScreen extends StatefulWidget {
 
 class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   final TextEditingController _patientIdController = TextEditingController();
+  final TextEditingController _patientNameController = TextEditingController();
   final TextEditingController _invoiceController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   
@@ -92,10 +93,11 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   Future<void> _searchTransactions() async {
-    final patientIdOrName = _patientIdController.text.trim();
+    final patientId = _patientIdController.text.trim();
+    final patientName = _patientNameController.text.trim();
     final invoiceNumber = _invoiceController.text.trim();
     
-    if (patientIdOrName.isEmpty && invoiceNumber.isEmpty) {
+    if (patientId.isEmpty && patientName.isEmpty && invoiceNumber.isEmpty) {
       _loadRecentTransactions();
       return;
     }
@@ -108,7 +110,8 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
     try {
       final transactions = await _dbHelper.getPaymentTransactions(
-        patientIdOrName: patientIdOrName.isNotEmpty ? patientIdOrName : null,
+        patientId: patientId.isNotEmpty ? patientId : null,
+        patientName: patientName.isNotEmpty ? patientName : null,
         invoiceNumber: invoiceNumber.isNotEmpty ? invoiceNumber : null,
       );
       
@@ -127,6 +130,7 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
   void _clearSearch() {
     _patientIdController.clear();
+    _patientNameController.clear();
     _invoiceController.clear();
     setState(() {
       _hasSearched = false;
@@ -184,13 +188,28 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           child: TextField(
                             controller: _patientIdController,
                             decoration: const InputDecoration(
-                              labelText: 'Patient ID or Name (optional)',
+                              labelText: 'Patient ID',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _patientNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Patient Name',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
                         Expanded(
                           child: TextField(
                             controller: _invoiceController,
@@ -201,6 +220,7 @@ class TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                             ),
                           ),
                         ),
+                        const Expanded(child: SizedBox()), // Empty space for alignment
                       ],
                     ),
                     const SizedBox(height: 16),

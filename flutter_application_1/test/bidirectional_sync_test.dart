@@ -316,7 +316,7 @@ void main() {
       });
       
       // Update queue item status on client
-      await dbHelper2.updateActiveQueueItemStatus('queue_test_001', 'in_consultation');
+      await dbHelper2.updateActiveQueueItemStatus('queue_test_001', 'in_progress');
       
       // Wait for sync to complete
       final syncUpdate = await completer.future.timeout(
@@ -331,7 +331,7 @@ void main() {
       // Verify queue item is updated in host database
       final hostQueueItem = await dbHelper1.getActiveQueueItem('queue_test_001');
       expect(hostQueueItem, isNotNull);
-      expect(hostQueueItem!.status, equals('in_consultation'));
+      expect(hostQueueItem!.status, equals('in_progress'));
     });
 
     test('Queue removal is synced bidirectionally', () async {

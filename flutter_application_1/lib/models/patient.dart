@@ -1,8 +1,15 @@
-import 'dart:math';
+import 'package:flutter/foundation.dart';
 
 class Patient {
   final String id;
   final String fullName;
+  // New fields for enhanced patient registration
+  final String? firstName;
+  final String? middleName;
+  final String? lastName;
+  final String? suffix;
+  final String? civilStatus;
+  final bool isSeniorCitizen;
   final DateTime birthDate;
   final String gender;
   final String? contactNumber;
@@ -21,6 +28,12 @@ class Patient {
   Patient({
     required this.id,
     required this.fullName,
+    this.firstName,
+    this.middleName,
+    this.lastName,
+    this.suffix,
+    this.civilStatus,
+    this.isSeniorCitizen = false,
     required this.birthDate,
     required this.gender,
     this.contactNumber,
@@ -36,11 +49,18 @@ class Patient {
     required this.updatedAt,
     required this.registrationDate,
   });
+  
   factory Patient.fromJson(Map<String, dynamic> json) {
     try {
       return Patient(
         id: json['id']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? 'Unknown Patient',
+        firstName: json['firstName']?.toString(),
+        middleName: json['middleName']?.toString(),
+        lastName: json['lastName']?.toString(),
+        suffix: json['suffix']?.toString(),
+        civilStatus: json['civilStatus']?.toString(),
+        isSeniorCitizen: json['isSeniorCitizen'] == 1 || json['isSeniorCitizen'] == true,
         birthDate: json['birthDate'] != null ? DateTime.parse(json['birthDate']) : DateTime.now(),
         gender: json['gender']?.toString() ?? 'Unknown',
         contactNumber: json['contactNumber']?.toString(),
@@ -65,6 +85,12 @@ class Patient {
     return {
       'id': id,
       'fullName': fullName,
+      'firstName': firstName,
+      'middleName': middleName,
+      'lastName': lastName,
+      'suffix': suffix,
+      'civilStatus': civilStatus,
+      'isSeniorCitizen': isSeniorCitizen ? 1 : 0,
       'birthDate': birthDate.toIso8601String(),
       'gender': gender,
       'contactNumber': contactNumber,
@@ -85,6 +111,12 @@ class Patient {
   Patient copyWith({
     String? id,
     String? fullName,
+    String? firstName,
+    String? middleName,
+    String? lastName,
+    String? suffix,
+    String? civilStatus,
+    bool? isSeniorCitizen,
     DateTime? birthDate,
     String? gender,
     String? contactNumber,
@@ -103,6 +135,12 @@ class Patient {
     return Patient(
       id: id ?? this.id,
       fullName: fullName ?? this.fullName,
+      firstName: firstName ?? this.firstName,
+      middleName: middleName ?? this.middleName,
+      lastName: lastName ?? this.lastName,
+      suffix: suffix ?? this.suffix,
+      civilStatus: civilStatus ?? this.civilStatus,
+      isSeniorCitizen: isSeniorCitizen ?? this.isSeniorCitizen,
       birthDate: birthDate ?? this.birthDate,
       gender: gender ?? this.gender,
       contactNumber: contactNumber ?? this.contactNumber,
@@ -120,23 +158,72 @@ class Patient {
     );
   }
 
-  // Generate a 6-digit ID
-  static String generateId() {
-    final random = Random();
-    return (100000 + random.nextInt(900000)).toString(); // Generates number between 100000-999999
+  // Track the last assigned patient number to ensure sequential IDs
+  static int _lastAssignedNumber = 0;
+  static final _lock = Object();
+  
+  // Initialize the counter from the highest ID in the database
+  static Future<void> initializeCounter(int highestNumber) async {
+    synchronized(_lock, () {
+      if (highestNumber > _lastAssignedNumber) {
+        _lastAssignedNumber = highestNumber;
+        debugPrint('Patient ID counter initialized to: $_lastAssignedNumber');
+      }
+    });
   }
 
-  // Format an existing ID to ensure it's 6 digits
-  static String formatId(String id) {
-    // Remove any non-numeric characters
-    final numericId = id.replaceAll(RegExp(r'[^0-9]'), '');
+  // Generate an ID with sequential 4-digit number: JG-0001, JG-0002, etc.
+  // This method should ONLY be called when actually registering a patient
+  static String generateId() {
+    // Always use JG as the prefix for all patients
+    const String prefix = 'JG';
     
-    // If the ID is longer than 6 digits, take the last 6
-    if (numericId.length > 6) {
-      return numericId.substring(numericId.length - 6);
+    // Ensure thread-safe increment of the ID number
+    int idNumber = 0; // Initialize with default
+    
+    synchronized(_lock, () {
+      // Increment counter ONLY when generating a real ID for database storage
+      _lastAssignedNumber++;
+      idNumber = _lastAssignedNumber;
+    });
+    
+    // Format the ID with 4 digits padded with zeros
+    final formattedNumber = idNumber.toString().padLeft(4, '0');
+    return '$prefix-$formattedNumber';
+  }
+  
+  // Generate a temporary display ID without incrementing the counter
+  // Use this for UI display when the ID might not be committed to the database
+  static String generateDisplayId() {
+    // Always use JG as the prefix
+    const String prefix = 'JG';
+    
+    // Use the current counter plus 1 (for next ID) but don't increment it
+    int nextNumber = _lastAssignedNumber + 1;
+    
+    // Format the ID with 4 digits padded with zeros
+    final formattedNumber = nextNumber.toString().padLeft(4, '0');
+    return '$prefix-$formattedNumber';
+  }
+  
+  // Format an existing ID or generate a new one
+  static String formatId(String id) {
+    // If the ID is already in the correct format (PREFIX-0000), keep it
+    if (RegExp(r'^[A-Z]{2,3}-\d{4}$').hasMatch(id)) {
+      return id;
     }
     
-    // If the ID is shorter than 6 digits, pad with zeros
-    return numericId.padLeft(6, '0');
+    // Otherwise, create a new ID
+    return generateId();
+  }
+  
+  // Helper method for thread-safety
+  static void synchronized(Object lock, Function action) {
+    // In Dart, a simple synchronized block can be implemented with a mutex pattern
+    try {
+      action();
+    } catch (e) {
+      rethrow;
+    }
   }
 }

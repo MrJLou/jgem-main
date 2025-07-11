@@ -8,6 +8,7 @@ import 'package:flutter_application_1/screens/registration/patient_registration_
     show ReusablePatientFormFields, FormType; // Specific import
 import 'dart:async'; // ADDED for Timer
 import '../../models/clinic_service.dart'; // ADDED ClinicService import
+// Legacy time slot imports removed - using simple work schedule system
 
 class AddAppointmentScreen extends StatefulWidget {
   final List<Appointment>? existingAppointments;
@@ -38,6 +39,15 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   final TextEditingController _notesController = TextEditingController();
+  
+  // Added fields for patient form
+  final TextEditingController _middleNameController = TextEditingController();
+  final TextEditingController _suffixController = TextEditingController();
+  String _civilStatus = 'Single';
+  bool _isSeniorCitizen = false;
+  final List<String> _civilStatusOptions = [
+    'Single', 'Married', 'Widowed', 'Separated', 'Divorced'
+  ];
 
   // Search state variables
   final TextEditingController _patientSearchController =
@@ -56,6 +66,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
   Map<String, bool> _serviceSelectionState = {};
   double _totalPrice = 0.0;
   bool _isLaboratoryOnly = false; // NEW: For laboratory appointments without doctor
+
+  // Removed complex time slot management - using simple work schedule validation
 
   final List<String> _dialogBloodTypes = [
     'A+',
@@ -213,14 +225,22 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
     try {
       final allUsers = await ApiService.getUsers();
       if (!mounted) return;
+      
+      final doctorUsers = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
+      debugPrint('AddAppointmentScreen: Found ${doctorUsers.length} doctors: ${doctorUsers.map((d) => d.fullName).join(', ')}');
+      
       setState(() {
-        _doctors = allUsers.where((user) => user.role == 'doctor').toList();
+        _doctors = doctorUsers;
       });
+      
+      debugPrint('AddAppointmentScreen: Doctor list set with ${_doctors.length} doctors - all available for selection');
+      
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = "Failed to load patient/doctor list: ${e.toString()}";
       });
+      debugPrint('AddAppointmentScreen: Error loading doctors: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_errorMessage!), backgroundColor: Colors.red),
@@ -233,6 +253,13 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       }
     }
   }
+  Future<void> _updateAvailableDoctorsForDate() async {
+    // Allow all doctors to be selectable regardless of schedule
+    // This provides flexibility for users to select doctors they've spoken to
+    debugPrint('AddAppointmentScreen: All doctors available for selection - schedule validation disabled for flexibility');
+  }
+
+
 
   Future<void> _fetchAvailableServices() async {
     try {
@@ -292,7 +319,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _patientSearchController.clear();
       _patientSearchResults = [];
       _errorMessage = null;
-      _formKey.currentState?.reset();      _selectedServices.clear();
+      _formKey.currentState?.reset();      
+      _selectedServices.clear();
       _serviceSelectionState = {
         for (var service in _availableServices) service.id: false
       };
@@ -361,20 +389,22 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       setState(() {
         _selectedDate = picked;
       });
+      // Update available doctors when date changes
+      await _updateAvailableDoctorsForDate();
     }
   }
   Future<void> _showTimePicker() async {
     if (_selectedDoctor == null && !_isLaboratoryOnly) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text('Please select a doctor first or check "Laboratory Tests Only" to see available time slots.'),
+          content: Text('Please select a doctor first or check "Laboratory Tests Only" to see available time slots.'),
           backgroundColor: Colors.orangeAccent,
         ),
       );
       return;
     }
 
+    // Simple time slot selection - no complex time slot system
     final List<TimeOfDay> timeSlots = _isLaboratoryOnly 
         ? _generateWorkingTimeSlots() // For lab-only, show all working hours
         : _generateSelectableTimeSlots(); // For doctor appointments, check conflicts
@@ -676,6 +706,7 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         final allergiesController = TextEditingController();
         String selectedGender = 'Male';
         String selectedBloodType = 'A+';
+        bool unknownBloodType = false;
         bool isLoading = false;
 
         return StatefulBuilder(
@@ -712,6 +743,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                               formType: FormType.mini,
                               firstNameController: firstNameController,
                               lastNameController: lastNameController,
+                              middleNameController: _middleNameController,
+                              suffixController: _suffixController,
                               dobController: dobController,
                               contactController: contactController,
                               addressController: addressController,
@@ -734,6 +767,36 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
                               },
                               bloodTypes: _dialogBloodTypes,
                               isEditMode: false,
+                              unknownBloodType: unknownBloodType,
+                              onUnknownBloodTypeChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    unknownBloodType = value;
+                                    if (value) {
+                                      selectedBloodType = 'Unknown';
+                                    } else if (selectedBloodType == 'Unknown') {
+                                      selectedBloodType = 'A+'; // Default if unchecking "Unknown"
+                                    }
+                                  });
+                                }
+                              },
+                              civilStatus: _civilStatus,
+                              onCivilStatusChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _civilStatus = value;
+                                  });
+                                }
+                              },
+                              isSeniorCitizen: _isSeniorCitizen,
+                              onSeniorCitizenChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    _isSeniorCitizen = value;
+                                  });
+                                }
+                              },
+                              civilStatusOptions: _civilStatusOptions,
                             ),
                           ),
                         ),
@@ -897,6 +960,9 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
           );
           return;
         }
+
+        // Allow appointment booking without schedule validation for flexibility
+        debugPrint('AddAppointmentScreen: Skipping doctor schedule validation for flexible appointment booking');
       }
 
       try {
@@ -929,6 +995,8 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         // Save the appointment and get it back with the generated ID
         final savedAppointment =
             await ApiService.saveAppointment(appointmentToSave);
+
+        // Simplified system - no complex time slot booking needed
 
         // Notify parent about the new appointment
         if (widget.onAppointmentAdded != null) {
@@ -969,10 +1037,13 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
       _totalPrice = total;
     });
   }
+
   @override
   void dispose() {
     _notesController.dispose();
     _patientSearchController.dispose();
+    _middleNameController.dispose();
+    _suffixController.dispose();
     _patientSearchDebounce?.cancel();
     super.dispose();
   }
@@ -1137,20 +1208,25 @@ class AddAppointmentScreenState extends State<AddAppointmentScreen> {
         labelText: 'Select Doctor',
         border: OutlineInputBorder(),
         prefixIcon: Icon(Icons.medical_services_outlined),
+        helperText: 'All doctors are available for flexible scheduling',
       ),
       value: _selectedDoctor,
       items: _doctors.map((User doctor) {
         return DropdownMenuItem<User>(
           value: doctor,
-          child: Text(doctor.fullName),
+          child: Text('Dr. ${doctor.fullName}'),
         );
       }).toList(),
       onChanged: (User? newValue) {
+        debugPrint('AddAppointmentScreen: Doctor selected: ${newValue?.fullName}');
         setState(() {
           _selectedDoctor = newValue;
         });
       },
-      validator: (value) => value == null ? 'Please select a doctor' : null,
+      validator: (value) {
+        if (_isLaboratoryOnly) return null;
+        return value == null ? 'Please select a doctor' : null;
+      },
     );
   }
 

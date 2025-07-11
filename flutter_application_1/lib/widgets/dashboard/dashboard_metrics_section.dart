@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/queue_service.dart';
+import '../../models/user.dart';
 
 class DashboardMetricsSection extends StatefulWidget {
   const DashboardMetricsSection({super.key});
@@ -43,21 +44,36 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
       // Load appointments for today - count all appointments including completed for total count
       final todayAppointments = await ApiService.getAppointments(today);
       
-      // Load current queue and count only active patients (waiting + in_consultation)
+      // Load current queue and count active and in-progress patients
       final queueService = QueueService();
       final activeQueueItems = await queueService.getActiveQueueItems(
-        statuses: ['waiting', 'in_consultation']
+        statuses: ['waiting', 'in_progress']
       );
       
-      // Load all users and count doctors
+      // Load all users and count doctors working today
       final allUsers = await ApiService.getUsers();
-      final doctors = allUsers.where((user) => user.role == 'doctor').toList();
+      final List<User> doctors = allUsers.where((user) => user.role.toLowerCase() == 'doctor').toList();
+      
+      // Get today's day name for filtering working doctors
+      final dayName = _getDayName(today.weekday);
+      
+      // Filter doctors working today based on their User model working days
+      final List<User> workingToday = doctors.where((doctor) {
+        return doctor.worksOnDay(dayName) && 
+               doctor.arrivalTime != null && 
+               doctor.departureTime != null;
+      }).toList();
+      
+      // Filter doctors who are currently available (within work hours)
+      final List<User> currentlyAvailable = workingToday.where((doctor) {
+        return doctor.isCurrentlyWorking();
+      }).toList();
 
       if (mounted) {
         setState(() {
           _totalAppointmentsToday = todayAppointments.length;
           _currentQueueNumber = activeQueueItems.length; // Only active patients in queue
-          _availableDoctors = doctors.length;
+          _availableDoctors = currentlyAvailable.length; // Only doctors currently available
           _isLoading = false;
         });
       }
@@ -101,7 +117,7 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
           const SizedBox(width: 16),
           Expanded(
             child: _buildMetricCard(
-              'Available Doctors',
+              'Available Now',
               _isLoading ? '...' : _availableDoctors.toString(),
               Icons.person_search,
               Colors.green,
@@ -110,6 +126,19 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
         ],
       ),
     );
+  }
+
+  String _getDayName(int weekday) {
+    switch (weekday) {
+      case 1: return 'monday';
+      case 2: return 'tuesday';
+      case 3: return 'wednesday';
+      case 4: return 'thursday';
+      case 5: return 'friday';
+      case 6: return 'saturday';
+      case 7: return 'sunday';
+      default: return 'monday';
+    }
   }
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {

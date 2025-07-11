@@ -3,9 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/appointment.dart';
 import '../../models/active_patient_queue_item.dart';
-import '../../screens/patient_queue/view_queue_screen.dart';
+import '../../services/api_service.dart'; // Added import for ApiService
 
-class LiveQueueDisplaySection extends StatelessWidget {
+// Helper class for table cells to ensure consistent formatting
+class TableCellWidget extends StatelessWidget {
+  final Widget? child;
+  final String? text;
+  final TextStyle? style;
+  final TextAlign textAlign;
+
+  const TableCellWidget({
+    Key? key,
+    this.child,
+    this.text,
+    this.style,
+    this.textAlign = TextAlign.center,
+  }) : assert(child != null || text != null),
+       super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: child ?? Text(
+        text!,
+        style: style,
+        textAlign: textAlign,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class LiveQueueDisplaySection extends StatefulWidget {
   final DateTime calendarSelectedDate;
   final bool isLoadingQueueAndAppointments;
   final List<ActivePatientQueueItem> walkInQueueItems;
@@ -28,11 +58,35 @@ class LiveQueueDisplaySection extends StatelessWidget {
   });
 
   @override
+  LiveQueueDisplaySectionState createState() => LiveQueueDisplaySectionState();
+}
+
+class LiveQueueDisplaySectionState extends State<LiveQueueDisplaySection> {
+  // Cache for patient names to avoid repeated API calls
+  final Map<String, String> _patientNamesCache = {};
+
+  // Method to get patient name from ID with caching
+  Future<String> _getPatientName(String patientId) async {
+    if (_patientNamesCache.containsKey(patientId)) {
+      return _patientNamesCache[patientId]!;
+    }
+    
+    try {
+      final patient = await ApiService.getPatientById(patientId);
+      final name = patient.fullName;
+      _patientNamesCache[patientId] = name;
+      return name;
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final isToday = calendarSelectedDate.year == now.year &&
-                    calendarSelectedDate.month == now.month &&
-                    calendarSelectedDate.day == now.day;
+    final isToday = widget.calendarSelectedDate.year == now.year &&
+                    widget.calendarSelectedDate.month == now.month &&
+                    widget.calendarSelectedDate.day == now.day;
 
     return Card(
       elevation: 2,
@@ -48,7 +102,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                 Icon(Icons.queue, color: Colors.teal[700]),
                 const SizedBox(width: 8),
                 Text(
-                  isToday ? 'Live Patient Queue (Today)' : 'Patient Queue for ${DateFormat.yMMMd().format(calendarSelectedDate)}',
+                  isToday ? 'Live Patient Queue (Today)' : 'Patient Queue for ${DateFormat.yMMMd().format(widget.calendarSelectedDate)}',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -59,7 +113,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             
-            if (isLoadingQueueAndAppointments)
+            if (widget.isLoadingQueueAndAppointments)
               const Center(child: CircularProgressIndicator())
             else ...[
               // Walk-in patients section (only for today)
@@ -69,7 +123,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                     Icon(Icons.people, size: 20, color: Colors.blue[700]),
                     const SizedBox(width: 8),
                     Text(
-                      'Walk-in Patients (${walkInQueueItems.length})',
+                      'Walk-in Patients (${widget.walkInQueueItems.length})',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -79,7 +133,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (walkInQueueItems.isEmpty)
+                if (widget.walkInQueueItems.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -96,7 +150,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                   )
                 else ...[
                   _buildTableHeader(),
-                  ...walkInQueueItems.map((item) => _buildTableRow(item)),
+                  ...widget.walkInQueueItems.map((item) => _buildTableRow(item)),
                 ],
                 const SizedBox(height: 24),
               ],
@@ -107,7 +161,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                   Icon(Icons.event, size: 20, color: Colors.orange[700]),
                   const SizedBox(width: 8),
                   Text(
-                    'Scheduled Appointments (${appointmentsForSelectedDate.length})',
+                    'Scheduled Appointments (${widget.appointmentsForSelectedDate.length})',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -117,7 +171,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              if (appointmentsForSelectedDate.isEmpty)
+              if (widget.appointmentsForSelectedDate.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -134,7 +188,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                 )
               else ...[
                 _buildAppointmentTableHeader(),
-                ...appointmentsForSelectedDate.map((appointment) => _buildAppointmentTableRow(appointment)),
+                ...widget.appointmentsForSelectedDate.map((appointment) => _buildAppointmentTableRow(appointment)),
               ],
             ],
           ],
@@ -151,7 +205,8 @@ class LiveQueueDisplaySection extends StatelessWidget {
       child: Row(
         children: headers.map((text) {
           int flex = 1;
-          if (text == 'Name' || text == 'Condition') flex = 2;
+          if (text == 'Name') flex = 2;
+          if (text == 'Condition') flex = 4; // Further increased flex for services/condition
           if (text == 'Status & Actions') flex = 3;
           if (text == 'Payment') flex = 1; 
 
@@ -183,7 +238,10 @@ class LiveQueueDisplaySection extends StatelessWidget {
           : (item.queueNumber).toString(),
       item.patientName,
       isRepresentingScheduledAppointment ? "-" : arrivalDisplayTime,
-      item.conditionOrPurpose ?? 'N/A',
+      // Format condition or selected services better
+      item.selectedServices?.isNotEmpty == true 
+          ? item.selectedServices!.map((s) => s['name'] as String? ?? '').join(', ')
+          : (item.conditionOrPurpose ?? 'N/A'),
       item.paymentStatus,
     ];
 
@@ -199,14 +257,18 @@ class LiveQueueDisplaySection extends StatelessWidget {
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      margin: const EdgeInsets.symmetric(vertical: 3), // Increased vertical margin
+      padding: const EdgeInsets.symmetric(vertical: 8), // Increased vertical padding
       decoration: BoxDecoration(
           color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
               ? Colors.indigo[50]
               : (item.status == 'removed'
                   ? Colors.grey.shade200
-                  : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
+                  : (item.status == 'served' 
+                      ? Colors.lightGreen[50] 
+                      : (item.status == 'in_progress' 
+                          ? Colors.purple[50] 
+                          : Colors.white))),
           border: Border.all(
             color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
                    ? Colors.indigo[200]! 
@@ -241,7 +303,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                 flex = 1;
                 break;
               case 3: // Condition
-                flex = 2;
+                flex = 4; // Further increased flex for services/condition
                 break;
               case 4: // Payment
                 flex = 1;
@@ -257,9 +319,22 @@ class LiveQueueDisplaySection extends StatelessWidget {
                 flex: flex,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: TableCellWidget(
-                    child: Text(text, style: currentCellStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-                  ),
+                  child: idx == 3 ? // Condition/Services column
+                    TableCellWidget(
+                      child: Tooltip(
+                        message: text, // Show full text in tooltip on hover
+                        child: Text(
+                          text, 
+                          style: currentCellStyle, 
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.start, // Left-align services text
+                          maxLines: 3, // Increased to 3 lines for more service text visibility
+                        ),
+                      ),
+                    ) :
+                    TableCellWidget(
+                      child: Text(text, style: currentCellStyle, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                    ),
                 ));
           }),
           Expanded(
@@ -277,40 +352,40 @@ class LiveQueueDisplaySection extends StatelessWidget {
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: () {
-                          onActivateAppointment(originalAppointmentId);
+                          widget.onActivateAppointment(originalAppointmentId);
                         },
                     ), 
                   )
-                : (item.status == 'waiting' || item.status == 'in_consultation')
+                : (item.status == 'waiting' || item.status == 'in_progress')
                   ? Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: PopupMenuButton<String>(
                         tooltip: "Change Status",
-                        icon: Icon(Icons.more_vert, color: getStatusColor(item.status)),
+                        icon: Icon(Icons.more_vert, color: widget.getStatusColor(item.status)),
                         onSelected: (String newStatus) {
-                           onUpdateQueueItemStatus(item, newStatus);
+                           widget.onUpdateQueueItemStatus(item, newStatus);
                         },
                         itemBuilder: (BuildContext context) {
                           List<String> possibleStatuses = [];
                           if (item.status == 'waiting') {
-                            possibleStatuses.addAll(['in_consultation', 'served', 'removed']);
-                          } else if (item.status == 'in_consultation') {
+                            possibleStatuses.addAll(['in_progress', 'served', 'removed']);
+                          } else if (item.status == 'in_progress') {
                             possibleStatuses.addAll(['waiting', 'served', 'removed']);
                           }
                           return possibleStatuses.map((String statusValue) {
                             return PopupMenuItem<String>(
                               value: statusValue,
-                              child: Text(getDisplayStatus(statusValue)),
+                              child: Text(widget.getDisplayStatus(statusValue)),
                             );
                           }).toList();
                         },
                       ),
                     )
                   : TableCellWidget(
-                      child: Text(getDisplayStatus(item.status),
+                      child: Text(widget.getDisplayStatus(item.status),
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: getStatusColor(item.status),
+                              color: widget.getStatusColor(item.status),
                               fontSize: cellStyle.fontSize),
                           textAlign: TextAlign.center)),
           ),
@@ -320,7 +395,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
   }
 
   Widget _buildAppointmentTableHeader() {
-    final headers = ['Time', 'Patient ID', 'Doctor', 'Type', 'Status', 'Actions'];
+    final headers = ['Time', 'Patient', 'Doctor', 'Type', 'Status', 'Actions'];
     return Container(
       color: Colors.deepOrange[600],
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -329,6 +404,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
           int flex = 1;
           if (text == 'Type') flex = 2;
           if (text == 'Actions') flex = 2;
+          if (text == 'Patient') flex = 3; // Increased flex for patient info
           
           return Expanded(
               flex: flex,
@@ -345,9 +421,34 @@ class LiveQueueDisplaySection extends StatelessWidget {
     // Format time without context dependency
     final timeString = '${appointment.time.hour.toString().padLeft(2, '0')}:${appointment.time.minute.toString().padLeft(2, '0')}';
     
+    // Prepare patient information with ID and name if available
+    final patientCell = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FutureBuilder<String>(
+          future: _getPatientName(appointment.patientId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Text('Loading...', style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic));
+            }
+            return Text(
+              snapshot.data ?? 'Unknown',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            );
+          },
+        ),
+        Text(
+          'ID: ${appointment.patientId}', 
+          style: const TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+      ],
+    );
+    
     final dataCells = [
       timeString,
-      appointment.patientId,
+      '', // Placeholder for patient column (we'll use a custom widget)
       appointment.doctorId,
       appointment.consultationType,
       appointment.status,
@@ -361,8 +462,8 @@ class LiveQueueDisplaySection extends StatelessWidget {
                       appointment.status.toLowerCase() == 'cancelled';
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 1),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      margin: const EdgeInsets.symmetric(vertical: 3), // Increased vertical margin
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6), // Increased padding
       decoration: BoxDecoration(
         color: isActivated ? Colors.green[50] : Colors.orange[50],
         border: Border.all(
@@ -373,7 +474,37 @@ class LiveQueueDisplaySection extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ...dataCells.asMap().entries.map((entry) {
+          // Time column (first cell)
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: TableCellWidget(
+                child: Text(dataCells[0], 
+                    style: TextStyle(
+                      fontSize: 13, 
+                      color: isActivated ? Colors.green[800] : Colors.deepOrange[800],
+                      fontWeight: FontWeight.bold
+                    ), 
+                    overflow: TextOverflow.ellipsis, 
+                    textAlign: TextAlign.center),
+              ),
+            )
+          ),
+          
+          // Patient column (second cell)
+          Expanded(
+            flex: 3, // Increased flex for patient info
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: TableCellWidget(
+                child: patientCell,
+              ),
+            )
+          ),
+          
+          // Remaining cells (doctor, type, status)
+          ...dataCells.asMap().entries.where((entry) => entry.key >= 2).map((entry) {
             int idx = entry.key;
             String text = entry.value.toString();
             int flex = 1;
@@ -426,7 +557,7 @@ class LiveQueueDisplaySection extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    onPressed: () => onActivateAppointment(appointment.id),
+                    onPressed: () => widget.onActivateAppointment(appointment.id),
                   ),
             ),
           ),
