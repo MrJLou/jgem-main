@@ -23,13 +23,13 @@ class QueueService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
   /// Get current active queue items from the database.
-  /// By default, fetches 'waiting' and 'in_consultation' statuses.
+  /// By default, fetches 'waiting' and 'in_progress' statuses.
   Future<List<ActivePatientQueueItem>> getActiveQueueItems(
-      {List<String> statuses = const ['waiting', 'in_consultation']}) async {
+      {List<String> statuses = const ['waiting', 'in_progress']}) async {
     return await _dbHelper.getActiveQueue(statuses: statuses);
   }
 
-  /// Checks if a patient is already in the active queue with 'waiting' or 'in_consultation' status.
+  /// Checks if a patient is already in the active queue with 'waiting' or 'in_progress' status.
   Future<bool> isPatientCurrentlyActive(
       {String? patientId, required String patientName}) async {
     try {
@@ -196,7 +196,7 @@ class QueueService {
   /// This might be slow if queue is large; consider DB-side search for more efficiency.
   Future<ActivePatientQueueItem?> findPatientInQueue(String identifier) async {
     final activeQueue =
-        await getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+        await getActiveQueueItems(statuses: ['waiting', 'in_progress']);
     final lowerIdentifier = identifier.toLowerCase().trim();
 
     for (var item in activeQueue) {
@@ -216,7 +216,7 @@ class QueueService {
     if (searchTerm.trim().isEmpty) {
       return allQueueItems
           .where((item) =>
-              item.status == 'waiting' || item.status == 'in_consultation')
+              item.status == 'waiting' || item.status == 'in_progress')
           .toList();
     }
     final lowerSearchTerm = searchTerm.toLowerCase().trim();
@@ -270,10 +270,10 @@ class QueueService {
           removedAt: null, // Explicitly nullify
         );
         break;
-      case 'in_consultation':
-        // If already in consultation, keep original start time, otherwise set to now or provided
+      case 'in_progress':
+        // If already in progress, keep original start time, otherwise set to now or provided
         updatedItem = updatedItem.copyWith(
-          consultationStartedAt: item.status == 'in_consultation'
+          consultationStartedAt: item.status == 'in_progress'
               ? item.consultationStartedAt
               : (consultationStartedAt ?? now),
           servedAt: null, // Nullify if moving back from served/other
@@ -314,19 +314,9 @@ class QueueService {
         // Trigger immediate sync to notify all connected devices
         _triggerImmediateSync();
 
-        // If the new status is 'served', create a medical record for history.
-        if (newStatus.toLowerCase() == 'served') {
-          try {
-            await _createMedicalRecordForServedPatient(updatedItem);
-          } catch (e) {
-            if (kDebugMode) {
-              print(
-                  'QueueService: Error creating medical record for served patient $queueEntryId: $e');
-            }
-            // Decide if this error should affect the overall success of the operation.
-            // For now, we log it but don't return false, as the primary status update succeeded.
-          }
-        }
+        // Medical record creation is now handled in markPaymentSuccessfulAndServe
+        // and consultation results screen to prevent duplicates
+        // Removed: automatic medical record creation on status change to 'served'
 
         // NO LONGER CREATING APPOINTMENT RECORDS FOR WALK-IN PATIENTS
         // Queue and appointment systems are now completely separate
@@ -348,8 +338,8 @@ class QueueService {
                   originalAppointment.copyWith(
                 status: newStatus == 'served'
                     ? 'Completed'
-                    : (newStatus == 'in_consultation'
-                        ? 'In Consultation'
+                    : (newStatus == 'in_progress'
+                        ? 'In Progress'
                         : originalAppointment
                             .status), // Also update appointment status
                 consultationStartedAt: updatedItem.consultationStartedAt ??
@@ -402,7 +392,7 @@ class QueueService {
     return await updatePatientStatusInQueue(queueEntryId, 'served');
   }
 
-  /// Mark patient as 'in_consultation' in the active queue.
+  /// Mark patient as 'in_progress' in the active queue.
   Future<bool> markPatientAsInConsultation(String queueEntryId) async {
     final item = await _dbHelper.getActiveQueueItem(queueEntryId);
     if (item == null || item.status == 'removed' || item.status == 'served') {
@@ -410,16 +400,16 @@ class QueueService {
     }
 
     final updatedItem = item.copyWith(
-        status: 'in_consultation',
+        status: 'in_progress',
         consultationStartedAt: DateTime.now(),
         servedAt: null);
     final result = await _dbHelper.updateActiveQueueItem(updatedItem);
     return result > 0;
   }
 
-  /// Mark patient as ongoing (in consultation).
+  /// Mark patient as ongoing (in progress).
   Future<bool> markPatientAsOngoing(String queueEntryId) async {
-    return await updatePatientStatusInQueue(queueEntryId, 'in_consultation');
+    return await updatePatientStatusInQueue(queueEntryId, 'in_progress');
   }
 
   /// Mark patient as done.
@@ -428,6 +418,8 @@ class QueueService {
   }
 
   /// Mark consultation as complete and update patient status
+  /// This respects the payment-lab workflow and doesn't immediately mark as served
+  /// if the patient still needs payment processing or has pending lab work
   Future<bool> markConsultationComplete(
     String queueEntryId,
     String patientId,
@@ -443,14 +435,67 @@ class QueueService {
         return false;
       }
 
-      // Update the queue item to mark consultation as complete
+      // Check if this item has lab services that require separate processing
+      bool hasLabServices = false;
+      if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
+        hasLabServices = item.selectedServices!.any((service) {
+          final category = (service['category'] as String? ?? '').toLowerCase();
+          return ['laboratory', 'hematology', 'chemistry', 'urinalysis', 'microbiology', 'pathology']
+              .contains(category);
+        });
+      }
+
+      // Determine the appropriate status based on payment and lab requirements
+      String newStatus;
+      DateTime? servedAtTime;
+      
+      if (item.paymentStatus == 'Paid') {
+        // Payment already processed
+        if (hasLabServices) {
+          // Has lab services - check if lab results have been entered
+          final labResults = await _dbHelper.getLabResultsHistoryForPatient(item.patientId!);
+          final hasLabResults = labResults.isNotEmpty;
+          
+          if (hasLabResults) {
+            // Both payment and lab results are complete
+            newStatus = 'done';
+            servedAtTime = DateTime.now();
+          } else {
+            // Payment done but lab results still needed
+            newStatus = 'in_progress';
+            servedAtTime = null;
+          }
+        } else {
+          // No lab services, consultation complete, payment done - fully served
+          newStatus = 'done';
+          servedAtTime = DateTime.now();
+        }
+      } else {
+        // Payment not yet processed
+        if (hasLabServices) {
+          // Has lab services but no payment - keep in progress for billing workflow
+          newStatus = 'in_progress';
+          servedAtTime = null; // Don't mark as served until payment is complete
+        } else {
+          // No lab services but no payment - keep in progress for billing
+          newStatus = 'in_progress';
+          servedAtTime = null;
+        }
+      }
+
+      // Update the queue item with appropriate status
       final updatedItem = item.copyWith(
-        status: 'served', // Mark as served after consultation
-        servedAt: DateTime.now(),
+        status: newStatus,
+        servedAt: servedAtTime,
         consultationStartedAt: item.consultationStartedAt ?? DateTime.now(),
       );
 
       final result = await _dbHelper.updateActiveQueueItem(updatedItem);
+
+      if (kDebugMode) {
+        print(
+            'QueueService: Consultation completed for $queueEntryId - Status: $newStatus, HasLabServices: $hasLabServices, PaymentStatus: ${item.paymentStatus}');
+      }
 
       if (result > 0) {
         // If the original item was an appointment, update its status
@@ -831,91 +876,143 @@ class QueueService {
     
     // Check if this queue item contains laboratory services
     bool hasLabServices = false;
+    bool hasNonLabServices = false;
+    
     if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
-      hasLabServices = item.selectedServices!.any((service) {
+      for (final service in item.selectedServices!) {
         final category = (service['category'] as String? ?? '').toLowerCase();
-        return ['laboratory', 'hematology', 'chemistry', 'urinalysis', 'microbiology', 'pathology']
-            .contains(category);
-      });
+        if (['laboratory', 'hematology', 'chemistry', 'urinalysis', 'microbiology', 'pathology']
+            .contains(category)) {
+          hasLabServices = true;
+        } else {
+          hasNonLabServices = true;
+        }
+      }
     }
     
-    // For lab services, only update payment status and keep as "in progress" until results are entered
-    // For other services, mark as "done" immediately upon payment
+    // For mixed services (consultation + lab), we only update payment status
+    // but keep status as 'in_progress' until lab results are entered
+    // For lab-only services, keep as 'in_progress' until results are entered
+    // For consultation-only services, mark as 'done' immediately upon payment
     final updatedItem = item.copyWith(
       status: hasLabServices ? 'in_progress' : 'done', // Only mark non-lab services as done
       paymentStatus: 'Paid',
-      servedAt: hasLabServices ? null : now, // Only set servedAt for non-lab services
+      servedAt: hasLabServices ? null : now, // Only set servedAt for pure non-lab services
       // If consultation hasn't officially started, mark it as started now
       consultationStartedAt: item.consultationStartedAt ?? now,
     );
     
     if (kDebugMode) {
-      print('QueueService: Item contains lab services: $hasLabServices - Status set to ${updatedItem.status}');
+      print('QueueService: Item contains lab services: $hasLabServices, non-lab services: $hasNonLabServices - Status set to ${updatedItem.status}');
     }
 
     final updateResult = await _dbHelper.updateActiveQueueItem(updatedItem);
 
     if (updateResult > 0) {
-      // Logic to create medical record(s) based on services
-      try {
-        final currentUserId = await AuthService.getCurrentUserId();
-        final doctorId = item.doctorId ?? currentUserId ?? 'default_doctor_id';
+      // Create medical records based on service types
+      // CRITICAL: Only create consultation records here, NEVER laboratory records
+      // Laboratory records should ONLY be created by medtech in consultation results screen
+      // AND: Do NOT create ANY records for pure lab services - wait for medtech to create them
+      
+      if (hasNonLabServices && !hasLabServices) {
+        // ONLY create records for pure consultation services (no lab services mixed in)
+        try {
+          // Check if a medical record already exists for this patient and queue entry
+          final existingRecords = await _dbHelper.getAllMedicalRecords();
+          final hasExistingConsultationRecord = existingRecords.any((record) =>
+            record['patientId'] == item.patientId &&
+            record['queueEntryId'] == queueEntryId &&
+            record['recordType']?.toString().toLowerCase() == 'consultation'
+          );
 
-        if (item.selectedServices != null &&
-            item.selectedServices!.isNotEmpty) {
-          final recordId = const Uuid().v4();
+          if (!hasExistingConsultationRecord) {
+            final currentUserId = await AuthService.getCurrentUserId();
+            final doctorId = item.doctorId ?? currentUserId ?? 'default_doctor_id';
 
-          // Determine consolidated record type
-          final bool isConsultation = item.selectedServices!.any((s) =>
-              (s['category'] as String? ?? '').toLowerCase() == 'consultation');
-          final String recordType =
-              isConsultation ? 'Consultation' : 'Laboratory';
+            final recordId = const Uuid().v4();
 
-          // Consolidate notes from all services
-          final serviceNames = item.selectedServices!
-              .map((s) => s['serviceName'] as String? ?? 'Service')
-              .join(', ');
-          final notes = 'Services performed: $serviceNames';
+            // Create consultation record only for pure consultation services
+            final serviceNames = item.selectedServices!
+                .map((s) => s['serviceName'] as String? ?? s['name'] as String? ?? 'Service')
+                .join(', ');
 
-          // Create a single medical record with all services
-          final medicalRecordData = {
-            'id': recordId,
-            'patientId': item.patientId,
-            'appointmentId': item.originalAppointmentId,
-            'selectedServices': jsonEncode(
-                item.selectedServices), // Store all services as a JSON string
-            'recordType': recordType,
-            'recordDate': now.toIso8601String(),
-            'diagnosis': 'See consultation details.',
-            'notes': notes,
-            'doctorId': doctorId,
-            'createdAt': now.toIso8601String(),
-            'updatedAt': now.toIso8601String(),
-          };
-          await _dbHelper.insertMedicalRecord(medicalRecordData);
-        } else {
-          // Fallback: if no services are listed, create a general consultation record
-          final recordId = const Uuid().v4();
-          final medicalRecordData = {
-            'id': recordId,
-            'patientId': item.patientId,
-            'appointmentId': item.originalAppointmentId,
-            'recordType': 'Consultation', // Default type
-            'recordDate': now.toIso8601String(),
-            'diagnosis': 'See consultation details.',
-            'notes': item.conditionOrPurpose ?? 'General consultation.',
-            'doctorId': doctorId,
-            'createdAt': now.toIso8601String(),
-            'updatedAt': now.toIso8601String(),
-          };
-          await _dbHelper.insertMedicalRecord(medicalRecordData);
+            // IMPORTANT: Create a medical record with only consultation services
+            final medicalRecordData = {
+              'id': recordId,
+              'patientId': item.patientId,
+              'queueEntryId': queueEntryId, // Add queue entry ID for tracking
+              'appointmentId': item.originalAppointmentId,
+              'selectedServices': jsonEncode(item.selectedServices), // Store all services for pure consultation
+              'recordType': 'consultation', // Use lowercase for consistency
+              'recordDate': now.toIso8601String(),
+              'diagnosis': 'See consultation details.',
+              'notes': 'Consultation services performed: $serviceNames',
+              'doctorId': doctorId,
+              'createdAt': now.toIso8601String(),
+              'updatedAt': now.toIso8601String(),
+            };
+            await _dbHelper.insertMedicalRecord(medicalRecordData);
+            
+            if (kDebugMode) {
+              print('QueueService: Created consultation medical record for pure consultation services: $serviceNames');
+            }
+          } else {
+            if (kDebugMode) {
+              print('QueueService: Consultation medical record already exists for this queue entry, skipping creation');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print(
+                'QueueService: Failed to create consultation medical record for ${item.patientName}: $e');
+          }
+          // Decide if this error should fail the whole operation
         }
-      } catch (e) {
+      } else if (hasLabServices) {
         if (kDebugMode) {
           print(
-              'QueueService: Failed to create medical record for ${item.patientName}: $e');
+              'QueueService: Skipping ALL medical record creation for services that include laboratory work - records will ONLY be created by medtech in consultation results screen');
         }
-        // Decide if this error should fail the whole operation
+      } else {
+        // No services listed at all - create a minimal consultation record
+        try {
+          final existingRecords = await _dbHelper.getAllMedicalRecords();
+          final hasExistingConsultationRecord = existingRecords.any((record) =>
+            record['patientId'] == item.patientId &&
+            record['queueEntryId'] == queueEntryId &&
+            record['recordType']?.toString().toLowerCase() == 'consultation'
+          );
+
+          if (!hasExistingConsultationRecord) {
+            final currentUserId = await AuthService.getCurrentUserId();
+            final doctorId = item.doctorId ?? currentUserId ?? 'default_doctor_id';
+            final recordId = const Uuid().v4();
+            
+            final medicalRecordData = {
+              'id': recordId,
+              'patientId': item.patientId,
+              'queueEntryId': queueEntryId, // Add queue entry ID for tracking
+              'appointmentId': item.originalAppointmentId,
+              'recordType': 'consultation', // Use lowercase for consistency
+              'recordDate': now.toIso8601String(),
+              'diagnosis': 'See consultation details.',
+              'notes': item.conditionOrPurpose ?? 'General consultation.',
+              'doctorId': doctorId,
+              'createdAt': now.toIso8601String(),
+              'updatedAt': now.toIso8601String(),
+            };
+            await _dbHelper.insertMedicalRecord(medicalRecordData);
+            
+            if (kDebugMode) {
+              print('QueueService: Created general consultation medical record');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print(
+                'QueueService: Failed to create general consultation medical record for ${item.patientName}: $e');
+          }
+        }
       }
 
       // If the original item was an appointment, update its status to 'Completed'
@@ -933,41 +1030,6 @@ class QueueService {
       return true;
     }
     return false;
-  }
-
-  Future<void> _createMedicalRecordForServedPatient(
-      ActivePatientQueueItem item) async {
-    final db = await _dbHelper.database;
-    final now = DateTime.now();
-
-    // Prepare the notes from the services provided
-    String notes = 'Consultation for: ${item.conditionOrPurpose}';
-
-    // Include selected services for analytics
-    String? selectedServicesJson;
-    if (item.selectedServices != null && item.selectedServices!.isNotEmpty) {
-      selectedServicesJson = jsonEncode(item.selectedServices);
-    }
-
-    final medicalRecordData = {
-      'id': const Uuid().v4(), // Generate a unique ID for the record
-      'patientId': item.patientId,
-      'doctorId': item.doctorId,
-      'recordDate': now.toIso8601String(),
-      'recordType': 'Consultation', // This is the key for the history screen
-      'notes': notes,
-      'diagnosis': 'See consultation details.', // Placeholder
-      'selectedServices':
-          selectedServicesJson, // Include services for analytics
-      'createdAt': now.toIso8601String(),
-      'updatedAt': now.toIso8601String(),
-    };
-
-    await db.insert('medical_records', medicalRecordData);
-    if (kDebugMode) {
-      print(
-          'Successfully created a medical record for served patient: ${item.patientName}');
-    }
   }
 
   /// Trigger immediate sync to notify connected devices of queue changes
@@ -1018,17 +1080,18 @@ class QueueService {
       return false;
     }
 
-    // Only mark as served if it was already paid
-    if (item.paymentStatus != 'Paid') {
+    // Only mark as served if payment is already complete (status 'in_progress' means payment done but lab pending)
+    if (item.paymentStatus != 'Paid' || item.status != 'in_progress') {
       if (kDebugMode) {
         print(
-            'QueueService: Cannot complete lab results for unpaid queue item: $queueEntryId');
+            'QueueService: Cannot complete lab results - payment not complete or status not in_progress for queue item: $queueEntryId');
+        print('QueueService: PaymentStatus: ${item.paymentStatus}, Status: ${item.status}');
       }
       return false;
     }
 
     final now = DateTime.now();
-    // Update status to 'served' now that lab results are entered
+    // Update status to 'done' now that lab results are entered
     final updatedItem = item.copyWith(
       status: 'done', // Now mark as done since results are entered
       servedAt: now,

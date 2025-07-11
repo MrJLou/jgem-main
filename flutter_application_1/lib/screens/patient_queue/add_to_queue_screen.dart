@@ -1303,7 +1303,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                         stream: Stream.periodic(const Duration(seconds: 30))
                             .asyncMap((_) => widget.queueService
                                 .getActiveQueueItems(
-                                    statuses: ['waiting', 'in_consultation'])),
+                                    statuses: ['waiting', 'in_progress'])),
                         initialData: const [],
                         builder: (context, snapshot) {
                           int queueSize = 0;
@@ -1323,7 +1323,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                                     color: Colors.teal[700]),
                                 const SizedBox(width: 8),
                                 Text(
-                                    'Current Active Queue (Waiting/Consult): $queueSize patients',
+                                    'Current Active Queue (Waiting/Consult/In-Progress): $queueSize patients',
                                     style: TextStyle(
                                         color: Colors.teal[700],
                                         fontWeight: FontWeight.w500)),
@@ -1393,11 +1393,12 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
           ),
         ],
       ),
-      constraints: const BoxConstraints(maxHeight: 250),
+      constraints: const BoxConstraints(maxHeight: 300),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Table header section with count
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -1422,6 +1423,65 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
               ],
             ),
           ),
+          
+          // Table column headers
+          Container(
+            color: Colors.grey[200],
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Patient ID',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Name',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    'Age',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Gender',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 30), // Space for the action icon
+              ],
+            ),
+          ),
+          
+          // Table rows with data
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
@@ -1431,50 +1491,74 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
                 final patient = _searchResults![index];
                 final age = _calculateAge(patient.birthDate.toIso8601String());
 
-                return ListTile(
-                  leading: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.teal[100],
-                    child: Icon(
-                      Icons.person,
-                      color: Colors.teal[700],
-                      size: 20,
+                return Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+                    ),
+                    color: index % 2 == 0 ? Colors.white : Colors.grey[50],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _searchController.text = patient.fullName;
+                          _patientIdController.text = patient.id;
+                          _ageController.text = age?.toString() ?? '';
+                          _genderController.text = patient.gender;
+                          _searchResults = null;
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        child: Row(
+                          children: [
+                            // Patient ID column
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                patient.id,
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                              ),
+                            ),
+                            // Name column
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                patient.fullName,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              ),
+                            ),
+                            // Age column
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                age?.toString() ?? '-',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            // Gender column
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                patient.gender,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            // Action icon
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 14,
+                              color: Colors.teal[600],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  title: Text(
-                    patient.fullName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('ID: ${patient.id}'),
-                      if (age != null)
-                        Text('Age: $age • Gender: ${patient.gender}'),
-                    ],
-                  ),
-                  trailing: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.teal[600],
-                  ),
-                  onTap: () {
-                    setState(() {
-                      _searchController.text = patient.fullName;
-                      _patientIdController.text = patient.id;
-                      _ageController.text = age?.toString() ?? '';
-                      _genderController.text = patient.gender;
-                      _searchResults = null;
-                    });
-                  },
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 4.0),
-                  dense: false,
-                  tileColor: Colors.white,
-                  hoverColor: Colors.teal.withAlpha(20),
                 );
               },
             ),
@@ -1795,8 +1879,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     switch (status.toLowerCase()) {
       case 'waiting':
         return Colors.orange.shade700;
-      case 'in_consultation':
-        return Colors.blue.shade700;
+      case 'in_progress':
+        return Colors.purple.shade700;
       case 'served':
         return Colors.green.shade700;
       case 'removed':
@@ -1811,8 +1895,8 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
     switch (status.toLowerCase()) {
       case 'waiting':
         return 'Waiting';
-      case 'in_consultation':
-        return 'In Consultation'; // Changed
+      case 'in_progress':
+        return 'In Progress';
       case 'served':
         return 'Served';
       case 'removed':
@@ -1838,7 +1922,7 @@ class AddToQueueScreenState extends State<AddToQueueScreen> {
         
         // Try to get queue items
         final items = await widget.queueService.getActiveQueueItems(
-          statuses: ['waiting', 'in_consultation'],
+          statuses: ['waiting', 'in_progress'],
         );
         
         if (kDebugMode) {

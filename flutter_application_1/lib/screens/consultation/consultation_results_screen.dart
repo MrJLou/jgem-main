@@ -60,8 +60,15 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // For medtech users, ensure we're always in lab test mode
+    final isMedtech = widget.accessLevel.toLowerCase() == 'medtech';
+    if (isMedtech) {
+      _isLabTest = true;
+    }
+    
     _loadCurrentUserId();
-    _fetchInConsultationPatients();
+    _fetchInProgressPatients();
     _initializeLabControllers();
   }
 
@@ -89,7 +96,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
     }
   }
 
-  Future<void> _fetchInConsultationPatients() async {
+  Future<void> _fetchInProgressPatients() async {
     setState(() {
       _isLoadingPatients = true;
       _selectedPatientQueueItem = null;
@@ -98,9 +105,9 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
     });
 
     try {
-      // Get patients in consultation AND patients who have been served but need lab results
-      final consultationPatients =
-          await _dbHelper.getActiveQueue(statuses: ['in_consultation']);
+      // Get patients who are in progress and may need lab results
+      final inProgressPatients =
+          await _dbHelper.getActiveQueue(statuses: ['in_progress']);
       final servedPatients =
           await _dbHelper.getActiveQueue(statuses: ['served']);
 
@@ -112,13 +119,35 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         }
       }
 
-      // Combine both lists
+      // Filter in-progress patients to only include those needing lab results
+      final inProgressPatientsNeedingResults = <ActivePatientQueueItem>[];
+      for (final patient in inProgressPatients) {
+        if (await _patientNeedsLabResults(patient.patientId)) {
+          inProgressPatientsNeedingResults.add(patient);
+        }
+      }
+
+      // Combine all lists and remove duplicates by queueEntryId
       final allPatients = [
-        ...consultationPatients,
+        ...inProgressPatientsNeedingResults,
         ...servedPatientsNeedingResults
       ];
 
-      setState(() => _inConsultationPatients = allPatients);
+      // Remove duplicates based on queueEntryId to ensure no patient appears twice
+      final uniquePatients = <String, ActivePatientQueueItem>{};
+      for (final patient in allPatients) {
+        uniquePatients[patient.queueEntryId] = patient;
+      }
+      final deduplicatedPatients = uniquePatients.values.toList();
+
+      if (kDebugMode) {
+        print('ConsultationResults: Found ${allPatients.length} total patients, ${deduplicatedPatients.length} unique patients');
+        if (allPatients.length != deduplicatedPatients.length) {
+          print('ConsultationResults: Removed ${allPatients.length - deduplicatedPatients.length} duplicate patient entries');
+        }
+      }
+
+      setState(() => _inConsultationPatients = deduplicatedPatients);
     } catch (e, s) {
       if (kDebugMode) print('Error fetching patients: $e\n$s');
       if (mounted) {
@@ -141,7 +170,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
     try {
       // Get fresh patient data to check services
       final patients = await _dbHelper
-          .getActiveQueue(statuses: ['in_consultation', 'served']);
+          .getActiveQueue(statuses: ['in_progress', 'served']);
       final patient =
           patients.where((p) => p.patientId == patientId).firstOrNull;
 
@@ -165,16 +194,21 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
 
       if (!hasLabServices) return false;
 
-      // Check if lab results already exist for this patient
+      // CRITICAL: Check if lab results already exist for this patient AND this specific queue entry
+      // This prevents showing patients who have lab results from previous visits
       final existingResults = await _dbHelper.getAllMedicalRecords();
-      final patientResults = existingResults
+      final patientQueueResults = existingResults
           .where((record) =>
               record['patientId'] == patientId &&
+              record['queueEntryId'] == patient.queueEntryId && // Check same queue entry
               record['recordType']?.toString().toLowerCase() == 'laboratory')
           .toList();
 
-      // If no lab results exist, patient needs lab results
-      return patientResults.isEmpty;
+      // Only show patient if:
+      // 1. They have lab services AND
+      // 2. No lab results exist for this specific queue entry AND
+      // 3. Payment has been processed (to ensure they're ready for lab work)
+      return patientQueueResults.isEmpty && patient.paymentStatus == 'Paid';
     } catch (e) {
       if (kDebugMode) {
         print('Error checking lab results for patient $patientId: $e');
@@ -192,8 +226,11 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
     try {
       final patientDataMap = await _dbHelper.getPatient(patientId);
       if (mounted && patientDataMap != null) {
-        setState(() =>
-            _detailedPatientForResults = Patient.fromJson(patientDataMap));
+        setState(() {
+          _detailedPatientForResults = Patient.fromJson(patientDataMap);
+          // Initialize lab controllers based on selected services
+          _initializeLabControllers();
+        });
       }
     } catch (e) {
       if (kDebugMode) print("Error fetching patient details: $e");
@@ -230,6 +267,10 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         'patientId': patientQueueItem.patientId,
         'doctorId': _currentUserId!,
         'queueEntryId': patientQueueItem.queueEntryId,
+        'appointmentId': patientQueueItem.originalAppointmentId, // Add appointment ID for tracking
+        'selectedServices': patientQueueItem.selectedServices != null 
+            ? jsonEncode(patientQueueItem.selectedServices) 
+            : null, // Include selected services for reference
         'consultationType': _consultationType,
         'chiefComplaint': _chiefComplaintController.text.trim(),
         'diagnosis': _diagnosisController.text.trim(),
@@ -238,10 +279,26 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         'recordType': _isLabTest ? 'laboratory' : 'consultation',
         'recordDate': now.toIso8601String(),
         'status': 'completed',
+        'createdAt': now.toIso8601String(),
+        'updatedAt': now.toIso8601String(),
       };
 
       // Add lab results if this is a lab test
-      if (_isLabTest && _labResultControllers.isNotEmpty) {
+      if (_isLabTest) {
+        // Check if lab controllers are initialized
+        if (_labResultControllers.isEmpty) {
+          // No lab controllers initialized - this shouldn't happen for lab patients
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No lab test fields available. Please check patient services or switch to consultation mode.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return; // Exit without saving
+        }
+        
         Map<String, dynamic> labResults = {};
 
         for (var testCategory in _labResultControllers.keys) {
@@ -259,13 +316,65 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
 
         if (labResults.isNotEmpty) {
           consultationData['labResults'] = jsonEncode(labResults); // Encode as JSON string for SQLite storage
+        } else {
+          // CRITICAL: If no lab results were entered, don't create a laboratory record
+          // This prevents empty laboratory records from appearing in the system
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please enter lab results before saving, or switch to consultation mode.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return; // Exit without saving
         }
       }
 
       // Save to medical records
-      await _dbHelper.insertMedicalRecord(consultationData);
+      // CRITICAL: This is the ONLY place where laboratory records should be created
+      // The billing/payment system should NEVER create laboratory records
+      
+      // Check if a medical record already exists for this specific record type
+      final existingRecords = await _dbHelper.getAllMedicalRecords();
+      final recordType = _isLabTest ? 'laboratory' : 'consultation';
+      
+      final hasExistingRecord = existingRecords.any((record) =>
+        record['patientId'] == patientQueueItem.patientId &&
+        record['queueEntryId'] == patientQueueItem.queueEntryId &&
+        record['recordType']?.toString().toLowerCase() == recordType
+      );
+
+      if (!hasExistingRecord) {
+        // Create a new record - this is the authoritative laboratory record
+        await _dbHelper.insertMedicalRecord(consultationData);
+        
+        if (kDebugMode) {
+          print('ConsultationResults: Created NEW $recordType medical record (AUTHORITATIVE for lab results)');
+        }
+      } else {
+        // Update existing record instead of creating duplicate
+        final existingRecord = existingRecords.firstWhere((record) =>
+          record['patientId'] == patientQueueItem.patientId &&
+          record['queueEntryId'] == patientQueueItem.queueEntryId &&
+          record['recordType']?.toString().toLowerCase() == recordType
+        );
+        
+        // Update the existing record with new data
+        final updatedRecord = Map<String, dynamic>.from(existingRecord);
+        updatedRecord.addAll(consultationData);
+        updatedRecord['updatedAt'] = DateTime.now().toIso8601String();
+        
+        await _dbHelper.updateMedicalRecord(updatedRecord);
+        
+        if (kDebugMode) {
+          print('ConsultationResults: Updated existing $recordType medical record (AUTHORITATIVE for lab results)');
+        }
+      }
 
       // Update patient queue status if needed
+      // CRITICAL: This call will check lab completion and update queue status appropriately
+      // Only this method should mark lab services as complete
       await _queueService.markConsultationComplete(
         patientQueueItem.queueEntryId,
         patientQueueItem.patientId!,
@@ -284,7 +393,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
         );
 
         // Refresh the patient list
-        _fetchInConsultationPatients();
+        _fetchInProgressPatients();
       }
     } catch (e) {
       if (kDebugMode) print('Error saving consultation results: $e');
@@ -307,88 +416,120 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
       controllers.forEach((_, controller) => controller.dispose());
     });
     _labResultControllers.clear();
+    _selectedLabTests.clear();
 
-    // Initialize blood sugar controllers
-    _labResultControllers['glucose'] = {
-      'FBS': TextEditingController(),
-      'RBS': TextEditingController(),
-      'HbA1c': TextEditingController(),
-      '2hPP': TextEditingController(), // 2-hour post-prandial
-    };
+    // Get selected services if patient is available
+    List<String> serviceNames = [];
+    if (_selectedPatientQueueItem != null &&
+        _selectedPatientQueueItem!.selectedServices != null) {
+      serviceNames = _selectedPatientQueueItem!.selectedServices!
+          .map((s) => (s['name'] as String? ?? '').toLowerCase())
+          .toList();
+    }
 
-    // Initialize lipid profile controllers
-    _labResultControllers['lipid'] = {
-      'Total Cholesterol': TextEditingController(),
-      'HDL': TextEditingController(),
-      'LDL': TextEditingController(),
-      'Triglycerides': TextEditingController(),
-      'VLDL': TextEditingController(),
-    };
+    // Check which test categories are needed based on services
+    final hasGlucose = _serviceContains(
+        serviceNames, ['glucose', 'fbs', 'blood sugar', 'sugar', 'diabetes', 'fasting blood sugar']);
+    final hasLipidProfile = _serviceContains(serviceNames,
+        ['lipid', 'cholesterol', 'triglyceride', 'hdl', 'ldl', 'total cholesterol']);
+    final hasKidneyFunction = _serviceContains(
+        serviceNames, ['kidney', 'bun', 'creatinine', 'uric acid', 'blood urea nitrogen']);
+    final hasLiverFunction = _serviceContains(serviceNames,
+        ['liver', 'sgpt', 'sgot', 'alt', 'ast', 'bilirubin', 'serum glutamic pyruvic', 'serum glutamic oxaloacetic']);
+    final hasCBC = _serviceContains(serviceNames,
+        ['cbc', 'complete blood', 'blood count', 'platelet', 'hemoglobin', 'cbc w/ platelet']);
+    final hasUrinalysis = _serviceContains(serviceNames, ['urinalysis', 'urine test', 'urine']);
+    final hasVLDL = _serviceContains(serviceNames, ['vldl', 'very low density lipoprotein']);
 
-    // Initialize kidney function controllers
-    _labResultControllers['kidney'] = {
-      'BUN': TextEditingController(),
-      'Creatinine': TextEditingController(),
-      'Uric Acid': TextEditingController(),
-      'Protein': TextEditingController(),
-      'Albumin': TextEditingController(),
-    };
+    // Update the selected tests map
+    _selectedLabTests['glucose'] = hasGlucose;
+    _selectedLabTests['lipid'] = hasLipidProfile;
+    _selectedLabTests['kidney'] = hasKidneyFunction;
+    _selectedLabTests['liver'] = hasLiverFunction;
+    _selectedLabTests['cbc'] = hasCBC;
+    _selectedLabTests['urinalysis'] = hasUrinalysis;
+    _selectedLabTests['vldl'] = hasVLDL;
 
-    // Initialize liver function controllers
-    _labResultControllers['liver'] = {
-      'SGPT/ALT': TextEditingController(),
-      'SGOT/AST': TextEditingController(),
-      'Total Bilirubin': TextEditingController(),
-      'Direct Bilirubin': TextEditingController(),
-      'Indirect Bilirubin': TextEditingController(),
-      'Alkaline Phosphatase': TextEditingController(),
-    };
+    // Initialize glucose/blood sugar controllers - exact field names from image
+    if (hasGlucose) {
+      _labResultControllers['glucose'] = {
+        'Fasting Blood Sugar': TextEditingController(),
+      };
+    }
 
-    // Initialize CBC controllers
-    _labResultControllers['cbc'] = {
-      'WBC': TextEditingController(),
-      'RBC': TextEditingController(),
-      'Hemoglobin': TextEditingController(),
-      'Hematocrit': TextEditingController(),
-      'Platelet Count': TextEditingController(),
-      'MCV': TextEditingController(),
-      'MCH': TextEditingController(),
-      'MCHC': TextEditingController(),
-      'RDW': TextEditingController(),
-      'Neutrophils': TextEditingController(),
-      'Lymphocytes': TextEditingController(),
-      'Monocytes': TextEditingController(),
-      'Eosinophils': TextEditingController(),
-      'Basophils': TextEditingController(),
-    };
+    // Initialize lipid profile controllers - exact field names from image
+    if (hasLipidProfile || hasVLDL) {
+      _labResultControllers['lipid'] = {
+        'Total Cholesterol': TextEditingController(),
+        'Triglycerides': TextEditingController(),
+        'High Density Lipoprotein (HDL)': TextEditingController(),
+        'Low Density Lipoprotein (LDL)': TextEditingController(),
+      };
+      
+      // Add VLDL only if specifically requested
+      if (hasVLDL) {
+        _labResultControllers['lipid']!['Very Low Density Lipoprotein (VLDL)'] = TextEditingController();
+      }
+    }
 
-    // Initialize urinalysis controllers
-    _labResultControllers['urinalysis'] = {
-      'Color': TextEditingController(),
-      'Transparency': TextEditingController(),
-      'Specific Gravity': TextEditingController(),
-      'pH': TextEditingController(),
-      'Protein': TextEditingController(),
-      'Glucose': TextEditingController(),
-      'Ketones': TextEditingController(),
-      'Blood': TextEditingController(),
-      'Leukocyte Esterase': TextEditingController(),
-      'Nitrites': TextEditingController(),
-      'WBC/hpf': TextEditingController(),
-      'RBC/hpf': TextEditingController(),
-      'Bacteria': TextEditingController(),
-      'Epithelial Cells': TextEditingController(),
-    };
+    // Initialize kidney function controllers - exact field names from image
+    if (hasKidneyFunction) {
+      _labResultControllers['kidney'] = {
+        'Blood Urea Nitrogen': TextEditingController(),
+        'Creatinine': TextEditingController(),
+        'Blood Uric Acid': TextEditingController(),
+      };
+    }
 
-    // Initialize other common tests
-    _labResultControllers['other'] = {
-      'ESR': TextEditingController(),
-      'CRP': TextEditingController(),
-      'TSH': TextEditingController(),
-      'FT3': TextEditingController(),
-      'FT4': TextEditingController(),
-      'PSA': TextEditingController(),
-    };
+    // Initialize liver function controllers - exact field names from image
+    if (hasLiverFunction) {
+      _labResultControllers['liver'] = {
+        'Serum Glutamic Pyruvic Transaminase': TextEditingController(),
+        'Serum Glutamic Oxaloacetic Transaminase': TextEditingController(),
+      };
+    }
+
+    // Initialize CBC controllers - exact field names 
+    if (hasCBC) {
+      _labResultControllers['cbc'] = {
+        'CBC W/ Platelet': TextEditingController(),
+      };
+    }
+
+    // Initialize other common tests - only include if specifically requested
+    final hasThyroidTests = _serviceContains(serviceNames, ['thyroid', 'tsh', 't3', 't4']);
+    final hasCRP = _serviceContains(serviceNames, ['crp', 'c-reactive']);
+    final hasESR = _serviceContains(serviceNames, ['esr', 'erythrocyte']);
+    
+    if (hasThyroidTests || hasCRP || hasESR) {
+      _labResultControllers['other'] = {};
+      
+      if (hasThyroidTests) {
+        _labResultControllers['other']!['TSH'] = TextEditingController();
+        _labResultControllers['other']!['T3'] = TextEditingController();
+        _labResultControllers['other']!['T4'] = TextEditingController();
+      }
+      
+      if (hasCRP) {
+        _labResultControllers['other']!['CRP'] = TextEditingController();
+      }
+      
+      if (hasESR) {
+        _labResultControllers['other']!['ESR'] = TextEditingController();
+      }
+    }
+  }
+
+  // Helper method to check if services contain any of the keywords
+  bool _serviceContains(List<String> serviceNames, List<String> keywords) {
+    for (var service in serviceNames) {
+      for (var keyword in keywords) {
+        if (service.contains(keyword)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // --- UI BUILDERS ---
@@ -408,7 +549,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
           if (_selectedPatientQueueItem != null)
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: _fetchInConsultationPatients,
+              onPressed: _fetchInProgressPatients,
               tooltip: 'Refresh Patient List',
             ),
         ],
@@ -512,16 +653,35 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
           diagnosisController: _diagnosisController,
           prescriptionController: _prescriptionController,
           consultationType: _consultationType,
-          onConsultationTypeChanged: (type) =>
-              setState(() => _consultationType = type),
+          onConsultationTypeChanged: (type) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _consultationType = type);
+              }
+            });
+          },
           onSaveResults: _saveConsultationResults,
-          onBack: () => setState(() {
-            _selectedPatientQueueItem = null;
-            _currentStep = ConsultationStep.patientSelection;
-          }),
+          onBack: () {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _selectedPatientQueueItem = null;
+                  _currentStep = ConsultationStep.patientSelection;
+                });
+              }
+            });
+          },
           isLabTest: _isLabTest,
-          onToggleType: (isLab) => setState(() => _isLabTest = isLab),
+          onToggleType: (isLab) {
+            // Use addPostFrameCallback to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() => _isLabTest = isLab);
+              }
+            });
+          },
           labResultControllers: _labResultControllers,
+          selectedLabTests: _selectedLabTests,
           isLoading: _isSavingResults,
           accessLevel: widget.accessLevel,
         );
@@ -562,11 +722,17 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               ElevatedButton.icon(
-                onPressed: () => setState(() {
-                  _selectedPatientQueueItem = null;
-                  _currentStep = ConsultationStep.patientSelection;
-                  _resetResultsState();
-                }),
+                onPressed: () {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() {
+                        _selectedPatientQueueItem = null;
+                        _currentStep = ConsultationStep.patientSelection;
+                        _resetResultsState();
+                      });
+                    }
+                  });
+                },
                 icon: const Icon(Icons.arrow_back),
                 label: const Text('Back to Patient List'),
                 style: ElevatedButton.styleFrom(
@@ -576,7 +742,7 @@ class ConsultationResultsScreenState extends State<ConsultationResultsScreen> {
               ),
               const SizedBox(width: 16),
               ElevatedButton.icon(
-                onPressed: _fetchInConsultationPatients,
+                onPressed: _fetchInProgressPatients,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refresh'),
                 style: ElevatedButton.styleFrom(

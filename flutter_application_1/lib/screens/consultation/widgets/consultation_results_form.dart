@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/active_patient_queue_item.dart';
 import 'package:flutter_application_1/models/patient.dart';
@@ -16,6 +17,7 @@ class ConsultationResultsForm extends StatefulWidget {
   final bool isLabTest;
   final Function(bool) onToggleType;
   final Map<String, Map<String, TextEditingController>> labResultControllers;
+  final Map<String, bool> selectedLabTests;
   final bool isLoading;
   final String accessLevel;
 
@@ -34,6 +36,7 @@ class ConsultationResultsForm extends StatefulWidget {
     required this.isLabTest,
     required this.onToggleType,
     required this.labResultControllers,
+    required this.selectedLabTests,
     this.isLoading = false,
     required this.accessLevel,
   });
@@ -45,7 +48,7 @@ class ConsultationResultsForm extends StatefulWidget {
 
 class _ConsultationResultsFormState extends State<ConsultationResultsForm>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  TabController? _tabController; // Made nullable since medtech users won't need it
   // Method to clear all lab result fields with confirmation
   void _clearLabResults() {
     showDialog(
@@ -167,33 +170,68 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    
+    // Only initialize TabController for non-medtech users
+    final isMedtech = widget.accessLevel.toLowerCase() == 'medtech';
+    
+    if (!isMedtech) {
+      _tabController = TabController(length: 2, vsync: this);
 
-    // Set initial tab based on access level and selected type
-    if (widget.accessLevel.toLowerCase() == 'medtech') {
-      _tabController.index = 0; // Default to lab tests for medtech
-    } else {
-      _tabController.index = widget.isLabTest ? 0 : 1;
+      // Set initial tab based on selected type
+      _tabController!.index = widget.isLabTest ? 0 : 1;
+
+      _tabController!.addListener(() {
+        if (_tabController!.indexIsChanging) {
+          widget.onToggleType(_tabController!.index == 0);
+        }
+      });
     }
-
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        widget.onToggleType(_tabController.index == 0);
-      }
-    });
+    // Note: Don't call onToggleType in initState as it causes setState during build
+    // The parent should initialize _isLabTest correctly for medtech users
     
     // Set default values for non-relevant fields on initialization
-    _setDefaultValueForNonRelevantFields();
+    // Use addPostFrameCallback to ensure widget tree is built before modifying controllers
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setDefaultValueForNonRelevantFields();
+    });
+  }
+
+  @override
+  void didUpdateWidget(ConsultationResultsForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // If patient changed, update default values
+    if (oldWidget.patient != widget.patient) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setDefaultValueForNonRelevantFields();
+      });
+    }
+    
+    // Sync TabController with parent state for non-medtech users
+    final isMedtech = widget.accessLevel.toLowerCase() == 'medtech';
+    if (!isMedtech && _tabController != null) {
+      final expectedIndex = widget.isLabTest ? 0 : 1;
+      if (_tabController!.index != expectedIndex) {
+        _tabController!.index = expectedIndex;
+      }
+    }
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    // Only dispose TabController if it was initialized (for non-medtech users)
+    final isMedtech = widget.accessLevel.toLowerCase() == 'medtech';
+    if (!isMedtech) {
+      _tabController?.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // For medtech users, show only lab test form without tabs to simplify the interface
+    final isMedtech = widget.accessLevel.toLowerCase() == 'medtech';
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -204,22 +242,47 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
 
           const SizedBox(height: 20),
 
-          // Tab selector for Lab Test vs Consultation
-          _buildTabSelector(),
-
-          const SizedBox(height: 20),
-
-          // Tab content
-          SizedBox(
-            height: 600,
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildLabTestForm(),
-                _buildConsultationForm(),
-              ],
+          // Show tab selector only for non-medtech users (doctors, etc.)
+          if (!isMedtech) ...[
+            // Tab selector for Lab Test vs Consultation
+            _buildTabSelector(),
+            const SizedBox(height: 20),
+            
+            // Tab content with both options
+            SizedBox(
+              height: 600,
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildLabTestForm(),
+                  _buildConsultationForm(),
+                ],
+              ),
             ),
-          ),
+          ] else ...[
+            // For medtech users, show only lab test form directly
+            const Text(
+              'Laboratory Test Results',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Enter the laboratory test results for ${widget.patient.patientName}',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Lab test form only
+            _buildLabTestForm(),
+          ],
 
           const SizedBox(height: 20),
 
@@ -378,23 +441,25 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
 
     // Check if specific services are selected
     final hasCBC = _serviceContains(
-        serviceNames, ['cbc', 'complete blood', 'blood count', 'platelet']);
+        serviceNames, ['cbc', 'complete blood', 'blood count', 'platelet', 'cbc w/ platelet']);
     final hasGlucose = _serviceContains(
-        serviceNames, ['glucose', 'fbs', 'blood sugar', 'sugar', 'diabetes']);
+        serviceNames, ['glucose', 'fbs', 'blood sugar', 'sugar', 'diabetes', 'fasting blood sugar']);
     final hasLipidProfile = _serviceContains(
-        serviceNames, ['lipid', 'cholesterol', 'triglyceride', 'hdl', 'ldl']);
+        serviceNames, ['lipid', 'cholesterol', 'triglyceride', 'hdl', 'ldl', 'total cholesterol']);
     final hasKidneyFunction = _serviceContains(
-        serviceNames, ['kidney', 'bun', 'creatinine', 'uric acid', 'renal']);
+        serviceNames, ['kidney', 'bun', 'creatinine', 'uric acid', 'renal', 'blood urea nitrogen']);
     final hasLiverFunction = _serviceContains(
-        serviceNames, ['liver', 'sgpt', 'sgot', 'alt', 'ast', 'hepatic']);
+        serviceNames, ['liver', 'sgpt', 'sgot', 'alt', 'ast', 'hepatic', 
+                       'serum glutamic pyruvic', 'serum glutamic oxaloacetic']);
     final hasUrinalysis = _serviceContains(
         serviceNames, ['urine', 'urinalysis', 'ua', 'urinalysys']);
+    final hasVLDL = _serviceContains(
+        serviceNames, ['vldl', 'very low density lipoprotein']);
     final hasOtherTests =
         _serviceContains(serviceNames, ['esr', 'crp', 'tsh', 'thyroid', 'psa']);
         
-    // Apply default values for non-relevant fields each time the form is built
-    // to ensure fields are properly disabled/enabled
-    _setDefaultValueForNonRelevantFields();
+    // Note: Default values for non-relevant fields are set during initialization
+    // to avoid setState() during build issues
 
     // If no specific lab services are detected, show all categories for manual selection
     final showAllCategories = !hasCBC &&
@@ -403,7 +468,8 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
         !hasKidneyFunction &&
         !hasLiverFunction &&
         !hasUrinalysis &&
-        !hasOtherTests;
+        !hasOtherTests &&
+        !hasVLDL;
 
     return SingleChildScrollView(
       child: Column(
@@ -468,36 +534,36 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
           // Conditional sections based on selected services
 
           // Glucose/Blood Sugar Section
-          if (hasGlucose || showAllCategories) ...[
+          if (widget.selectedLabTests['glucose'] == true || showAllCategories) ...[
             _buildTestSection(
               title: 'Blood Sugar Panel',
               icon: Icons.bloodtype_outlined,
               color: Colors.red.shade800,
-              isEnabled: hasGlucose,
+              isEnabled: widget.selectedLabTests['glucose'] == true,
               children: [
                 _buildLabResultField(
-                    'FBS (mg/dL)',
-                    widget.labResultControllers['glucose']?['FBS'] ??
+                    'Fasting Blood Sugar',
+                    widget.labResultControllers['glucose']?['Fasting Blood Sugar'] ??
                         TextEditingController(),
                     'Normal: 70-100 mg/dL',
                     enabled: hasGlucose || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'RBS (mg/dL)',
+                    'RBS',
                     widget.labResultControllers['glucose']?['RBS'] ??
                         TextEditingController(),
                     'Normal: <140 mg/dL',
                     enabled: hasGlucose || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'HbA1c (%)',
+                    'HbA1c',
                     widget.labResultControllers['glucose']?['HbA1c'] ??
                         TextEditingController(),
                     'Normal: <5.7%',
                     enabled: hasGlucose || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    '2hPP (mg/dL)',
+                    '2hPP',
                     widget.labResultControllers['glucose']?['2hPP'] ??
                         TextEditingController(),
                     'Normal: <140 mg/dL (2-hour post-prandial)',
@@ -508,15 +574,15 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
           ],
 
           // Lipid Profile Section
-          if (hasLipidProfile || showAllCategories) ...[
+          if (widget.selectedLabTests['lipid'] == true || showAllCategories) ...[
             _buildTestSection(
               title: 'Lipid Profile',
               icon: Icons.water_drop_outlined,
               color: Colors.orange.shade800,
-              isEnabled: hasLipidProfile,
+              isEnabled: widget.selectedLabTests['lipid'] == true,
               children: [
                 _buildLabResultField(
-                    'Total Cholesterol (mg/dL)',
+                    'Total Cholesterol',
                     widget.labResultControllers['lipid']
                             ?['Total Cholesterol'] ??
                         TextEditingController(),
@@ -524,78 +590,66 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
                     enabled: hasLipidProfile || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'HDL (mg/dL)',
-                    widget.labResultControllers['lipid']?['HDL'] ??
+                    'High Density Lipoprotein (HDL)',
+                    widget.labResultControllers['lipid']?['High Density Lipoprotein (HDL)'] ??
                         TextEditingController(),
                     'Normal: >40 mg/dL (M), >50 mg/dL (F)',
                     enabled: hasLipidProfile || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'LDL (mg/dL)',
-                    widget.labResultControllers['lipid']?['LDL'] ??
+                    'Low Density Lipoprotein (LDL)',
+                    widget.labResultControllers['lipid']?['Low Density Lipoprotein (LDL)'] ??
                         TextEditingController(),
                     'Normal: <100 mg/dL',
                     enabled: hasLipidProfile || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Triglycerides (mg/dL)',
+                    'Triglycerides',
                     widget.labResultControllers['lipid']?['Triglycerides'] ??
                         TextEditingController(),
                     'Normal: <150 mg/dL',
                     enabled: hasLipidProfile || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'VLDL (mg/dL)',
-                    widget.labResultControllers['lipid']?['VLDL'] ??
-                        TextEditingController(),
-                    'Normal: 5-40 mg/dL',
-                    enabled: hasLipidProfile || showAllCategories),
+                if (hasVLDL || showAllCategories) ...[
+                  const SizedBox(height: 12),
+                  _buildLabResultField(
+                      'Very Low Density Lipoprotein (VLDL)',
+                      widget.labResultControllers['lipid']?['Very Low Density Lipoprotein (VLDL)'] ??
+                          TextEditingController(),
+                      'Normal: 5-40 mg/dL',
+                      enabled: hasVLDL || hasLipidProfile || showAllCategories),
+                ],
               ],
             ),
             const SizedBox(height: 16),
           ],
 
           // Kidney Function Section
-          if (hasKidneyFunction || showAllCategories) ...[
+          if (widget.selectedLabTests['kidney'] == true || showAllCategories) ...[
             _buildTestSection(
               title: 'Kidney Function Tests',
               icon: Icons.filter_alt_outlined,
               color: Colors.green.shade800,
-              isEnabled: hasKidneyFunction,
+              isEnabled: widget.selectedLabTests['kidney'] == true,
               children: [
                 _buildLabResultField(
-                    'BUN (mg/dL)',
-                    widget.labResultControllers['kidney']?['BUN'] ??
+                    'Blood Urea Nitrogen',
+                    widget.labResultControllers['kidney']?['Blood Urea Nitrogen'] ??
                         TextEditingController(),
                     'Normal: 7-20 mg/dL',
-                    enabled: (hasKidneyFunction || hasLiverFunction || showAllCategories)),
+                    enabled: hasKidneyFunction || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Creatinine (mg/dL)',
+                    'Creatinine',
                     widget.labResultControllers['kidney']?['Creatinine'] ??
                         TextEditingController(),
                     'Normal: 0.6-1.2 mg/dL',
                     enabled: hasKidneyFunction || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Uric Acid (mg/dL)',
-                    widget.labResultControllers['kidney']?['Uric Acid'] ??
+                    'Blood Uric Acid',
+                    widget.labResultControllers['kidney']?['Blood Uric Acid'] ??
                         TextEditingController(),
                     'Normal: 3.4-7.0 mg/dL',
-                    enabled: hasKidneyFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Protein (mg/dL)',
-                    widget.labResultControllers['kidney']?['Protein'] ??
-                        TextEditingController(),
-                    'Normal: 6.0-8.3 mg/dL',
-                    enabled: hasKidneyFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Albumin (g/dL)',
-                    widget.labResultControllers['kidney']?['Albumin'] ??
-                        TextEditingController(),
-                    'Normal: 3.5-5.0 g/dL',
                     enabled: hasKidneyFunction || showAllCategories),
               ],
             ),
@@ -603,55 +657,25 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
           ],
 
           // Liver Function Section
-          if (hasLiverFunction || showAllCategories) ...[
+          if (widget.selectedLabTests['liver'] == true || showAllCategories) ...[
             _buildTestSection(
               title: 'Liver Function Tests',
-              icon: Icons.monitor_heart_outlined,
+              icon: Icons.science_outlined,
               color: Colors.purple.shade800,
-              isEnabled: hasLiverFunction,
+              isEnabled: widget.selectedLabTests['liver'] == true,
               children: [
                 _buildLabResultField(
-                    'SGPT/ALT (U/L)',
-                    widget.labResultControllers['liver']?['SGPT/ALT'] ??
+                    'Serum Glutamic Pyruvic Transaminase',
+                    widget.labResultControllers['liver']?['Serum Glutamic Pyruvic Transaminase'] ??
                         TextEditingController(),
                     'Normal: 7-56 U/L',
                     enabled: hasLiverFunction || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'SGOT/AST (U/L)',
-                    widget.labResultControllers['liver']?['SGOT/AST'] ??
+                    'Serum Glutamic Oxaloacetic Transaminase',
+                    widget.labResultControllers['liver']?['Serum Glutamic Oxaloacetic Transaminase'] ??
                         TextEditingController(),
-                    'Normal: 10-40 U/L',
-                    enabled: hasLiverFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Total Bilirubin (mg/dL)',
-                    widget.labResultControllers['liver']?['Total Bilirubin'] ??
-                        TextEditingController(),
-                    'Normal: 0.2-1.2 mg/dL',
-                    enabled: hasLiverFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Direct Bilirubin (mg/dL)',
-                    widget.labResultControllers['liver']?['Direct Bilirubin'] ??
-                        TextEditingController(),
-                    'Normal: 0.0-0.3 mg/dL',
-                    enabled: hasLiverFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Indirect Bilirubin (mg/dL)',
-                    widget.labResultControllers['liver']
-                            ?['Indirect Bilirubin'] ??
-                        TextEditingController(),
-                    'Normal: 0.2-0.8 mg/dL',
-                    enabled: hasLiverFunction || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Alkaline Phosphatase (U/L)',
-                    widget.labResultControllers['liver']
-                            ?['Alkaline Phosphatase'] ??
-                        TextEditingController(),
-                    'Normal: 44-147 U/L',
+                    'Normal: 5-40 U/L',
                     enabled: hasLiverFunction || showAllCategories),
               ],
             ),
@@ -659,119 +683,53 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
           ],
 
           // CBC Section
-          if (hasCBC || showAllCategories) ...[
+          if (widget.selectedLabTests['cbc'] == true || showAllCategories) ...[
             _buildTestSection(
-              title: 'Complete Blood Count (CBC)',
-              icon: Icons.colorize_outlined,
-              color: Colors.indigo.shade800,
-              isEnabled: hasCBC,
+              title: 'Complete Blood Count',
+              icon: Icons.bloodtype_outlined,
+              color: Colors.red.shade800,
+              isEnabled: widget.selectedLabTests['cbc'] == true,
               children: [
                 _buildLabResultField(
-                    'WBC (x10³/μL)',
+                    'CBC W/ Platelet',
+                    widget.labResultControllers['cbc']?['CBC W/ Platelet'] ??
+                        TextEditingController(),
+                    'Complete Blood Count with Platelet',
+                    enabled: hasCBC || showAllCategories),
+                const SizedBox(height: 12),
+                _buildLabResultField(
+                    'WBC',
                     widget.labResultControllers['cbc']?['WBC'] ??
                         TextEditingController(),
-                    'Normal: 4.5-11.0 x10³/μL',
+                    'Normal: 4,500-11,000/μL',
                     enabled: hasCBC || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'RBC (x10⁶/μL)',
+                    'RBC',
                     widget.labResultControllers['cbc']?['RBC'] ??
                         TextEditingController(),
-                    'Normal: 4.5-5.9 x10⁶/μL',
+                    'Normal: 4.5-5.9 million/μL (M), 4.1-5.1 million/μL (F)',
                     enabled: hasCBC || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Hemoglobin (g/dL)',
+                    'Hemoglobin',
                     widget.labResultControllers['cbc']?['Hemoglobin'] ??
                         TextEditingController(),
-                    'Normal: 12-16 g/dL',
+                    'Normal: 13.5-17.5 g/dL (M), 12.0-15.5 g/dL (F)',
                     enabled: hasCBC || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Hematocrit (%)',
+                    'Hematocrit',
                     widget.labResultControllers['cbc']?['Hematocrit'] ??
                         TextEditingController(),
-                    'Normal: 36-46%',
+                    'Normal: 41-50% (M), 36-44% (F)',
                     enabled: hasCBC || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Platelet Count (x10³/μL)',
+                    'Platelet Count',
                     widget.labResultControllers['cbc']?['Platelet Count'] ??
                         TextEditingController(),
-                    'Normal: 150-450 x10³/μL',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 16),
-                const Text(
-                  'Red Blood Cell Indices',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                _buildLabResultField(
-                    'MCV (fL)',
-                    widget.labResultControllers['cbc']?['MCV'] ??
-                        TextEditingController(),
-                    'Normal: 80-100 fL',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'MCH (pg)',
-                    widget.labResultControllers['cbc']?['MCH'] ??
-                        TextEditingController(),
-                    'Normal: 27-31 pg',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'MCHC (g/dL)',
-                    widget.labResultControllers['cbc']?['MCHC'] ??
-                        TextEditingController(),
-                    'Normal: 32-36 g/dL',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'RDW (%)',
-                    widget.labResultControllers['cbc']?['RDW'] ??
-                        TextEditingController(),
-                    'Normal: 11.5-14.5%',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 16),
-                const Text(
-                  'White Blood Cell Differential',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                _buildLabResultField(
-                    'Neutrophils (%)',
-                    widget.labResultControllers['cbc']?['Neutrophils'] ??
-                        TextEditingController(),
-                    'Normal: 50-70%',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Lymphocytes (%)',
-                    widget.labResultControllers['cbc']?['Lymphocytes'] ??
-                        TextEditingController(),
-                    'Normal: 20-40%',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Monocytes (%)',
-                    widget.labResultControllers['cbc']?['Monocytes'] ??
-                        TextEditingController(),
-                    'Normal: 2-8%',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Eosinophils (%)',
-                    widget.labResultControllers['cbc']?['Eosinophils'] ??
-                        TextEditingController(),
-                    'Normal: 1-4%',
-                    enabled: hasCBC || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Basophils (%)',
-                    widget.labResultControllers['cbc']?['Basophils'] ??
-                        TextEditingController(),
-                    'Normal: 0.5-1%',
+                    'Normal: 150,000-450,000/μL',
                     enabled: hasCBC || showAllCategories),
               ],
             ),
@@ -779,51 +737,39 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
           ],
 
           // Urinalysis Section
-          if (hasUrinalysis || showAllCategories) ...[
+          if (widget.selectedLabTests['urinalysis'] == true || showAllCategories) ...[
             _buildTestSection(
               title: 'Urinalysis',
-              icon: Icons.science_outlined,
-              color: Colors.brown.shade800,
-              isEnabled: hasUrinalysis,
+              icon: Icons.opacity_outlined,
+              color: Colors.yellow.shade800,
+              isEnabled: widget.selectedLabTests['urinalysis'] == true,
               children: [
-                const Text(
-                  'Physical Examination',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
                 _buildLabResultField(
                     'Color',
                     widget.labResultControllers['urinalysis']?['Color'] ??
                         TextEditingController(),
-                    'Normal: Yellow',
+                    'Normal: Pale yellow to amber',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
                     'Transparency',
-                    widget.labResultControllers['urinalysis']
-                            ?['Transparency'] ??
+                    widget.labResultControllers['urinalysis']?['Transparency'] ??
                         TextEditingController(),
                     'Normal: Clear',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Specific Gravity',
-                    widget.labResultControllers['urinalysis']
-                            ?['Specific Gravity'] ??
-                        TextEditingController(),
-                    'Normal: 1.003-1.030',
-                    enabled: hasUrinalysis || showAllCategories),
-                const SizedBox(height: 16),
-                const Text(
-                  'Chemical Examination',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                _buildLabResultField(
                     'pH',
                     widget.labResultControllers['urinalysis']?['pH'] ??
                         TextEditingController(),
-                    'Normal: 4.5-8.0',
+                    'Normal: 4.5-8',
+                    enabled: hasUrinalysis || showAllCategories),
+                const SizedBox(height: 12),
+                _buildLabResultField(
+                    'Specific Gravity',
+                    widget.labResultControllers['urinalysis']?['Specific Gravity'] ??
+                        TextEditingController(),
+                    'Normal: 1.005-1.030',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
@@ -841,158 +787,109 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Ketones',
-                    widget.labResultControllers['urinalysis']?['Ketones'] ??
+                    'RBC',
+                    widget.labResultControllers['urinalysis']?['RBC'] ??
                         TextEditingController(),
-                    'Normal: Negative',
+                    'Normal: 0-3 /HPF',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Blood',
-                    widget.labResultControllers['urinalysis']?['Blood'] ??
+                    'WBC',
+                    widget.labResultControllers['urinalysis']?['WBC'] ??
                         TextEditingController(),
-                    'Normal: Negative',
+                    'Normal: 0-5 /HPF',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
-                    'Leukocyte Esterase',
-                    widget.labResultControllers['urinalysis']
-                            ?['Leukocyte Esterase'] ??
+                    'Epithelial Cells',
+                    widget.labResultControllers['urinalysis']?['Epithelial Cells'] ??
                         TextEditingController(),
-                    'Normal: Negative',
-                    enabled: hasUrinalysis || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Nitrites',
-                    widget.labResultControllers['urinalysis']?['Nitrites'] ??
-                        TextEditingController(),
-                    'Normal: Negative',
-                    enabled: hasUrinalysis || showAllCategories),
-                const SizedBox(height: 16),
-                const Text(
-                  'Microscopic Examination',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                _buildLabResultField(
-                    'WBC/hpf',
-                    widget.labResultControllers['urinalysis']?['WBC/hpf'] ??
-                        TextEditingController(),
-                    'Normal: 0-5/hpf',
-                    enabled: hasUrinalysis || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'RBC/hpf',
-                    widget.labResultControllers['urinalysis']?['RBC/hpf'] ??
-                        TextEditingController(),
-                    'Normal: 0-2/hpf',
+                    'Normal: Few',
                     enabled: hasUrinalysis || showAllCategories),
                 const SizedBox(height: 12),
                 _buildLabResultField(
                     'Bacteria',
                     widget.labResultControllers['urinalysis']?['Bacteria'] ??
                         TextEditingController(),
-                    'Normal: Few',
-                    enabled: hasUrinalysis || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'Epithelial Cells',
-                    widget.labResultControllers['urinalysis']
-                            ?['Epithelial Cells'] ??
-                        TextEditingController(),
-                    'Normal: Few',
+                    'Normal: None',
                     enabled: hasUrinalysis || showAllCategories),
               ],
             ),
             const SizedBox(height: 16),
           ],
 
-          // Other Common Tests Section
-          if (hasOtherTests || showAllCategories) ...[
+          // Other Tests Section - Only show if specific tests are requested
+          if (hasOtherTests) ...[
             _buildTestSection(
-              title: 'Other Common Tests',
-              icon: Icons.biotech_outlined,
-              color: Colors.teal.shade800,
-              isEnabled: hasOtherTests,
+              title: 'Other Tests',
+              icon: Icons.science_outlined,
+              color: Colors.blue.shade800,
+              isEnabled: true,
               children: [
-                _buildLabResultField(
-                    'ESR (mm/hr)',
-                    widget.labResultControllers['other']?['ESR'] ??
-                        TextEditingController(),
-                    'Normal: <20 mm/hr (M), <30 mm/hr (F)',
-                    enabled: hasOtherTests || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'CRP (mg/L)',
-                    widget.labResultControllers['other']?['CRP'] ??
-                        TextEditingController(),
-                    'Normal: <3.0 mg/L',
-                    enabled: hasOtherTests || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'TSH (mIU/L)',
-                    widget.labResultControllers['other']?['TSH'] ??
-                        TextEditingController(),
-                    'Normal: 0.4-4.0 mIU/L',
-                    enabled: hasOtherTests || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'FT3 (pg/mL)',
-                    widget.labResultControllers['other']?['FT3'] ??
-                        TextEditingController(),
-                    'Normal: 2.3-4.2 pg/mL',
-                    enabled: hasOtherTests || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'FT4 (ng/dL)',
-                    widget.labResultControllers['other']?['FT4'] ??
-                        TextEditingController(),
-                    'Normal: 0.8-1.8 ng/dL',
-                    enabled: hasOtherTests || showAllCategories),
-                const SizedBox(height: 12),
-                _buildLabResultField(
-                    'PSA (ng/mL)',
-                    widget.labResultControllers['other']?['PSA'] ??
-                        TextEditingController(),
-                    'Normal: <4.0 ng/mL',
-                    enabled: hasOtherTests || showAllCategories),
+                if (_serviceContains(serviceNames, ['tsh', 'thyroid'])) ...[
+                  _buildLabResultField(
+                      'TSH',
+                      widget.labResultControllers['other']?['TSH'] ??
+                          TextEditingController(),
+                      'Normal: 0.4-4.0 mIU/L',
+                      enabled: true),
+                  const SizedBox(height: 12),
+                ],
+                if (_serviceContains(serviceNames, ['t3', 'thyroid'])) ...[
+                  _buildLabResultField(
+                      'T3',
+                      widget.labResultControllers['other']?['T3'] ??
+                          TextEditingController(),
+                      'Normal: 80-200 ng/dL',
+                      enabled: true),
+                  const SizedBox(height: 12),
+                ],
+                if (_serviceContains(serviceNames, ['t4', 'thyroid'])) ...[
+                  _buildLabResultField(
+                      'T4',
+                      widget.labResultControllers['other']?['T4'] ??
+                          TextEditingController(),
+                      'Normal: 5.0-12.0 µg/dL',
+                      enabled: true),
+                  const SizedBox(height: 12),
+                ],
+                if (_serviceContains(serviceNames, ['crp', 'c-reactive'])) ...[
+                  _buildLabResultField(
+                      'CRP',
+                      widget.labResultControllers['other']?['CRP'] ??
+                          TextEditingController(),
+                      'Normal: <10 mg/L',
+                      enabled: true),
+                  const SizedBox(height: 12),
+                ],
+                if (_serviceContains(serviceNames, ['esr', 'erythrocyte'])) ...[
+                  _buildLabResultField(
+                      'ESR',
+                      widget.labResultControllers['other']?['ESR'] ??
+                          TextEditingController(),
+                      'Normal: 0-15 mm/hr (M), 0-20 mm/hr (F)',
+                      enabled: true),
+                ],
               ],
             ),
-            const SizedBox(height: 16),
           ],
 
-          // If no lab tests were selected
-          if (!hasCBC &&
-              !hasGlucose &&
-              !hasLipidProfile &&
-              !hasKidneyFunction &&
-              !hasLiverFunction &&
-              !hasUrinalysis &&
-              !hasOtherTests &&
-              !showAllCategories) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.amber.shade50,
-                border: Border.all(color: Colors.amber.shade200),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Icon(Icons.warning_amber, color: Colors.amber[700], size: 32),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'No specific lab tests detected',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const Text(
-                    'The selected services do not contain recognizable laboratory test types. Any fields below will be autofilled with "0" and marked as non-editable. You can also record general consultation notes in the Consultation tab.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: widget.onSaveResults,
+            icon: const Icon(Icons.save),
+            label: const Text('Save Lab Results'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
             ),
-          ],
+          ),
+          if (widget.isLoading)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
         ],
       ),
     );
@@ -1143,8 +1040,7 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   filled: true,
                   fillColor: Colors.grey[50],
                 ),
@@ -1354,6 +1250,9 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
 
   // Helper method to set default values for non-relevant fields
   void _setDefaultValueForNonRelevantFields() {
+    // Skip if not mounted to avoid potential setState issues
+    if (!mounted) return;
+    
     // Get selected services to determine which tests to show
     final selectedServices = widget.patient.selectedServices ?? [];
     final serviceNames = selectedServices
@@ -1362,90 +1261,102 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
 
     // Check if specific services are selected
     final hasCBC = _serviceContains(
-        serviceNames, ['cbc', 'complete blood', 'blood count', 'platelet']);
+        serviceNames, ['cbc', 'complete blood', 'blood count', 'platelet', 'cbc w/ platelet']);
     final hasGlucose = _serviceContains(
-        serviceNames, ['glucose', 'fbs', 'blood sugar', 'sugar', 'diabetes']);
+        serviceNames, ['glucose', 'fbs', 'blood sugar', 'sugar', 'diabetes', 'fasting blood sugar']);
     final hasLipidProfile = _serviceContains(
-        serviceNames, ['lipid', 'cholesterol', 'triglyceride', 'hdl', 'ldl']);
+        serviceNames, ['lipid', 'cholesterol', 'triglyceride', 'hdl', 'ldl', 'total cholesterol']);
     final hasKidneyFunction = _serviceContains(
-        serviceNames, ['kidney', 'bun', 'creatinine', 'uric acid', 'renal']);
+        serviceNames, ['kidney', 'bun', 'creatinine', 'uric acid', 'renal', 'blood urea nitrogen']);
     final hasLiverFunction = _serviceContains(
-        serviceNames, ['liver', 'sgpt', 'sgot', 'alt', 'ast', 'hepatic']);
+        serviceNames, ['liver', 'sgpt', 'sgot', 'alt', 'ast', 'hepatic', 
+                       'serum glutamic pyruvic', 'serum glutamic oxaloacetic']);
     final hasUrinalysis = _serviceContains(
         serviceNames, ['urine', 'urinalysis', 'ua', 'urinalysys']);
+    final hasVLDL = _serviceContains(
+        serviceNames, ['vldl', 'very low density lipoprotein']);
     final hasOtherTests =
         _serviceContains(serviceNames, ['esr', 'crp', 'tsh', 'thyroid', 'psa']);
 
     // Handle overlap tests that might be in multiple panels (like BUN in both kidney and liver panels)
     final hasBUN = hasKidneyFunction || hasLiverFunction;
 
-    // Process each test category controller
-    if (widget.labResultControllers['cbc'] != null) {
-      widget.labResultControllers['cbc']!.forEach((key, controller) {
-        if (!hasCBC && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['glucose'] != null) {
-      widget.labResultControllers['glucose']!.forEach((key, controller) {
-        if (!hasGlucose && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['lipid'] != null) {
-      widget.labResultControllers['lipid']!.forEach((key, controller) {
-        if (!hasLipidProfile && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['kidney'] != null) {
-      widget.labResultControllers['kidney']!.forEach((key, controller) {
-        // Special case for BUN which can be in both kidney and liver panels
-        if (key == 'BUN' && hasBUN) {
-          // Don't autofill BUN if either kidney or liver tests are selected
-          return;
-        }
-        
-        if (!hasKidneyFunction && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['liver'] != null) {
-      widget.labResultControllers['liver']!.forEach((key, controller) {
-        // Special case for BUN which can be in both kidney and liver panels
-        if (key == 'BUN' && hasBUN) {
-          // Don't autofill BUN if either kidney or liver tests are selected
-          return;
-        }
-        
-        if (!hasLiverFunction && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['urinalysis'] != null) {
-      widget.labResultControllers['urinalysis']!.forEach((key, controller) {
-        if (!hasUrinalysis && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
-    }
-    
-    if (widget.labResultControllers['other'] != null) {
-      widget.labResultControllers['other']!.forEach((key, controller) {
-        if (!hasOtherTests && controller.text.isEmpty) {
-          controller.text = "0";
-        }
-      });
+    // Process each test category controller safely
+    try {
+      if (widget.labResultControllers['cbc'] != null) {
+        widget.labResultControllers['cbc']!.forEach((key, controller) {
+          if (!hasCBC && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['glucose'] != null) {
+        widget.labResultControllers['glucose']!.forEach((key, controller) {
+          if (!hasGlucose && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['lipid'] != null) {
+        widget.labResultControllers['lipid']!.forEach((key, controller) {
+          // Special case for VLDL
+          if (key == 'Very Low Density Lipoprotein (VLDL)' && !hasVLDL && !hasLipidProfile) {
+            if (controller.text.isEmpty) {
+              controller.text = "0";
+            }
+            return;
+          }
+          
+          if (!hasLipidProfile && !hasVLDL && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['kidney'] != null) {
+        widget.labResultControllers['kidney']!.forEach((key, controller) {
+          // Special case for BUN which can be in both kidney and liver panels
+          if (key == 'Blood Urea Nitrogen' && hasBUN) {
+            // Don't autofill BUN if either kidney or liver tests are selected
+            return;
+          }
+          
+          if (!hasKidneyFunction && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['liver'] != null) {
+        widget.labResultControllers['liver']!.forEach((key, controller) {
+          if (!hasLiverFunction && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['urinalysis'] != null) {
+        widget.labResultControllers['urinalysis']!.forEach((key, controller) {
+          if (!hasUrinalysis && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+      
+      if (widget.labResultControllers['other'] != null) {
+        widget.labResultControllers['other']!.forEach((key, controller) {
+          if (!hasOtherTests && controller.text.isEmpty) {
+            controller.text = "0";
+          }
+        });
+      }
+    } catch (e) {
+      // Silently handle any controller access errors to prevent crashes
+      if (kDebugMode) {
+        print('Error setting default values for lab controllers: $e');
+      }
     }
   }
 
@@ -1454,7 +1365,10 @@ class _ConsultationResultsFormState extends State<ConsultationResultsForm>
     // This will set default values for non-relevant fields
     _setDefaultValueForNonRelevantFields();
     
-    // Refresh the UI to reflect the changes
-    setState(() {});
+    // Note: If you need to refresh the UI, call this from outside the build method
+    // and wrap the setState in addPostFrameCallback to avoid setState during build errors
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) setState(() {});
+    // });
   }
 }

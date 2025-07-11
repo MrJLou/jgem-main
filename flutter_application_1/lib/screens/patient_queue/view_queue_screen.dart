@@ -215,16 +215,16 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     });
     
     if (_queueManager.isInitialized) {
-      // Use B-Tree for faster loading if initialized - only show active patients
+      // Use B-Tree for faster loading if initialized - show active and in-progress patients
       _liveQueueFuture = Future.value(_queueManager.getFilteredItems(
-        statuses: ['waiting', 'in_consultation'],
+        statuses: ['waiting', 'in_progress'],
         todayOnly: true,
         prioritySort: true,
       ));
     } else {
-      // Fallback to database query - only show active patients
+      // Fallback to database query - show active and in-progress patients
       _liveQueueFuture = widget.queueService.getActiveQueueItems(
-          statuses: ['waiting', 'in_consultation']);
+          statuses: ['waiting', 'in_progress']);
     }
     
     _liveQueueFuture.whenComplete(() {
@@ -473,8 +473,8 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   // Helper method to get status priority for sorting
   int _getStatusPriority(String status) {
     switch (status.toLowerCase()) {
-      case 'in_consultation': return 1;
-      case 'waiting': return 2;
+      case 'waiting': return 1;
+      case 'in_progress': return 2;
       case 'served': return 3;
       case 'removed': return 4;
       default: return 5;
@@ -714,7 +714,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
                 
                 // Sort traditionally if B-Tree is not used for filtering
                 filteredQueue.sort((a, b) {
-                  // Priority sort: in_consultation > waiting > served > removed
+                  // Priority sort: in_progress > waiting > served > removed
                   int statusPriorityA = _getStatusPriority(a.status);
                   int statusPriorityB = _getStatusPriority(b.status);
                   
@@ -808,7 +808,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
                   items: const [
                     DropdownMenuItem(value: 'all', child: Text('All Statuses')),
                     DropdownMenuItem(value: 'waiting', child: Text('Waiting')),
-                    DropdownMenuItem(value: 'in_consultation', child: Text('In Consultation')),
+                    DropdownMenuItem(value: 'in_progress', child: Text('In Progress')),
                     DropdownMenuItem(value: 'served', child: Text('Served')),
                     DropdownMenuItem(value: 'removed', child: Text('Removed')),
                   ],
@@ -844,7 +844,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildStatChip('Waiting', stats['waiting'] ?? 0, Colors.orange),
-          _buildStatChip('In Consultation', stats['in_consultation'] ?? 0, Colors.blue),
+          _buildStatChip('In Progress', stats['in_progress'] ?? 0, Colors.blue),
           _buildStatChip('Served', stats['served'] ?? 0, Colors.green),
           _buildStatChip('Total', stats['total'] ?? 0, Colors.grey),
         ],
@@ -1190,11 +1190,14 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
     if (item.status == 'served') {
       return _buildStatusChip('Served', Colors.green.shade100, Colors.green.shade700);
     }
+    if (item.status == 'in_progress') {
+      return _buildStatusChip('In Progress', Colors.purple.shade100, Colors.purple.shade700);
+    }
 
     List<String> possibleStatuses = [];
     if (item.status == 'waiting') {
-      possibleStatuses = ['in_consultation', 'served', 'removed'];
-    } else if (item.status == 'in_consultation') {
+      possibleStatuses = ['in_progress', 'served', 'removed'];
+    } else if (item.status == 'in_progress') {
       possibleStatuses = ['waiting', 'served', 'removed'];
     }
 
@@ -1541,7 +1544,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   String _getDisplayStatus(String status) { 
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
-      case 'in_consultation': return 'In Consult';
+      case 'in_progress': return 'In Progress';
       case 'served': return 'Served';
       case 'removed': return 'Removed';
       default: return status;
@@ -1563,7 +1566,7 @@ class ViewQueueScreenState extends State<ViewQueueScreen> with SingleTickerProvi
   Color _getLiveQueueStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return Colors.orange.shade700;
-      case 'in_consultation': return Colors.blue.shade700;
+      case 'in_progress': return Colors.purple.shade700;
       case 'served': return Colors.green.shade700;
       case 'removed': return Colors.red.shade700;
       default: return Colors.grey.shade700;

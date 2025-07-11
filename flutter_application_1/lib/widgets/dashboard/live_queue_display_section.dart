@@ -264,7 +264,11 @@ class LiveQueueDisplaySectionState extends State<LiveQueueDisplaySection> {
               ? Colors.indigo[50]
               : (item.status == 'removed'
                   ? Colors.grey.shade200
-                  : (item.status == 'served' ? Colors.lightGreen[50] : Colors.white)),
+                  : (item.status == 'served' 
+                      ? Colors.lightGreen[50] 
+                      : (item.status == 'in_progress' 
+                          ? Colors.purple[50] 
+                          : Colors.white))),
           border: Border.all(
             color: isRepresentingScheduledAppointment && item.status == 'Scheduled' 
                    ? Colors.indigo[200]! 
@@ -352,7 +356,7 @@ class LiveQueueDisplaySectionState extends State<LiveQueueDisplaySection> {
                         },
                     ), 
                   )
-                : (item.status == 'waiting' || item.status == 'in_consultation')
+                : (item.status == 'waiting' || item.status == 'in_progress')
                   ? Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: PopupMenuButton<String>(
@@ -364,8 +368,8 @@ class LiveQueueDisplaySectionState extends State<LiveQueueDisplaySection> {
                         itemBuilder: (BuildContext context) {
                           List<String> possibleStatuses = [];
                           if (item.status == 'waiting') {
-                            possibleStatuses.addAll(['in_consultation', 'served', 'removed']);
-                          } else if (item.status == 'in_consultation') {
+                            possibleStatuses.addAll(['in_progress', 'served', 'removed']);
+                          } else if (item.status == 'in_progress') {
                             possibleStatuses.addAll(['waiting', 'served', 'removed']);
                           }
                           return possibleStatuses.map((String statusValue) {

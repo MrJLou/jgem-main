@@ -40,7 +40,7 @@ class DatabaseHelper {
   static Future<void> Function(String table, String operation, String recordId, Map<String, dynamic>? data)? _onDatabaseChanged;
 
   static const String _databaseName = 'patient_management.db';
-  static const int _databaseVersion = 42;
+  static const int _databaseVersion = 43;
 
   // Tables
   static const String tableUsers = 'users';
@@ -480,6 +480,7 @@ class DatabaseHelper {
         id TEXT PRIMARY KEY,
         patientId TEXT NOT NULL,
         appointmentId TEXT,
+        queueEntryId TEXT,
         serviceId TEXT, -- Will be deprecated
         selectedServices TEXT, -- New field for multiple services
         recordType TEXT NOT NULL,
@@ -785,7 +786,7 @@ class DatabaseHelper {
       debugPrint("DATABASE_HELPER: Applying migrations for versions < 23.");
       // This creates tables that might be missing in very old versions.
       await db.execute(
-          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, serviceId TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
+          ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableMedicalRecords} (id TEXT PRIMARY KEY, patientId TEXT NOT NULL, appointmentId TEXT, queueEntryId TEXT, serviceId TEXT, selectedServices TEXT, recordType TEXT NOT NULL, recordDate TEXT NOT NULL, diagnosis TEXT, treatment TEXT, prescription TEXT, labResults TEXT, notes TEXT, doctorId TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, FOREIGN KEY (patientId) REFERENCES ${DatabaseHelper.tablePatients} (id) ON DELETE CASCADE, FOREIGN KEY (appointmentId) REFERENCES ${DatabaseHelper.tableAppointments} (id) ON DELETE SET NULL, FOREIGN KEY (serviceId) REFERENCES ${DatabaseHelper.tableClinicServices} (id) ON DELETE SET NULL, FOREIGN KEY (doctorId) REFERENCES ${DatabaseHelper.tableUsers} (id)) ''');
       await db.execute(
           ''' CREATE TABLE IF NOT EXISTS ${DatabaseHelper.tableClinicServices} (id TEXT PRIMARY KEY, serviceName TEXT NOT NULL UNIQUE, description TEXT, category TEXT, defaultPrice REAL, selectionCount INTEGER DEFAULT 0 NOT NULL) ''');
       await db.execute(
@@ -1095,6 +1096,16 @@ class DatabaseHelper {
       debugPrint('DATABASE_HELPER: Doctor schedule columns added to users table');
     }
 
+    if (oldVersion < 43) {
+      debugPrint(
+          "DATABASE_HELPER: Upgrading to version 43: Adding queueEntryId to medical_records table.");
+      
+      // Add queueEntryId column to medical_records table to link with queue items
+      await _addColumnIfNotExists(db, tableMedicalRecords, 'queueEntryId', 'TEXT');
+      
+      debugPrint('DATABASE_HELPER: queueEntryId column added to medical_records table');
+    }
+
     debugPrint(
         "DATABASE_HELPER: Database upgrade from v$oldVersion to v$newVersion complete.");
   }
@@ -1156,6 +1167,10 @@ class DatabaseHelper {
 
   Future<User?> getUserByUsername(String username) async {
     return userDbService.getUserByUsername(username);
+  }
+
+  Future<User?> getUserById(String id) async {
+    return userDbService.getUserById(id);
   }
 
   Future<int> updateUser(Map<String, dynamic> user) async {
@@ -1495,10 +1510,110 @@ class DatabaseHelper {
     record['createdAt'] = record['createdAt'] ?? now;
     record['updatedAt'] = now;
 
-    await db.insert(DatabaseHelper.tableMedicalRecords, record);
-    await logChange(DatabaseHelper.tableMedicalRecords, record['id'], 'insert');
+    // Define valid columns for medical_records table
+    final validColumns = {
+      'id', 'patientId', 'appointmentId', 'queueEntryId', 'serviceId', 
+      'selectedServices', 'recordType', 'recordDate', 'diagnosis', 
+      'treatment', 'prescription', 'labResults', 'notes', 'doctorId', 
+      'createdAt', 'updatedAt'
+    };
 
-    return record['id'];
+    // Filter record to only include valid columns and map consultation fields
+    final filteredRecord = <String, dynamic>{};
+    
+    for (final entry in record.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      
+      if (validColumns.contains(key)) {
+        filteredRecord[key] = value;
+      } else {
+        // Map consultation-specific fields to existing columns
+        switch (key) {
+          case 'consultationType':
+            // Store consultation type in the notes field with a prefix
+            String existingNotes = filteredRecord['notes'] as String? ?? '';
+            if (existingNotes.isNotEmpty) {
+              filteredRecord['notes'] = 'Consultation Type: $value\n$existingNotes';
+            } else {
+              filteredRecord['notes'] = 'Consultation Type: $value';
+            }
+            break;
+          case 'chiefComplaint':
+            // Store chief complaint in the diagnosis field or notes
+            if (filteredRecord['diagnosis'] == null || (filteredRecord['diagnosis'] as String).isEmpty) {
+              filteredRecord['diagnosis'] = 'Chief Complaint: $value';
+            } else {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = 'Chief Complaint: $value\n$existingNotes';
+              } else {
+                filteredRecord['notes'] = 'Chief Complaint: $value';
+              }
+            }
+            break;
+          case 'consultationNotes':
+            // Add consultation notes to the notes field
+            String existingNotes = filteredRecord['notes'] as String? ?? '';
+            if (value != null && value.toString().isNotEmpty) {
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\nConsultation Notes: $value';
+              } else {
+                filteredRecord['notes'] = 'Consultation Notes: $value';
+              }
+            }
+            break;
+          case 'status':
+            // Store status information in notes if needed
+            if (value != null && value.toString().isNotEmpty && value.toString() != 'completed') {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\nStatus: $value';
+              } else {
+                filteredRecord['notes'] = 'Status: $value';
+              }
+            }
+            break;
+          default:
+            // For any other unknown fields, add them to notes
+            if (value != null && value.toString().isNotEmpty) {
+              String existingNotes = filteredRecord['notes'] as String? ?? '';
+              if (existingNotes.isNotEmpty) {
+                filteredRecord['notes'] = '$existingNotes\n$key: $value';
+              } else {
+                filteredRecord['notes'] = '$key: $value';
+              }
+            }
+            break;
+        }
+      }
+    }
+
+    // Ensure required fields are present
+    if (!filteredRecord.containsKey('patientId') || filteredRecord['patientId'] == null) {
+      throw Exception('patientId is required for medical records');
+    }
+    if (!filteredRecord.containsKey('doctorId') || filteredRecord['doctorId'] == null) {
+      throw Exception('doctorId is required for medical records');
+    }
+    if (!filteredRecord.containsKey('recordType') || filteredRecord['recordType'] == null) {
+      filteredRecord['recordType'] = 'consultation'; // Default value
+    }
+    if (!filteredRecord.containsKey('recordDate') || filteredRecord['recordDate'] == null) {
+      filteredRecord['recordDate'] = now;
+    }
+
+    try {
+      await db.insert(DatabaseHelper.tableMedicalRecords, filteredRecord);
+      await logChange(DatabaseHelper.tableMedicalRecords, filteredRecord['id'], 'insert');
+      return filteredRecord['id'];
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error inserting medical record: $e');
+        print('Filtered record: $filteredRecord');
+      }
+      throw Exception('Failed to insert medical record: $e');
+    }
   }
   
   // Get medical records for a patient
@@ -2516,7 +2631,7 @@ To view live changes in DB Browser:
     return count;
   }
 
-  /// Checks if a patient is already in the active queue with 'waiting' or 'in_consultation' status.
+  /// Checks if a patient is already in the active queue with 'waiting' or 'in_progress' status.
   Future<bool> isPatientInActiveQueue(
       {String? patientId, required String patientName}) async {
     final db = await database;
@@ -2526,7 +2641,7 @@ To view live changes in DB Browser:
       result = await db.query(
         DatabaseHelper.tableActivePatientQueue,
         where: 'patientId = ? AND (status = ? OR status = ?)',
-        whereArgs: [patientId, 'waiting', 'in_consultation'],
+        whereArgs: [patientId, 'waiting', 'in_progress'],
         limit: 1,
       );
     } else {
@@ -2534,7 +2649,7 @@ To view live changes in DB Browser:
       result = await db.query(
         DatabaseHelper.tableActivePatientQueue,
         where: 'patientName = ? AND (status = ? OR status = ?)',
-        whereArgs: [patientName, 'waiting', 'in_consultation'],
+        whereArgs: [patientName, 'waiting', 'in_progress'],
         limit: 1,
       );
     }
@@ -2645,7 +2760,7 @@ To view live changes in DB Browser:
   Future<int> getActiveQueueCount() async {
     final db = await database;
     final result = await db.rawQuery(
-        'SELECT COUNT(*) FROM $tableActivePatientQueue WHERE status = \'waiting\' OR status = \'in_consultation\'');
+        'SELECT COUNT(*) FROM $tableActivePatientQueue WHERE status = \'waiting\' OR status = \'in_progress\'');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 

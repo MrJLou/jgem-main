@@ -251,7 +251,7 @@ class HelpManualPdfService {
             pw.SizedBox(height: 20),
             _buildSectionTitle('4.1 Patient Registration'),
             _buildParagraph(
-              'To register a new patient, navigate to the "Patient" section and click "Add New Patient". Fill in the required information, including personal details, contact information, and emergency contacts. Ensure all data is accurate and complete.',
+              'To register a new patient, navigate to the "Patient" section and click "Add New Patient". Fill in the required information, including personal details, contact information, and emergency contacts. When selecting the date of birth, you can choose any date within the allowed year range (patients must be at least 5 years old). The date picker allows you to select any month and day within the valid year - for example, if the oldest allowed birth year is 2020, you can select any date from January 1, 2020 to December 31, 2020. Ensure all data is accurate and complete.',
             ),
             pw.SizedBox(height: 10),
             _buildSectionTitle('4.2 Patient Search'),
@@ -266,7 +266,7 @@ class HelpManualPdfService {
             _buildNumberedListItem('Demographic information', 1),
             _buildNumberedListItem('Medical history and allergies', 2),
             _buildNumberedListItem('Consultation notes and diagnoses', 3),
-            _buildNumberedListItem('Laboratory results', 4),
+            _buildNumberedListItem('Laboratory results (duplicates automatically filtered - only actual lab values from "LAB-ONLY" entries are shown)', 4),
             _buildNumberedListItem('Queuing reports', 5),
             _buildNumberedListItem('Billing and payment history', 6),
           ],
@@ -370,6 +370,14 @@ class HelpManualPdfService {
             _buildFAQItem(
               'Q: Who can merge patient data?',
               'A: Only users with administrative privileges have permission to merge patient data.',
+            ),
+            _buildFAQItem(
+              'Q: Why do I see only one laboratory result when there should be multiple?',
+              'A: The system automatically filters duplicate laboratory results to show only the actual lab values entered by medical technologists (labeled as "LAB-ONLY"). Payment placeholder records (labeled as "Laboratory Only") are automatically hidden to prevent confusion.',
+            ),
+            _buildFAQItem(
+              'Q: Why can\'t I select certain months when entering a patient\'s date of birth?',
+              'A: The date picker allows you to select any month and day within the valid birth year range. Patients must be at least 5 years old, so you can select any date within the allowed years (e.g., any date in 2020 if that\'s the oldest valid year).',
             ),
           ],
         );

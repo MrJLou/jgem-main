@@ -169,18 +169,18 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
                       selectedDateForQueue.month == now.month &&
                       selectedDateForQueue.day == now.day;
       
-      // Load walk-in patients (for today - active patients only)
+      // Load walk-in patients (for today - including in-progress patients)
       List<ActivePatientQueueItem> walkInQueueItems = [];
       if (isToday) {
-        // Get active queue items only (served patients are now removed from active queue)
-        final allActiveItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_consultation']);
+        // Get active and in-progress queue items (served patients are now removed from active queue)
+        final allActiveItems = await widget.queueService.getActiveQueueItems(statuses: ['waiting', 'in_progress']);
         walkInQueueItems = allActiveItems.where((item) => 
           item.originalAppointmentId == null || 
           item.originalAppointmentId!.isEmpty ||
           item.originalAppointmentId!.trim().isEmpty
         ).toList();
         if (kDebugMode) {
-          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today (active patients only).');
+          print('DEBUG: LiveQueueDashboardView _loadCombinedQueueData Fetched ${walkInQueueItems.length} walk-in items for today (active and in-progress patients).');
         }
       }
       
@@ -275,7 +275,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
         patientName: patientDisplayName, 
         arrivalTime: DateTime.now(),
         queueNumber: 0, 
-        status: 'in_consultation',
+        status: 'in_progress',
         paymentStatus: originalAppointment.paymentStatus ?? 'Pending',
         conditionOrPurpose: originalAppointment.consultationType,
         selectedServices: originalAppointment.selectedServices,
@@ -389,7 +389,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   String _getDisplayStatus(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return 'Waiting';
-      case 'in_consultation': return 'In Consultation';
+      case 'in_progress': return 'In Progress';
       case 'served': return 'Served';
       case 'removed': return 'Removed';
       case 'scheduled': return 'Scheduled (Today)';
@@ -400,7 +400,7 @@ class LiveQueueDashboardViewState extends State<LiveQueueDashboardView> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'waiting': return Colors.orange.shade700;
-      case 'in_consultation': return Colors.blue.shade700;
+      case 'in_progress': return Colors.purple.shade700;
       case 'served': return Colors.green.shade700;
       case 'removed': return Colors.red.shade700;
       case 'scheduled': return Colors.purple.shade400;

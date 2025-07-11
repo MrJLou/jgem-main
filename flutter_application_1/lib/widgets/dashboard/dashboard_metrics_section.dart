@@ -44,10 +44,10 @@ class _DashboardMetricsSectionState extends State<DashboardMetricsSection> {
       // Load appointments for today - count all appointments including completed for total count
       final todayAppointments = await ApiService.getAppointments(today);
       
-      // Load current queue and count only active patients (waiting + in_consultation)
+      // Load current queue and count active and in-progress patients
       final queueService = QueueService();
       final activeQueueItems = await queueService.getActiveQueueItems(
-        statuses: ['waiting', 'in_consultation']
+        statuses: ['waiting', 'in_progress']
       );
       
       // Load all users and count doctors working today

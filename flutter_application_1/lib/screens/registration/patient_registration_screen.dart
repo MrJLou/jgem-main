@@ -1121,7 +1121,7 @@ class ReusablePatientFormFields extends StatelessWidget {
                             horizontal: 12, vertical: 14),
                       ),
                       value: gender,
-                      items: ['Male', 'Female', 'Other']
+                      items: ['Male', 'Female']
                           .map((item) => DropdownMenuItem<String>(
                                 value: item,
                                 child: Text(item),
